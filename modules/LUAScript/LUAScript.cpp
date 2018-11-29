@@ -1,30 +1,29 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "LUAScript.h"
 
 #include <boost/program_options.hpp>
 
-#include <strEx.h>
+#include <str/xtos.hpp>
 #include <time.h>
-#include <error.hpp>
+#include <error/error.hpp>
 #include <file_helpers.hpp>
 #include <nscapi/nscapi_program_options.hpp>
 #include <nscapi/nscapi_protobuf_functions.hpp>
@@ -36,10 +35,8 @@
 namespace sh = nscapi::settings_helper;
 namespace po = boost::program_options;
 
-
 bool LUAScript::loadModuleEx(std::string alias, NSCAPI::moduleLoadMode) {
 	try {
-
 		root_ = get_base_path();
 		nscp_runtime_.reset(new scripts::nscp::nscp_runtime_impl(get_id(), get_core()));
 		lua_runtime_.reset(new lua::lua_runtime(utf8::cvt<std::string>(root_.string())));
@@ -49,19 +46,18 @@ bool LUAScript::loadModuleEx(std::string alias, NSCAPI::moduleLoadMode) {
 		settings.set_alias(alias, "lua");
 
 		settings.alias().add_path_to_settings()
-			("LUA SCRIPT SECTION", "Section for the LUAScripts module.")
 
-			("scripts", sh::fun_values_path(boost::bind(&LUAScript::loadScript, this, _1, _2)), 
-			"LUA SCRIPTS SECTION", "A list of scripts available to run from the LuaSCript module.",
-			"SCRIPT DEFENTION", "For more configuration options add a dedicated section")
+			("scripts", sh::fun_values_path(boost::bind(&LUAScript::loadScript, this, _1, _2)),
+				"Lua scripts", "A list of scripts available to run from the LuaSCript module.",
+				"SCRIPT DEFENTION", "For more configuration options add a dedicated section")
 			;
 
 		settings.register_all();
 		settings.notify();
 
-// 		if (!scriptDirectory_.empty()) {
-// 			addAllScriptsFrom(scriptDirectory_);
-// 		}
+		// 		if (!scriptDirectory_.empty()) {
+		// 			addAllScriptsFrom(scriptDirectory_);
+		// 		}
 
 		scripts_->load_all();
 	} catch (const std::exception &e) {
@@ -94,7 +90,6 @@ bool LUAScript::loadScript(std::string alias, std::string file) {
 	return false;
 }
 
-
 bool LUAScript::unloadModule() {
 	if (scripts_) {
 		scripts_->unload_all();
@@ -115,13 +110,13 @@ void LUAScript::query_fallback(const Plugin::QueryRequestMessage::Request &reque
 	return lua_runtime_->on_query(request.command(), cmd->information, cmd->function, false, request, response, request_message);
 }
 
-bool LUAScript::commandLineExec(const Plugin::ExecuteRequestMessage::Request &request, Plugin::ExecuteResponseMessage::Response *response, const Plugin::ExecuteRequestMessage &request_message) {
+bool LUAScript::commandLineExec(const int target_mode, const Plugin::ExecuteRequestMessage::Request &request, Plugin::ExecuteResponseMessage::Response *response, const Plugin::ExecuteRequestMessage &request_message) {
 	if (request.command() != "lua-script" && request.command() != "lua-run"
 		&& request.command() != "run" && request.command() != "execute" && request.command() != "") {
-			boost::optional<scripts::command_definition<lua::lua_traits> > cmd = scripts_->find_command(scripts::nscp::tags::simple_exec_tag, request.command());
-			if (cmd) {
-				lua_runtime_->on_exec(request.command(), cmd->information, cmd->function, true, request, response, request_message);
-			}
+		boost::optional<scripts::command_definition<lua::lua_traits> > cmd = scripts_->find_command(scripts::nscp::tags::simple_exec_tag, request.command());
+		if (cmd) {
+			lua_runtime_->on_exec(request.command(), cmd->information, cmd->function, true, request, response, request_message);
+		}
 		return false;
 	}
 
@@ -155,5 +150,5 @@ bool LUAScript::commandLineExec(const Plugin::ExecuteRequestMessage::Request &re
 }
 
 void LUAScript::handleNotification(const std::string &channel, const Plugin::QueryResponseMessage::Response &request, Plugin::SubmitResponseMessage::Response *response, const Plugin::SubmitRequestMessage &request_message) {
-//	return scripts_.on_submission(command, request, result);
+	//	return scripts_.on_submission(command, request, result);
 }

@@ -1,10 +1,29 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <nrpe/packet.hpp>
-#include <boost/shared_ptr.hpp>
-
 #include <socket/socket_helpers.hpp>
-#include <iostream>
+#include <socket/client.hpp>
+
+#include <boost/shared_ptr.hpp>
 
 using boost::asio::ip::tcp;
 
@@ -49,7 +68,7 @@ namespace nrpe {
 			void prepare_request(request_type &packet) {
 				set_state(has_request);
 				payload_length_ = packet.get_payload_length();
-				buffer_ =  packet.get_buffer();
+				buffer_ = packet.get_buffer();
 			}
 
 			write_buffer_type& get_outbound() {
@@ -78,7 +97,7 @@ namespace nrpe {
 				nrpe::packet packet = nrpe::packet(&buffer_[0], static_cast<unsigned int>(buffer_.size()));
 				if (packet.getType() == nrpe::data::moreResponsePacket)
 					set_state(has_more);
-				else 
+				else
 					set_state(connected);
 				responses_.push_back(packet);
 				return true;

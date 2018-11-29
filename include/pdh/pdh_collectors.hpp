@@ -1,46 +1,43 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <numeric>
 
-#include <boost/lexical_cast.hpp>
-#include <boost/circular_buffer.hpp>
-
 #include <pdh/pdh_interface.hpp>
 #include <pdh/pdh_counters.hpp>
 
+#include <boost/lexical_cast.hpp>
+#include <boost/circular_buffer.hpp>
+#include <boost/foreach.hpp>
+
 namespace PDH {
-	
 	namespace instance_providers {
-
-
-		struct container  : public PDH::pdh_instance_interface {
+		struct container : public PDH::pdh_instance_interface {
 			std::string alias_;
 			std::list<boost::shared_ptr<pdh_instance_interface> > children_;
 
 			virtual bool has_instances() {
 				return true;
 			}
-			virtual std::list<boost::shared_ptr<pdh_instance_interface> > get_instances()  {
+			virtual std::list<boost::shared_ptr<pdh_instance_interface> > get_instances() {
 				return children_;
 			}
 
@@ -79,8 +76,14 @@ namespace PDH {
 				}
 				return sum;
 			}
-			virtual void collect(const PDH_FMT_COUNTERVALUE &value)  {}
-
+			virtual double get_float_value() {
+				double sum = 0;
+				BOOST_FOREACH(pdh_instance o, children_) {
+					sum += o->get_float_value();
+				}
+				return sum;
+			}
+			virtual void collect(const PDH_FMT_COUNTERVALUE &value) {}
 		};
 
 		class base_counter : public PDH::pdh_instance_interface {
@@ -96,28 +99,25 @@ namespace PDH {
 				return path_;
 			}
 			virtual DWORD get_format() {
-				return format_; 
+				return format_;
 			}
 
 			virtual bool has_instances() {
 				return false;
 			}
-			virtual std::list<boost::shared_ptr<pdh_instance_interface> > get_instances()  {
+			virtual std::list<boost::shared_ptr<pdh_instance_interface> > get_instances() {
 				std::list<boost::shared_ptr<pdh_instance_interface> > ret;
 				return ret;
 			}
-
 		};
 
 		template<class T>
 		struct base_collector : public base_counter {
-
 			base_collector(pdh_object config) : base_counter(config) {}
 
 			virtual void collect(const PDH_FMT_COUNTERVALUE &value) = 0;
 			virtual void update(T value) = 0;
 		};
-
 
 		template<>
 		struct base_collector<double> : public base_counter {
@@ -149,7 +149,7 @@ namespace PDH {
 			boost::shared_mutex mutex_;
 			T value;
 		public:
-			value_collector(pdh_object config) : base_collector<T>(config) {}
+			value_collector(pdh_object config) : base_collector<T>(config), value(0) {}
 			virtual double get_average(long) {
 				boost::shared_lock<boost::shared_mutex> lock(mutex_);
 				if (!lock.owns_lock())
@@ -163,6 +163,12 @@ namespace PDH {
 				return static_cast<T>(value);
 			}
 			virtual long long get_int_value() {
+				boost::shared_lock<boost::shared_mutex> lock(mutex_);
+				if (!lock.owns_lock())
+					throw PDH::pdh_exception(get_name(), "Could not get mutex");
+				return value;
+			}
+			virtual double get_float_value() {
 				boost::shared_lock<boost::shared_mutex> lock(mutex_);
 				if (!lock.owns_lock())
 					throw PDH::pdh_exception(get_name(), "Could not get mutex");
@@ -184,13 +190,13 @@ namespace PDH {
 		public:
 			rrd_collector(pdh_object config) : base_collector<T>(config) {
 				values.resize(config.buffer_size);
-				for (int i=0;i<config.buffer_size;i++) {
+				for (int i = 0; i < config.buffer_size; i++) {
 					values[i] = 0;
 				}
 			}
 			rrd_collector(int size) {
 				values.resize(size);
-				for (int i=0;i<size;i++) {
+				for (int i = 0; i < size; i++) {
 					values[i] = 0;
 				}
 			}
@@ -203,7 +209,7 @@ namespace PDH {
 				if (seconds == 0)
 					throw PDH::pdh_exception(get_name(), "INvalid size");
 
-				double sum = std::accumulate(values.end()-seconds, values.end(), 0.0);
+				double sum = std::accumulate(values.end() - seconds, values.end(), 0.0);
 				return sum / seconds;
 			}
 			virtual double get_value() {
@@ -218,6 +224,12 @@ namespace PDH {
 					throw PDH::pdh_exception(get_name(), "Could not get mutex");
 				return values.back();
 			}
+			virtual double get_float_value() {
+				boost::shared_lock<boost::shared_mutex> lock(mutex_);
+				if (!lock.owns_lock())
+					throw PDH::pdh_exception(get_name(), "Could not get mutex");
+				return values.back();
+			}
 
 			virtual void update(T value) {
 				boost::shared_lock<boost::shared_mutex> lock(mutex_);
@@ -225,7 +237,6 @@ namespace PDH {
 					throw PDH::pdh_exception(get_name(), "Could not get mutex");
 				values.push_back(value);
 			}
-
 		};
 	}
 }

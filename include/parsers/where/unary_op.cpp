@@ -1,19 +1,37 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <parsers/where/unary_op.hpp>
 #include <parsers/operators.hpp>
 #include <parsers/where/helpers.hpp>
 
 namespace parsers {
 	namespace where {
-
 		std::string unary_op::to_string() const {
 			return helpers::operator_to_string(op) + " ( " + subject->to_string() + " ) ";
 		}
-
-		long long unary_op::get_int_value(evaluation_context errors) const {
-			return evaluate(errors)->get_int_value(errors);
+		std::string unary_op::to_string(evaluation_context errors) const {
+			return helpers::operator_to_string(op) + " ( " + subject->to_string(errors) + " ) ";
 		}
-		std::string unary_op::get_string_value(evaluation_context errors) const {
-			return evaluate(errors)->get_string_value(errors);
+
+		value_container unary_op::get_value(evaluation_context errors, value_type type) const {
+			return evaluate(errors)->get_value(errors, type);
 		}
 		std::list<node_type> unary_op::get_list_value(evaluation_context errors) const {
 			return std::list<node_type>();
@@ -51,8 +69,5 @@ namespace parsers {
 		bool unary_op::require_object(evaluation_context errors) const {
 			return subject->require_object(errors);
 		}
-
-
 	}
 }
-

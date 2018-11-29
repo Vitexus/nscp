@@ -4,7 +4,8 @@
 		"description"	: "Loads and processes internal Python scripts",
 		"name"			: "PythonScript",
 		"alias"			: "python",
-		"version"		: "auto"
+		"version"		: "auto",
+		"reload"		: true
 	},
 	
 	"settings"		: {
@@ -17,5 +18,9 @@
 
 	"command line exec" : "true",
 
-	"channels" : true
+	"metrics" : "both",
+
+	"channels" : true,
+
+	"events": true
 }

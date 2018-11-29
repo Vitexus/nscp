@@ -1,10 +1,28 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <boost/foreach.hpp>
 
 #include <parsers/where/list_node.hpp>
 
 namespace parsers {
 	namespace where {
-
 		std::string list_node::to_string() const {
 			std::string ret;
 			BOOST_FOREACH(const node_type n, value_) {
@@ -14,22 +32,36 @@ namespace parsers {
 			}
 			return ret;
 		}
-
-		long long list_node::get_int_value(evaluation_context errors) const {
-			long long ret = 0;
-			BOOST_FOREACH(const node_type n, value_) {
-				ret += n->get_int_value(errors);
-			}
-			return ret;
-		}
-		std::string list_node::get_string_value(evaluation_context errors) const {
+		std::string list_node::to_string(evaluation_context errors) const {
 			std::string ret;
 			BOOST_FOREACH(const node_type n, value_) {
 				if (!ret.empty())
 					ret += ", ";
-				ret += n->get_string_value(errors);
+				ret += n->to_string(errors);
 			}
 			return ret;
+		}
+
+		value_container list_node::get_value(evaluation_context errors, value_type type) const {
+			if (type == type_int) {
+				errors->error("Cant get number from a list");
+				return value_container::create_nil();
+			}
+			if (type == type_float) {
+				errors->error("Cant get number from a list");
+				return value_container::create_nil();
+			}
+			if (type == type_string) {
+				std::string s;
+				BOOST_FOREACH(const node_type n, value_) {
+					if (!s.empty())
+						s += ", ";
+					s += n->get_string_value(errors);
+				}
+				return value_container::create_string(s);
+			}
+			errors->error("Invalid type");
+			return value_container::create_nil();
 		}
 
 		node_type list_node::evaluate(evaluation_context errors) const {
@@ -88,7 +120,5 @@ namespace parsers {
 			}
 			return true;
 		}
-
 	}
 }
-

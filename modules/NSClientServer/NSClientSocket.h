@@ -1,30 +1,25 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 #include "resource.h"
 #include <Socket.h>
-/**
- * @ingroup NSClient++
- * Socket responder class.
- * This is a background thread that listens to the socket and executes incoming commands.
- *
- * @version 1.0
- * first version
- *
- * @date 02-12-2005
- *
- * @author mickem
- *
- * @par license
- * This code is absolutely free to use and modify. The code is provided "as is" with
- * no expressed or implied warranty. The author accepts no liability if it causes
- * any damage to your computer, causes your pet to fall ill, increases baldness
- * or makes your car start emitting strange noises when you start it up.
- * This code has no bugs, just undocumented features!
- * 
- * @todo This is not very well written and should probably be reworked.
- *
- * @bug 
- *
- */
 class NSClientSocket : public simpleSocket::Listener {
 private:
 	strEx::splitList allowedHosts_;

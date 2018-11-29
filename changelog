@@ -1,3 +1,825 @@
+2018-02-03 Michael Medin
+ * Updated documentation (#513)
+ * eventlog: Fixed issue where real-time eventlog message return duplicate results if same log with different case was added
+ * NSCA Client: Fixed #511 nsca status can be set with a number from command line
+ * filters: show-all will not change if the list is already present: fixes #528
+ * Added dockerfiles for debian #537
+ * Some linux build fixes
+ * Fixed 401 issue with Op5Client
+ * corrected spelling
+
+2018-01-18 Michael Medin
+ * Fixed some Op5Client issues
+
+2018-01-17 Philipp
+ * Fix syntax error for PowerShell wrapper
+
+ 2018-01-15 Michael Medin
+ * Added hidden to check_tasksched to allow checking of hidden tasks
+ * Added tracing and fixed some issues to op5 client
+ * Fixed #525 json spirit should be an optional dependency (though a lot of things break without it)
+
+2018-01-08 Michael Medin
+ * Possibly fixed #525 json-spirit should not be a required dependancy
+ * Fixed #527 infinite recursion with malformed config file
+ * Fixed #518 silent installer not applying cli values
+ * Fixed so OP5_SERVER et.al. are applied correctly to the installer
+ * Added new OP5Client
+ * optimized the markdown a bit
+ * started to fix debian builds
+ * Added http client for mongoose wrapper
+ * moved moongose impl behind the c++ wrappers
+ * add centreon plugins to docs: ref #512
+
+2017-11-19 Michael Medin
+ * REST: Added crude settings API (needs more work before making official)
+ * Fixed #435 added support for overriding http verb with X-HTTP-Method-Override
+ * Improved error message for 404:s
+ * Fixed some issues with enumerating settings keys
+ * Removed query from settings protobuf api as it was never used
+ * CORE: Fixed listing unloaded modules by name
+ * REST: Added POST of modules to upload them
+ * REST: Fixed execute_nagios support for plain text putput and fixed return code
+ * REST: Fixed segv when parsing privileges
+ * WEBServer: Fixed output from nscp web install
+ * zip-modules: fixed loading zip-modules without extensions
+ * REST: GET ...queries/ actually lists scripts not queries
+ * REST: Added putting log messages via REST API.
+ * Spellchecked some docs a bit
+
+2017-11-16 Michael Medin
+ * Added more python API documentation
+ * Fixed #499 Added details about adding performance data to documentation about checks
+ * Fixed #502 removed pointless log message about logger
+ * REST: Fixed #485 check_nscp_web is now supported again, sorry for the delay....
+
+2017-11-15 Michael Medin
+ * Added command line commands to nscp web for adding users and roles: nscp web <add-user|add-role> --help
+ * REST: Added support for python runtime
+
+2017-11-14 Michael Medin
+ * REST: Added support for loading zip modules
+ * REST: Fixed fetching single plugin and plugin load status updates
+ * REST: fixed segv when fetching log records
+ * REST: Added links to modules controller
+ * Fixed python script CLI for loading scripts
+ * Added some more python API docs
+ * Removed erroneous error message bout web password
+ * Added compatibility matrices to documentation (Fixing #482 )
+
+2017-11-12 Michael Medin
+ * check_process: Fixed #494 empty status message
+ * Events: Added proper event names
+ * CheckEventLog added support for fetching xml
+ * REST: added privelages to query controller
+ * Fixed rendering issuein api docs
+
+2017-11-11 Michael Medin
+ * Added skeleton docs for the Python API
+ * Improved the markdown  docs for the plugin API
+ * Various minor rest api fixes (pagination, and links)
+ * Fixed python script issues
+
+2017-11-09 Michael Medin
+ * Fixed accidental renaming of module in ext-scr install command
+ * Fixed so clients (test/web) can show multiple lines in output
+
+2017-11-08 Michael Medin
+ * Added info API to get version
+
+2017-11-06 Michael Medin
+ * Regression fixes for external scripts
+ * Fixed some python script refactoring regression issues
+
+2017-11-05 Michael Medin
+ * check_eventlog: Added support for audit success/failure keyword filtering Fixed #488
+ * zip modules: added support for python script one-liners
+ * PythonScripts: Made python scripts compatible with external scripts cli as well as code refactoring
+ * check_pdh: Added ignore-errors to make counters return 0 instead of errors: #454
+ * Split external script up into chunks
+
+2017-10-31 Michael Medin
+ * ZIP modules: Added modules and on_start to zip modules to load modules and run commands on start
+
+2017-10-28 Michael Medin
+ * Implemented script support for zip plugins
+
+2017-10-28 Michael Medin
+ * CheckExternalScripts added support for not writing the configuration when adding script (--no-config)
+ * Added ZIP plugins
+
+2017-10-18 Thomas Rohlajz
+ * Remove duplicity in tutorial documentation
+
+2017-10-25 Michael Medin
+ * REST: added log api
+ * core: Refactoring
+
+2017-10-17 Michael Medin
+ * Fixed #472 Added sample exclude versus filter
+ * Fixed #471 added sample command with perf-config to check_memory
+
+2017-10-16 Michael Medin
+ * Fixed #413 check_network returning the wrong values
+ * Added example real-time eventlog command to docs
+
+2017-10-15 Michael Medin
+ * Major overhaul of the documentation making the generated bits easier to read...
+
+2017-10-11 Michael Kraus
+ * Add link and information about check_nsc_web
+
+2017-10-11 Michael Medin
+ * Added documentation for REST API and added privs and fixed some issues
+
+2017-10-10 Michael Medin
+ * Updated the API documentation
+ * Added /api and /api/v1 endpoints to provide information about API
+ * Added API documentation for scripts
+ * Added configuration for grants and roles #448 #449
+ * Added privilege system for API #448 and #449
+ * Added support for basic auth (#448)
+
+2017-10-05 Michael Medin
+ * Fixed installer issue
+ * Renamed the moongose lib so it wont clash with other thing on linux
+
+2017-10-01 Michael Medin
+ * implemented DELETE for /api/v1/scripts/ext/scripts to delete commands and scripts.
+ * Added delete to CHeckExternalScritpts to delete scripts: nscp ext delete --script <alias> will delete the alias and nscp ext delete --script <script> will delete the script.
+ * Added  scripts controller /api/v1/scripts/ext/scripts to add/remove(not yet) and update scripts.
+ * modules rest API now by default shows loaded modules not available modules.
+ * Future prooofed the mongoose wrapper a bit by adding an internal structure to userdata
+ * Added --import to import a script (copy) to the scripts folder
+ * Added new commandline show to show script in external scripts module: "nscp ext show --script <alias>" will show the actual command execute and "nscp ext show --script <script>" will show the content of the script.
+
+2017-09-27 Michael Medin
+ * added text query and regular query to the new API
+ * Added new REST API https://localhost:8443/api/v1/modules and https://localhost:8443/api/v1/queries please note this is all a work in progress so use with care
+
+2017-09-25 Michael Medin
+ * Brand new web server with multi thread support.
+ * Attached remnants of mongoose-cpp to the local code-base and heavily modified to support multiple threads and modern moongose effectively fixing #444 please note that since this is rather big changes please use with care as bugs might be remote exploitable if you enable the WebServer...
+ * Fixed external scripts not showing in command list
+ * Fixed #403 reduced cpuload on some servers by only collecting handle information every 10x instead of every iteration
+ * Reduced CPU load of checking handles for systems with large number of processes
+ * Added syntax=none to remove default values from various top/empty/* syntaxes
+
+2017-09-05 Michael Medin
+ * Fixed name of Windows 2016 server
+ * check_os_version: Added %(suite) to show wich suite is installed.
+
+2017-08-29 Michael Medin
+ * Added option to disable background checks in CheckSystem (this is not useful as it breaks things, so only use if you have issues)
+
+2017-08-20 Michael Medin
+ * Fixed #455 documentation about msiexec was wrong
+ * Fixed test mode crash
+ * Fixed check_service missing descriptions (#456)
+ * Fixed potential logger crash
+ * Added option to configure maintenance threads as well as changed metrics interval to every 10 seconds
+
+2017-08-17 Michael Medin
+ * Added script to build linux images with docker and fixed centos 7
+ * Added some more docker builds
+ * Fixed commandline invocations
+ * Added docker for building centos 7 (and removed unused vagrant builders)
+
+2017-07-30 Michael Medin
+ * Fixed wrong unit test command for lua scripts
+ * (Re)added --case command line option to unit test command
+ * Removed arguments for unit test as they are not used.
+ * Disabled docs if python is missing (or less then 2.6)
+ * Switched to regular find python cmake module
+ * Added whats new for 0.5.1
+
+2017-07-29 Michael Medin
+ * Fixed error handling when checks crash
+ * Added unit test for scheduler
+ * python unittest helper lib: Added assert_gt and asser_lt to check values
+ * Added --show-all to nscp unit to show all results of the testcase (not just failed ones)
+ * Fixed rare crash when logger shuts down
+ * Fixed rare crash when scheduler shuts down
+ * Fixed scheduler interval being off
+ * Added randomness to the scheduler to dictate how much randomness you want (default is 0)
+ * core: Fixed loading module with alias via API
+ * Fixed exclude parsing when converting CheckServiceState commands (much faster now)
+
+2017-07-28 Michael Medin
+ * Added information about paths constants to the documentation
+ * Changed default module and script path to be relative of exe instead of shared (no impact currently since shared path is exe)
+ * Fixed unit testcase issues and added them to automatic build pipeline
+
+2017-07-27 Maikuolan
+ * Fixes some typos (sensetive -> sensitive) and removes some excess space.
+
+2017-07-26 Michael Medin
+ * Fixed crash when paths was not available
+ * NRPE: Improved NRPE server truncation of performance data
+ * check_process: Fixed #423 %(filename) variable should contain path
+ * Fixed unittest --language option not working
+ * CheckLogFile: Fixed crash in on linux
+ * Added workaround for boost 1.58 bug (Fixes #442 )
+ * Added docker files for building on linux
+
+2017-07-14 Michael Medin
+ * Eventlog: Added command line for adding real time filter:
+   nscp eventlog add --alias foo --log application --target log
+ * eventlog: Fixed rendering large (more then 4k) eventlog messages
+ * Fixed #426 real time eventlog messages truncated at 512 characters
+ * Fixed #428 installer properties not working properly
+ * Fixed travis builds
+ * Moved docs into the main repository to get out of all the annoying submodule issues
+ * Applied #438: check_updates.vbs should return unknown if Windows Update service is disabled
+ * Michael now owes Michael Friedrich a beer for his awesome work!
+
+2017-06-xx Michael Friedrich
+ * Added documentation for APIs
+
+2017-06-28 Michael Medin
+ * installer: Change id of fw exception (but did not affect the guid)
+ * installer: Fixed installer command line switches, "op5 mode" and generated password
+ * removed pid option on windows
+ * installer: Added secondary installer
+ * installer: Changed title and added flag to override allow owerwrite
+
+2017-06-12 Michael Friedrich
+ * Fix writing configuration key 'WEBServer'
+
+2017-05-24 Michael Medin
+ * Fixed installer UI (and writing installer keys)
+ * New op5 logo
+
+2017-05-16 Michael Medin
+ * filters: Fixed #412 show-all overwrites top-syntax
+ * pdh: Fixed #415 negative value
+ * registry: Fixed #414 invalid data at end of strings in registry
+
+2017-05-14 Michael Medin
+ * WebServer: Possible fix for #411 memory leaks
+ * Fixed errorhandler in in filters so debug works better
+ * Fixed #403 installer issue
+
+2017-04-09 Michael Medin
+ * check_drive_size: Addded letter filter keyword with is the drive letter #399.
+ * CheckLogFile: Added option "read entire file" to allow re-reading the file each time it has changed i.e. if a single line is written to a file. Fixes part 2 of #387
+ * CheckLogFile: Reworked the check logic a bit to make it more solid
+ * CheckLogFile: Added alias column-split to real-time check file filters to make it easier to use: #387
+ * SimpleCache: New command to list all keys in the cache: list_cache
+
+2017-04-06 Michael Medin
+* Webserver: Fixed password encoding #389
+* return values should be optional
+* Fixed command-line parser using the wrong options
+
+2017-04-06 Michael Medin
+ * check_nt CPU load using invalid time (second instead of minute) Fixes #251 and #403
+ * PythonScript: Fixed so install commands works (i.e. nscp py install --add sample.py)
+ * settings: Fixed internal API wrapper with multiple payloads
+ * Thank you Yannick Charton: New year in changelog: It's time to enter in 2017 ;-)
+
+2017-04-04 Michael Medin
+ * filters: Fixed expression parsing (Possible fix for #396 )
+ * Thank you Marcel Hecko: Fix typos. comaseparated => comma separated
+
+2017-03-19 Michael Medin
+ * Fixed url in reporter
+ * Fixed running external scripts as other users when running as local system
+
+2017-02-07 Michael Medin
+ * eventlog: Fixed #348 eventlog insert not working...
+ * clients: Fixed #372 --source-host not working
+ * Linux: Some debian build issues
+ * Added sample debian package descriptors
+
+2017-02-01 Michael Medin
+ * Added debian packages
+
+2017-01-28 Michael Medin
+ * Fixed invalid error in installer
+
+2017-01-24 Michael Medin
+ * Fixes tomake sure it builds properly on linux
+ * CheckHelpers: Added new mode minmax to xform_perf to add missing minimum and maximum performance data to % commands. (Fixes/Improves #334 and #363 )
+ * graphite: Added removal of more invalid graphite chars (% and () Fixes #358
+ * check_nscp_nrpe returns wrong status code (for unknown) fixes #359
+ * check_nrpe: added support for encoding to client
+ * Code cleanup: Organized includes
+ * Code cleanup: reorganized string helpers
+ * Code cleanup: Harmonized nscp_exception and nscapi_exception into nsclient_exception
+ * Code cleanup: Fixed accidentally replaced with wrong license before
+ * Code cleanup: removed dead code
+ * refactor-core: Moved registry and settings handler out of core
+ * Fixed accidental overwriting of section description in config
+ * Added support for default values in settings to generate better docs
+ * Fixed dependency order for installer
+ * Switched documentation to markdown, and improved it a lot
+ * Fixed issue with missing loaded plugins from cache
+ * Added mkdocs detection
+ * First prototype of debian packages
+ * check_drivesize: Added mediatype
+ * changed attributes on scripts
+ * Fixed a bunch of linux/boost compiler issues
+
+2016-11-29 Michael Medin
+ * installer: Fixed some regression issues with related to settings fix
+ * installer: dumped all keys in log for simpler debug
+ * Installer: Improved key handling and removed "have to override keys on msiexec" bug
+
+2016-11-27 Michael Medin
+ * Fixed crash if module failed to load
+ * Core: Removed mutex from event processing
+ * CheckSystem: Real time thread nove logs on TRACE instead of DEBUG
+ * PythonScript: Added event support
+ * Added functions to API helpers to emit events
+ * settings: Added unzip: to attachments to unzip a file of attachments
+ * https: Fixed SNI in settings and NRDP
+ * CheckSystem: Delayed background threads
+ * Improved the https client (doesnt use a double bufffer)
+ * Fixed https settings
+ * Added miniz as a submodule for unzipping attached file from settings
+ * Fixed event record data collection
+
+2016-11-15 Michael Medin
+ * CheckSystem: Fixed #341 Crash in check_pagefile when there are no pagefiles
+
+2016-11-13 Michael Medin
+ * CheckSystem: refactored various real time filters into separate parts and added check_process
+ * PythonScript: Added support for events
+ * filters: Added event as target to send result of filters as events
+ * Core: Added events
+ * system: Fixed regression issue with registry messages
+ * filter: refactoring: Added ability to fetch att variables from a filter factory
+ * filter: added copy cons to filter_object
+ * filter: Added to string methods for filters to provide vbetter error handling
+ * filters: Refactored the return data to be simpler (and removed no longer used is_done flag)
+ * Filters: Refactored the "template flag" into the function
+
+2016-11-06 Michael Medin
+ * Removed attachments (as they are never used)
+ * CheckSystem: refactored check_process to a separate module
+ * CHeckLogFile: Fixed crash when tracelogging realtime monitoring
+ * reset version
+
+2016-10-30 Michael Medin
+ * Fixed op5 scripts folder
+
+2016-10-23 Michael Medin
+ * NRDP: Added parsing of NRDP server response
+ * NRDP: Fixed #331 token missing from NRDP
+ * Settings: Fixed #227 migration only saves the root scope
+ * Added aliases to settings for future use
+ * Improved settings esception to give error from correct line
+ * Moved settings and registry query to separate files to make the core more modular
+ * Removed "boot settings keys" as they are not really used
+
+2016-10-17 Michael Medin
+ * Some more (post) cr-lf fixes
+ * Removed unused files
+ * Updated and harmonized header comments
+ * Changed cr/lf on all files locally
+ * Normalize all the line endings
+ * Added gitattributes (crlf fix)
+ * updated some docs maybe?
+
+2016-10-16 Michael Medin
+ * Fixed crash on reload
+ * Improved error handling a bit
+ * Changed logger from static to factory and cleaned up the log classes
+ * removed log to file from service apis for windows (as there is no guarantee the logger is configured)
+ * moved replace to ::s namespace
+
+2016-09-14 Michael Medin
+ * NRDPClient: Fixed #286 (for real this time), NRDP not working over https
+ * http client: changed error to reflect whats wrong (not config error)
+ * http client: added error if not compiled with ssl
+
+2016-09-08 Michael Medin
+ * Fixed copying of file in centos build
+ * check_eventlog: Fixed time/date rendering
+ * Fixed missing return
+
+2016-09-05 Michael Medin
+ * filters: fixed issue when no filter is specified in realtime checks
+ * real time filters: Added more debug messages when no filters match (to better show why)
+ * filters: Improved error handler when filters fail
+
+2016-08-23 Michael Medin
+* Linux: Fixed specfile version numbers
+* TaskScheduler: Fixed folder support in tash scheduler
+* CheckWMI: Improved error in check_wmi
+* Fixed segv
+* CHeckHelpers: Fixed missing return data in check_multi
+* Linux: Fixed build issues with new http(s) client
+
+2016-08-16 Michael Medin
+ * Added initial support for https to settings and NRDP (no certificate validation yet and similar things)
+ * check_uptime (and others) fixed date format
+
+2016-08-11 Michael Medin
+ * SimpleFileWriter #316 added two new syntax strings to differentiate between host and service checks*
+ * SimpleFileWriter #316 added new keywords to syntax for epoch and time
+
+2016-08-10 Michael Medin
+ * SimpleFileWriter: Fixed #316 missing host name
+ * SimpleFileWriter: Added support for status as number #316
+ * Fixed accidental bug in previous commit (nsca service was missing)
+
+2016-08-08 Michael Medin
+ * Fixed #315 Fixed invalid host_check for NSCA
+ * Fixed #285 missing hostname for NRDP
+ * Fixed linux packages
+ * Fixed duplicate lua.dll libs
+ * pdh: Fixed #296 and #310 compatibility issue with checkCounter and type=double
+ * Fixed #288 lua dlls missing in installer
+ * Fixed #297 like not ignoring case when comparing strings in filters
+ * Fixed scheduler reload not resetting old schedules
+ * Change so scheduler logs actual file sinstead of wrapper.
+ * removed now defunct old icp protocol
+ * Added matches to settings api wrapper
+ * Added multiple filter/warn/crit expressions to allow using count separate from items thresholds
+ * Moved filter object handling inside filter engine
+ * Partial fix for #294: count not working properly when used together with a regular check
+
+2016-05-30 Michael Medin
+ * Fixed scheduler reload not resetting old schedules
+ * Change so scheduler logs actual file sinstead of wrapper.
+ * removed now defunct old icp protocol
+ * Added matches to settings api wrapper
+ * removed some compiler warning from protobuf
+ * Fixed som linux compiler issues
+ * Pimplified some common classes
+
+2016-05-30 Michael Medin
+ * filters: Fixed #292 Unicode support for filters
+ * NSCA: Fixed #300 alias not used when sending NSCP results
+ * check_nscp: Added SSl support and general fixes to check_nscp (check_remote_nscp)
+ * CheckHelpers: Fixed 301: check_multi does not parse qouted commands properly (possibly breaking change)
+
+2016-04-14 Michael Medin
+ * NSCPClient: Added preliminary REST client
+ * Scheduler: added preliminary support for cron statements: schedule = 47 * * * *
+ * installer: Fixed installer version to prevent duplicate installs on upgrade Fixed "267
+
+2016-04-11 Michael Medin
+ * scripts: Added option capture output to external script to disable output capture and handled inheritance (Fixes #232)
+ * WEBServer: Added support for allowed hosts to WEBServer
+ * WEBServer: Updated mongoose Fixing: Busy wait when socket failes
+ * all commands: Fixed #280 parsing filters with large numbers
+ * updated docs
+
+2016-04-08 Michael Medin
+ * all commands: Fixed #280 parsing filters with large numbers
+
+2016-04-07 Michael Medin
+ * All checks: Fixed #278 description fr show-all
+ * All checks: Fixed #279 top syntax and filter description in the help
+
+2016-04-07 Michael Medin
+ * Breaking change: check_service: removed trigger detection from default service state Fixes #249
+   I think this causes more confusion then good so foe people who want this please do it manually instead... i.e. add "and is_trigger = 0"
+ * check_drivesize: Improved errors for drive size failures (#276)
+
+2016-04-05 Michael Medin
+ * Fixed vagrant builds
+ * Changed so volume name errors ends up as volume names instead of in the log #230
+ * Improved #275 so next settings system is tried if the first one failes
+ * Fixed settings key issue
+ * Fixed various build issues
+ * Fixed #272 floating point performance data
+ * Fixed get_filter_syntax change for CheckUnixSystem module
+  Fixed bizarre gnu c++ issue with major() expanding to gnu_dev_major
+
+2016-03-30 Michael Medin
+ ! 0.5.0 RC1
+ * Updated docs
+
+2016-03-30 Michael Medin
+ * Fixed compatibility issue when using both MaxWarn and MinWarn
+ * Fixed #132 round issue with performance data and %
+ * Fixed #140 check_ping syntax string
+ * Fixed #210 added total=all to have total object match all items regardless of if they match the filter or not.
+ * Fixed #130 missing perf data on check_service (intentionally no perf for "all services" as that is a long list)
+ * Fixed #268 ignore-unreadable and filter generating error
+
+2016-03-29 Michael Medin
+ * Fixed #274 Added has_run to check_taskshed
+ * Changed so "post filters" will set warn/crit list
+ * Fixed #272 Added float support to check_pdh
+ * Improved float handling in filters (i.e. 0.1 will become float, 1.0 = 1 will be casted to float)
+ * Fixed compiler warnings
+ * updated docs
+
+2016-03-20 Michael Medin
+ * Added new command check_nscp_version to CheckNSCP module Fixed #217
+ * Added ignore-unreadable which was apparently removed at some point, new behavior as it uses the drive flags to determine status
+ * Changed so default check only checks mounted drives
+ * Possible fix for #265 Added drive flags to filter and distinguish between drive characteristics
+   New flags for filters and syntax are: hotplug, removable, readable, writable and erasable
+ * Improved filter documentation
+
+2016-03-16 Michael Medin
+ * Updated docs
+ * Improved error handling in filter framework
+ * Fixed invalid module description
+ * Improved connection errors when socket has been closed on remote side #255
+ * Fixed sample timeout script (check_60s.bat)
+ * Fixed #231 added filter on folder and file:
+   check_files path=c:/source/py "filter=type = 'file'" show-all "detail-syntax=%(path)/%(file): %(type)"
+
+2016-03-12 Michael Medin
+ * Fix for #215 added new option to check_tasksched to force using the old api
+   check_tasksched force-old
+ * #215 Improved error reporting in check_taskshed
+ * #215 Fixed COM errors when com error is not set (so real error is returned not (error not set)
+
+2016-03-12 Michael Medin
+ * Added new command check_and_forward to forward check results as passive data
+   check_and_forward command=check_cpu target=NSCA
+ * Added support for %count% in legacy checkEventLog
+ * Improved errors in check_eventlog
+ * Fixed indexes expansion for check_pdh
+ * Breaking change: Eventlog rendering failures are now returned as messages instead of nsclient++ log messages
+ * Fixed missing error for check_always_ok when command failed
+ * Fixed #261 Invalid return from check_nrpe
+ * Update README.md
+ * Fixed realtime log file using wrong data
+ * Removed tools from non w32 builds (as the only tool is the crash uploader which is windows only)
+ * Removed breakpad for non windows builds (as it currently only works on windows)
+ * Added support for check_drivesize exclude=c and exclude=d: to make backwards compatiblity better
+
+2016-03-09 Michael Medin
+ * Improved logging on network metrics (Possibly fixed 260 )
+ * Fixed error reporting encoding
+
+2016-03-07 Michael Medin
+ * Fixed some error message localization issues
+ * #258 Fixed issue with check_nrpe and ssl=false option
+ * Fixed #259 parsing extra space on command line
+ * Fixed some issues with the postbuild python script
+
+2016-03-03 Michael Medin
+ * First draft of check_network (not yet finished)
+ * #204 Fixed message rendering for eventlog messages
+ * Stopped fetching network metrics if fetching them failes on Older windows like 2003 where it is not available
+ * improved error handling for wmi queries
+
+2016-02-27 Michael Medin
+ * #204 Added support for modern API to real time eventlogs
+ * Improved error log in real time threads
+ * #204 Fixed int to string conversion filter issue
+ * Added to_string methd for realtime data (to make errors better)
+
+2016-02-09 Michael Medin
+ * Added network metrics
+ * #229 Improved error handling for service errors
+ * #238 Added killer so processes are killed when NSClient++ exits
+ * Added the collectd client
+ * Fixed sample python script
+
+2015-12-09 Michael Medin
+ * Fixed #223 broken %ARGS% with the $ARGS$ fix
+ * Implemented #150 use_certificate_chain_file
+ * Added support for both g and G in size filters
+ * Added support for parsing floating point numbers in size units (i.e. "warn=free > 2.5G")
+ * Added so github upload is retried
+ * Fixed check_nrpe name in installer
+ * Fixed missing redist DLLs in zip file
+ * Added XP targeting to fetch deps builds
+
+2015-12-06 Michael Medin
+ * updated docs
+ * Fixed 220: WebPage not loading in IE
+
+2015-12-05 Michael Medin
+ * Fixed #221 typo in error message (pdh)
+ * Added documentation about filter expressions (#212)
+ * updated docs (added info about settings)
+ * Added appdata path keyword
+ * Added -noprofile to powershell script wrapper (#207)
+ * #207 Added support for %ARGS% as well as $ARGS$
+ * Added support for nrpe_query
+
+2015-11-29 Michael Medin
+ ! Release 0.5.0.17
+ * Improved eventlog error messages #177
+ * Fixed #209 Added CheckNet to installer
+ * Improved console interface for log messages
+ * Change the default eventlog command to set warnings for warning in eventlog and crit for errors (instead of using count)
+ * Added task, keywords GUID support for eventlog filters
+ Fixed #181 (use the task filter)
+ * Improved eventlog cli to support listing tasks and keywords
+ * Improved the low level eventlog API
+ * Fixed logging encoding on console
+ * Added support for setting default perf config
+
+2015-11-25 Michael Medin
+ * Fixed #199 yet memory leak this time in check_eventlog
+
+2015-11-22 Michael Medin
+ * bumed protobuf lib
+ * Fixed some jessie build issues (mainly boost 1.0.55 issues) as well as compiler warning essentially fixing #208
+ * Fixed #117 invalid perf syntax when specifying none
+ * Fixed some potential check_nt issues
+ * Fixed #202 check_nt not working in 0.5.x
+ * Fixed drive letters with single character
+ * Fixed #157 CDROM included in check_nt DISKUSAGE
+
+2015-11-20 Michael Medin
+ ! Release 0.5.0.16
+ * Fixed #185 extract_perf should now work as expected
+ * Fixed #154 Added escape-html flag to all check commands and escape html option to all real time filters.
+ * Added support for -a to check_nrpe command (Fixed #158 )
+ * Fixed issue when parsing commandline with first otion as short
+ * Fixed #201 negative perf data in checks
+ * Renamed status to task_status as it clashes with regular status (Fixed #170)
+ * Fixed issue with atomic functions missing in older boost
+ * Added unit test for scheduled tasks
+ * Added __file__ in python script
+ * Fixed so uninstalled is called for unit tests
+ * Fixed #207 Return error when powershell script not found
+ * Fixed #206 Added support for checking multiple times with check_pdh and rrd buffers
+ * Fixed a build with older versions of boost issue.
+ * Fixed #198 CheckLogFIle not working if files does not exist on startup
+
+2015-11-19 Michael Medin
+ * Added metrics submission and fetching to python scripts
+ * Added ability to run visual processes in the UI session.
+   Two new keywords: display controls if the process is showed and session controls which process the session is run in.
+ * Added support for classifying service and filtering services based on classification
+
+2015-11-18 Michael Medin
+ * Added test client command metrics to display all metrics
+ * Fixed option bug in WEBServer command line
+ * Fixed metrics in WebUI
+ * Added metrics to internal scheduler
+ * Fixed missing result in some command line execs
+ * Fixed services showing twice in service list
+ * Added showing location using nscp settings --show
+ * Fixed pressing ctrl+c on command line
+
+2015-11-16 Michael Medin
+ * Fixed (back) formatting in graphite
+ * Fixed broken metrics ui
+ * Fixed default values in graphite
+ * Fixed reload of counters
+ * Fixed collection strategy value in web ui
+ * Fixed default syntax for eventlog as well as a possible API issue?
+ * Added support for space and strings in column split/line split
+ * Fixed CheckLogFIle realtime
+ * Fixed so clients cant override with no target
+ * Added post option to only post process build on cli
+ * Fixed support for old pelican
+ * added --port to nscp nrpe install
+ * Fixed regression issue in new harmonized scheduler
+ * Fixed segv in CLI builder
+
+2015-11-15 Michael Medin
+ * Fixed check_nrpe in installer
+ * Moved overiden key to the end in the installer
+ * harmonized schedulers
+ * Updated some installer files (web/docs)
+ * Added ugly but working filter list for metrics
+ * Fixed caching setting random keys in webui
+ * Added restart to nscp service
+ * Fixed sample python script cli
+ * Fixed exec alias in python script cli
+ * Fixed graphite paths for metrics
+ * Added total to check_process
+
+2015-11-14 Michael Medin
+ * Added build commandline options
+ * Added build command option to build script (to skip configure)
+ * Fixed issue with missing command help being target all modules
+ * Fixed issue with default not beeing set as template
+ * Fixed issue with python scripts and script arguments
+ * Fixed some socket bugs in web ui
+ * Added filtering to query and module
+ * Added templates to PythonScript
+ * Fixed metrics (with new py)
+ * Fixed issue where default was not marked as template
+ * Tried to improve error handling for ajax requests
+ * Fixed logout/login issue in webui
+ * Fixed disk graphs in WebUI
+ * Added thread count to scheduler metrics
+ * Added template for schedules
+ * Fixed some PDH issues and improved error reporting
+ * Fixed missing default section in settings
+
+2015-11-13 Michael Medin
+ * Fixed some issues in setting dialog
+ * Added feedback to loading modules as well as proper save
+ * WebUI added help to settings dialog (about tabs)
+ * WEBUI: Changed to save menu is always shown and added auto save support
+ * Added metrics support to clients and added metrics sending to graphite client
+
+2015-11-12 Michael Medin
+ ! Release 0.5.0.9
+ * Merge branch 'master' of https://github.com/mickem/nscp
+ * bumped versions
+ * Merge branch 'master' of https://github.com/mickem/nscp
+ * bumped versions
+ * bumped version
+ * Fixed old boost compatibility in scheduler
+ * Added metrics to scheduler
+ * Fixed metrics fgetcher so multiple metrics bundles are in the same payload
+ * Improved error hadnling for channel failures
+ * Added noop as channel target to discard message
+ * Fixed memory and resource leaks #199
+
+2015-11-10 Michael Medin
+ * Fixed check_uptime parsing dates wrong
+ * removed reading one line schedules
+ * (re)added CONF_SET installer key
+ * Added error when there is no data to send in graphite sender
+ * Added (optional) sending status to graphite
+ * Fixed sending graphite data so it works :)
+ * Added flag to disable sending perf data to graphite
+ * Fixed missing return data in check_uptime
+ * Fixed issue with reading invalid config values
+ * Fixed inheritance and path issue with settings objects
+ * Fixed so source host names is set in NSCA and Graphite client
+ * Fixed potential issue with time expressions which are empty
+ * removed debug log about hung processes
+
+2015-11-08 Michael Medin
+ ! Release 0.5.0.6
+ * FIxed #176 (updated docs with str() instead of s())
+ * Added test case for upper/lowercase commands and alias
+ * Fixed #196 alias not working in 0.5.0
+ * Fixed #196 missing version
+ * Fixed #196 uppercase aliases not working
+
+2015-11-02 Michael Medin
+ * Set missing conf_can_change property
+ * removed unused property
+ * Moved feature selection to apply logic
+ * Fixed include issue for non op5 install
+ * swapped versions
+ * Added CA for managing MONITORING_TOOL to allow setting all properties from command line using a MONITORING_TOOL=op5 options
+
+2015-10-27 Michael Medin
+ * Added support for setting arbitrary keys on command line
+ * Fixed password command line for the web client (i.e. nscp web password)
+ * Fixed command lines for password in WEB UI
+ * Service wont restart if it is not started when crashed (ie. running in test mode for instance)
+ * Fixed locale setting (and error logging for service related errors)
+ * Started to cleanuup "return codes" in the API which has been all over the place before. This will most likely fix all NSCA/Scheduler issues
+ * Removed encrypt from the API has it has not been implemented for some time
+ * Fixed issues and problems with unit tests
+
+2015-10-25 Michael Medin
+ * Added exec from clients (i.e. web and test):
+   Usage: exec any help
+        exec mymodule mycommand
+ * Fixed python to string (will log better when it cant convert to string)
+ * Fixed so python script will unregister its commands on reload
+ * Added support for unregistring commands
+ * Fixed erratic segv in clients when socket is closed twice
+ * Started to implement trace logging
+ * Added target_mode flag to exec to diverge between targeted commands and generic ones.
+ * Tweked some build issues
+
+2015-10-19 Ola Sandström
+ * updated comments [in op5 config]
+
+... Need to add in all missing commits here...
+
+
+2015-05-02 Michael Medin
+ * Updated some libs to work on centos 6.x
+
+2015-04-29 Michael Medin
+ * Improved handling around connection failures
+ * #142 Improved security when external scripts fails
+   command lines which may contain password are no longer returned
+
+2015-04-27 Michael Medin
+ * Improved the logging around connection failures
+ * Improved the reporter syntax:
+   reporter.exe send b1438ab2-20a3-4b2d-bc30-7c3033c084e1.dmp
+
+2015-04-08 Michael Medin
+ * #139 Added support for showing file dates in local time (not just UTC)
+ * Added check_ping command and CheckNet module
+ * Fixed a few potential crashes with check_nt
+
+2015-03-24 Michael Medin
+ * #123 fixed CheckAllOthers
+ * #124 Fixed problem count variable
+ * #131 Added support for service=<service description> to check_service
+ * A lot of infrastructure changes and build fixes
+
+2015-02-23 Michael Medin
+ * Fixed check_files empty  message to say files not drives.
+ * #114 Fixed issue with empty-state which was ignored
+ * A lot of infrastructure changes and build fixes
+
+2015-02-14 Michael Medin
+ * Fix incorrect variable in check_page_filter()
+ * Add pct to check_pagefile
+   This is basically a clone of f90ab0bf which added pct to check_memory.
+
 2015-02-14 Michael Medin
  * #110 Added support for using units in check_cpu
  * added error handling for invalid states on checkservice
@@ -33,27 +855,27 @@
  * #81 Fixed so check_wmi will work without warn/crit and changed so default formatting displayes all rows
  * #98 Fixed so ok syntax is not used if you have customized the regular output to contain all data
 
-2015-02-30 Michael Medin
+2015-01-30 Michael Medin
  * tried to fix floating point plattforma independent issues a but ugly...
  * Fixed some inconsistencies with the installer NRPE configurator
  * Fixed some issues with nrpe installer and ssl options
 
-2015-02-29 Michael Medin
+2015-01-29 Michael Medin
  * #91 Added new command xform_perf which can transform performance data (currently only supports extracting maximum/minimum from int/float values)
  * #96 Fixed pagefile size block conversion using the actual architecture value
 
-2015-02-28 Michael Medin
+2015-01-28 Michael Medin
  * #49 Fixed issue with rounding performance data (take 2)
  * #94 Fixed so log file is reverted to real default is the wrong one is used.
 
-2015-02-27 Michael Medin
+2015-01-27 Michael Medin
  * #94 Fixed default log file location
  * #49 Fixed issue with rounding performance data
  * Added test cases for rounding performance data
  * #83 Fixed issue with invalid packet type (the default for extended response is now disabled in "insecure mode")
  * Improved error message for ssl errors (which are now likely due to the insecure option)
 
-2015-02-27 Michael Medin
+2015-01-27 Michael Medin
  * #91 Added documentation about perf-config (Updated docs)
  * Fixed selector filtering so all names are trimmed for spaces.
  * Changed so perf config selectors use dot notation instead of no notation.
@@ -61,33 +883,33 @@
  * Added new utility function render_perf to render performance data in the message.
  * Added new option to all commands show-default to show the default command line used when a command is invoked.
 
-2015-02-26 Michael Medin
- * Perfdata units (and others) are no longer case sensitive
+2015-01-26 Michael Medin
+ * Perfdata units (and others) are no longer case-sensitive
  * #92 Fixed so triggered services are ignored.
  * refactored fetch delayed into a function
  * Added trigger start support (for real this time, honest... i promise!!!)
  * Fixed missing return statement
  * Fixed compiler warning about unused variable
 
-2015-02-23 Michael Medin
+2015-01-23 Michael Medin
  * Fixed unix checks to work with new arguments
 
-2015-02-22 Michael Medin
+2015-01-22 Michael Medin
  * Implemented empty syntax as a proper syntax string (i.e replacement variables)
  * Added support for empty-state (should work now)
  * Implemented ok-syntax in most checks to make the ok message a bit nicer...
  * #78 removed the delayed() from ok message
 
-2015-02-20 - MilanDadok
+2015-01-20 - MilanDadok
  * 0.4.3.88 flags property of PDH counter can be specified as check_pdh argumnet, but not in INI
  * 0.4.3.88 PDH counter with rrd buffer will return oldest value from buffer as current/actual value
  * 0.4.3.88 Cannot add second PDH counter to INI
 
-2015-02-20 - brunoqc
+2015-01-20 - brunoqc
  * Fix typo in create_plugin_module.py
  * Return result from check_nrpe
 
-2015-02-20 Michael Medin
+2015-01-20 Michael Medin
  * removed --format from docs.py since there is only one format
 
 2015-01-11 Michael Medin
@@ -107,7 +929,7 @@
    check_pdh ... perf-config=*(suffix:none)
  * Fixed missing sample from documentation
  * Use the same name/desc for password (common key)
- 
+
 2015-01-05 Michael Medin
  * #71 service name is now nsclient on both redhat/centos el6 and el7
  * #70 config file no longer replaced when upgrading on linux
@@ -132,7 +954,7 @@
  * disable teston older boost versions
  * Fixed redhat vagrant build issue (puppet dependency)
  * Added Centos 6.5 vagrant
- 
+
 2014-12-13 Michael Medin
  * #63 Fixed missing space in syntax
  * Fixed compatibility with older version of boost
@@ -156,7 +978,7 @@
  * Added detail_list which shows a list with statuses to all filters
  * Changed so show-all use the new detail_list instead of list.
  * #50 Added option to seed extra perf data keys using perf-config:
- 
+
 2014-12-08 Michael Medin
  * #38 Attempt to fix non upgradable installer
  * Changed vagrant build script to copy packages out of VM
@@ -240,7 +1062,7 @@
  * Refactored so all paths and such are defines (and not hard coded strings)
  * Started to move things to sensible places on linux
  * Fixed web server install (no longer installed NRPE)
- * Loading case-insensetive modules now works on cli on linux
+ * Loading case-insensitive modules now works on cli on linux
 
 2014-09-08 MickeM
  * More build tweaks (does it ever end?)
@@ -335,7 +1157,7 @@
  * Added command line interface to setup NRPE server
   nscp nrpe -- install --help
   nscp nrpe -- install --port 1234 --allowed-host foo.com --insecure
-  ... 
+  ...
  * Fixed some test failing and spli NSCA test into multiple ones
  * Meged in some changes from 0.4.2
  * Added support for generating certificates
@@ -344,7 +1166,7 @@
  * Much improved HTTP settings
  * HTTP Settings will now refresh/reload whenever the remote file is changed (will poll every x minutes)
  * HTTP Settings can now download attached files (scripts etc.)
- 
+
 2014-04-23 MickeM
  * Added initial WebServer module
  * Fixed issue with check_nt INSTANCES
@@ -378,7 +1200,7 @@
 2014-03-05 MickeM
  * Fixed crash dump issue
  * Fixed memory leak in NSCA
-  
+
 2014-03-04 MickeM
  * Fixed issue with CheckTaskSched and status #702
  * Improved rendering of status #702
@@ -394,7 +1216,7 @@
  * Removed erronouse logging when shutting down sockets
  * Tweaked console output a bit
  * Fixed check_uptime overflow issue
- 
+
 2014-01-25 MickeM
  * Fixed FILEAGE check_nt command #480, #636, #642, #39 (and others)
  * Fixed delayed start issue in check_service #681
@@ -429,7 +1251,7 @@
 2013-12-10 MickeM
  * renamed "full config" sample to reduce confusion.
  * Fixed numerous issues with check_files and CheckFiles (now all CheckFiles unit test work as expected)
- 
+
 2013-12-09 MickeM
  * Fixed a crash in handling ${status} in some filters.
  * Added check_nrpe to the installer
@@ -438,7 +1260,7 @@
 2013-12-05 MickeM - RC3
  * Added suport for instances (new keyword instances) to check_pdh
  * Fixed more compatiblity issues
- 
+
 2013-12-04 MickeM
  * Added check_cpu_ex.lua script to return top consumers for check_cpu command.
  * Harmonized the compatiblity layer so all commands "work the same"
@@ -457,10 +1279,10 @@
  * Fixed some regression issues for check_nt (disk, memory uptime, services)
  * Added $ARGS$ to CheckExternalScript to add scripts with variable argument lists
  * Added $ARGS"$ to CheckExternalScript to add scripts with qouted variable argument lists
- 
+
 2013-11-27 MickeM
  * Fixed _user arguments for check:drivesize (which can be used for drives with qouta)
- 
+
 
 2013-11-26 MickeM
  * Improved compatiblity for CheckDriveSize
@@ -510,7 +1332,7 @@
  * Fixed issue with NSCA hostname (NSCAClient load).
  * Fixed check_nt commands
  * Added vagrant files to load-up machines and build NSClient++ (ubuntu)
- 
+
 2013-11-03 MickeM
  * Fixed so lua script are now loaded with a missing .lua extension
  * Fixed Lua some remaining invalid lua functio issues.
@@ -537,7 +1359,7 @@
  * A lot of Linux fixes
  * Refactored real-time stuff to make it easier to add in new places
  * NSCA/NRPE fixes
- 
+
 2013-10-10 MickeM
  * Added back CheckWMI based on new filters.
  * Fixed issues with building on Linux
@@ -556,7 +1378,7 @@
 2013-09-19 MickeM
  * Fixed issue with skipping registry
  * Added page (commited - physical) memory metric
- 
+
 2013-09-17 MickeM
  * Added support for new eventlog API.
    This means NSClient++ can FINALLY! check all eventlogs on windows 2008 and windows 2012!
@@ -568,7 +1390,7 @@
  * Fixed check_multi
  * added new options to check_multi (suffic, prefix and separator) to better control the output
  * starting services (auto-start) is now a warning state.
- 
+
 2013-09-08 MickeM
  * Brand new filters
  * Modernised check_cpu
@@ -582,7 +1404,7 @@
 2013-05-05 MickeM
  * Fixed a bug in the check_logfile which made filtering bail-out after the first hit.
  * Added default column-split as \t
- 
+
 2013-04-30 MickeM
  * Fixed issue with negative performance data
  * Added unit test for arguments and external script
@@ -614,7 +1436,7 @@
  * Added debug message warning about having $ARG??$ in external scripts wehn allowe arguments is false.
  * Removed need to escape and qoute commands for external scripts (command line will now be used as-is)
  * Fixed qouting issues with external scripts
- 
+
 2013-01-21 MickeM
  * Fixed two include files issues
 
@@ -704,7 +1526,7 @@
  * CheckEventLog: Added debug message lisgin all loaded filters to make it simpler to detect missing once
  * SimpleCache: Added keywords not-found-msg and not-found-code option to configure the outcome of "item not found".
     check_cache index=foobar "not-found-code=Doch! item was not found" not-found-code=critical
- * CheckProcess is no longer case sensetive
+ * CheckProcess is no longer case-sensitive
  * CheckServiceState: added support for pending states
 
 2012-11-16 MickeM
@@ -724,7 +1546,7 @@
     checkmem type=paged MaxWarn=80% perf-unit=B
      => 'paged bytes %'=34%;80;0 'paged bytes'=8872108032B;20583386316;0;0;25729232896
     checkmem type=paged MaxWarn=80%
-     => 'paged bytes %'=34%;80;0 'paged bytes'=8.25G;19.1;0;0;23.96 
+     => 'paged bytes %'=34%;80;0 'paged bytes'=8.25G;19.1;0;0;23.96
  * Fixed threadding issue related to servers (ie. check_nt causing a crash)
     Dont know what I was thinking when I designed that, pretty stupid bug :(
 
@@ -783,7 +1605,7 @@
 2012-09-08 MickeM
  * Improved command line help texts and added global --version option.
    Running nscp without options now lists all context and their use.
- * settings: bool options are now case insensetive so TrUe will now evaluate to true...
+ * settings: bool options are now case-insensitive so TrUe will now evaluate to true...
  * Improved clients command line interface adding support for default command
  * Improved command line syntax removing som extra printouts
  * Added support for lists (int and string) to wmi checks and commands.
@@ -815,8 +1637,8 @@
  * Removed caching from CheckEventLog (use SimpleCache instead)
 
  2012-08-26 MickeM
- * REMOVED global maximum age from real-time eventlog 
- * Added per-filter maximum age option to real-time eventlog 
+ * REMOVED global maximum age from real-time eventlog
+ * Added per-filter maximum age option to real-time eventlog
  * Added per-filter log option to real-time eventlog (this can be set to "any" to make this match recoreds from all checked logs)
  * Improved fetchdeps script which now takes an option (--msver) to set target visual studio version (currently 2005 and 2008)
  * Added initial support for real certificates
@@ -846,7 +1668,7 @@
 2012-08-07 MickeM
  * Fixed issue with perfoamnce data overflowing 32-bit integers (#550)
  * Fixed issue with CheckUptime and time rendering beein wrong (#549)
- 
+
 2012-08-04 MickeM
  * Re implemented INSTANCES command via the new pdh exec subsystem.
 
@@ -943,7 +1765,7 @@
 2012-06-16 MickeM
  * Merged in master branch
  * Fixed almost all -Wall warnings (the rest are probably not getting fixed in the near future due to their nature)
- 
+
 2012-06-12 MickeM
  * Improved error handling in performance counters #436
  * Improved parsing of "legacy command lines"
@@ -994,7 +1816,7 @@
 
 2012-05-06 MickeM
  * Refactored server internals to be more uniform (This is the first step to adding more protocols like NRDP and unittests for check_nt)
- 
+
 2012-05-03 MickeM
  * Fixed issue with parsing size-type (usch as MinCritFree=10G)
 
@@ -1020,7 +1842,7 @@
  * Fixed a few command line parsing issues (most notably test and --log-to-file)
  * Changed default location for process dumps to be a non-elevated location (under common-appdata).
  * Fixed (ish) check_nt issue (check_nt really really is broken... this will probably cause problems with people sending large payloads though)
- 
+
 2012-04-06 MickeM
  * Easter break!
 
@@ -1045,7 +1867,7 @@
  * Tweaked FileLogger a bit to be more "modern"
  * Changed so file-name expansion is more efficient
  * Changed so modules are defaulted to 0 in config.
- * Log levels are case sensitive
+ * Log levels are case-sensitive
  * Fixed so log level is not read from ini file
  * improved plugin processing from ini files
 
@@ -1069,7 +1891,7 @@
 2012-03-19 MickeM
  * Fixed issue in installer and "Make file writable" by everyone now uses Users SID.
  * Fixed issue in installer and "Default plugins" now correctly sets them to 1.
- 
+
 2012-03-18 MickeM
  * Removed dependency on tcpip from the service and the installer
  * Added new command to EventLog CheckEventlogCached which checks result caught by the real-time process.
@@ -1126,11 +1948,11 @@
 
 2012-02-20 MickeM
  * Fixed NRPE buffer issue
- * Added test case for 65K NRPE buffer length as well as 1Mb 
+ * Added test case for 65K NRPE buffer length as well as 1Mb
  * Added support for not regexp as operator to filters (Eventlog) (#463)
  * Added support for computer as filter keyword and format keyword in EventLog (#442)
    "filter=computer = 'foo'" syntax=%computer%
- * Improved messages rendering of eventlog messages a bit 
+ * Improved messages rendering of eventlog messages a bit
 
 2012-02-19 MickeM
  * Added new unit context on command line for running simple unit test cases:
@@ -1207,7 +2029,7 @@
    The new API is very similar to Python
    Concepts are working but not all commands have beenh implementes (and no testcases either)
    The old API will still work
- * Fixed issue with 
+ * Fixed issue with
 
 2012-01-27 MickeM
  * Changed CheckCounter format option to take a coma separated list of keyword from the below list:
@@ -1247,7 +2069,7 @@
  * Refactored unit tests to be slightly nicer
  * Fixed error state propagation
  * Added unit tests to cmake (ie make test will now run unit tests)
-  
+
 2012-01-16 MickeM
  * Added option to both execute and query item (with a reload in the middle for installing/running unittests)
  * Fixed issue in python unittest framework to handle "unload" (ie. reload)
@@ -1286,7 +2108,7 @@
  * Added embryo for Graphite plugin (https://launchpad.net/graphite)
  * Added WarnHungCount/CritHungCount exact bounds to CheckProcState so:
    CheckProcState CritHungCount=gt:50 WarnHungCount=ne:45 svchost.exe
- * Changed so Count takes presedence meaning if you specify: CheckProcState CritCount=gt:50 svchost.exe=stopped it will be treated 
+ * Changed so Count takes presedence meaning if you specify: CheckProcState CritCount=gt:50 svchost.exe=stopped it will be treated
    as (CheckProcState CritCount=gt:50 svchost.exe) hence the stopped/started is meaningless if you specify a count.
  * Fixed so perfoamnce data parsin handled non escaped \:es (ie. using stupiud parsing)
  * Added a lot of unittests to CheckProcState to verify that many features work properly.
@@ -1299,7 +2121,7 @@
  * Fixed so command line client wont try to run commands in modules which does not support it.
  * Changed to when no settings is found a default one is created
  * Removed old "location" key from switch context and changed so it use the new number scheme
- 
+
 2011-12-06 MickeM
  * Added python unittests to make sure threading is working properly
  * Simpliefied and cleaned up the command line syntax a bit
@@ -1350,7 +2172,7 @@
  * Improved threading a bit
  * Fixed CheckSystem (service check)
  * Fixed duplicate keys (when replacing) in old settings client
- 
+
 2011-10-21 MickeM
  * Some more threading issues in Python (works perfectly(?) now)
  * Refactored the tests a bit making test suites runable from a central hub
@@ -1383,10 +2205,10 @@
  * Initial command for createing eventlog records
  * Initial real-time eventlog checker
  * Fixed obscure c-tor issue with filters
- 
+
 2011-09-27 MickeM
  * Fixed many many issues all over the place as I tried to make things working for my pressention at nwc.
- 
+
 2011-09-24 MickeM
  * Started on NSCA unit-tests in python
  * Refactored channel API a bit to better suite NSCA (and how it actually works)
@@ -1410,7 +2232,7 @@
  * Extracted command processor to a common class to make all clients work the same
  * Added initial zeromq stuff (nothing usable)
  * Added an implementation layer for NSCP protocol parsing (so zeromq stuff can reuse it)
- 
+
 2011-09-05 MickeM
  * Cleaned up some dependencies (on config.h)
  * Fixed invalid data in config.h.in
@@ -1508,14 +2330,14 @@
  * Added support for command line execution to PythonScript module
  * Readded support for specifying module on command line with --client mode
  * Fixed some issues with the NRPEClient module
- 
+
 2011-08-12 MickeM
   * Finnished (rough) adding back command line exec (with modern API)
   * Fixed so installer uses correct name for dll:s (now Server not Listsener)
-  
+
 2011-08-11 MickeM
   * Started to add back command line exec (with modern API)
-  
+
 2011-08-10 MickeM
  * Fixed linus issues and defect
  * Fixed some issues in the test python script regarding how prefix is handled
@@ -1523,11 +2345,11 @@
  * Fixed so it builds and runs on linux (but parser had issues so disabled som grammar rules whichneeds to be enabled again)
  * Added a lot of freatures and cleand up the PythonScript module
  * Started to merge som features from PythonScript back to Lua script
- 
+
 2011-08-07 MickeM
  * Fixed a lot of issues with PythonScript module adding suport for alias and "raw command processing"
  * Fixed issue with loading plugins and aliases as well as duplicate plugin detection
- 
+
 2011-08-01 MickeM
  * Added new module: PythonScript
 
@@ -1540,7 +2362,7 @@
  * Multiple fixes all over the place
  * Availible modules: CheckExternalScripts, CheckHelpers, FileLogger, NRPEClient, NRPEServer, Scheduler
  ! Performance data is still missing (will be for a while yet)
- 
+
 2010-01-31 MickeM
  + Added google protocol buffers
  ! Changed internal handle command logic (now uses protocol buffers)
@@ -1552,7 +2374,7 @@
 
 2010-01-xx MickeM
  + Added Scheduling module
- 
+
 2009-10-11 MickeM
  + Added argument support to NRPE Client
    This is temporarily enabled by the same options under the NRPE section. BUT this will change int he future so be ware when using them.
@@ -1597,49 +2419,49 @@
 2009-06-10 MickeM - 0.3.6
  ! Release the new version
 
-2009-06-10 MickeM 
+2009-06-10 MickeM
  * Fixed so CheckEventLog only reports invalid buffersizes once
 
-2009-06-07 MickeM 
+2009-06-07 MickeM
  * Fixed issue with CheckFileAge incorrectly working in recursive mode.
  * Finalized the installer
 
-2009-05-22 MickeM 
+2009-05-22 MickeM
  * Fixed time_delay option in NSCA config (now uses the correct base was 1000 times to large before)
 
-2009-05-21 MickeM 
+2009-05-21 MickeM
  * Fixed issue with eventlog parsing and 64 bit machines (descriptions option)
  * Fixed issue with "modern windows" and installing the service (should not have the correct privlaiges)
 
-2009-05-17 MickeM 
+2009-05-17 MickeM
  * Changed default buffer size for process enumeration (64K now instead of 1K should I hope work better on 64bit OS:es)
 
-2009-05-10 MickeM 
+2009-05-10 MickeM
  + Added write support for modules to installer
 
-2009-05-03 MickeM 
+2009-05-03 MickeM
  * Fixed another quite serious memory leak!
    And this was a hard one, took me hours and hours and hours (read weeks) to track down, but here we are!
  * A lot of other fixes as I have been through much of the code looking for the memmory leak above.
 
-2009-03-30 MickeM 
+2009-03-30 MickeM
  + Added new option to NSCA module for specifying report options.
 	report=all (report=warning,critical) etc etc to specify which kind of return datat to get default value is all.
  + Added so password and host ate stored in the installer (if changed)
 
-2009-03-29 MickeM 
+2009-03-29 MickeM
  * Fixed a lot of issues with the installer and added a start on exit (and donate) on the finnish dialog.
 
-2009-03-15 MickeM 
+2009-03-15 MickeM
  * New service name (displayname)
  * New service description
 
-2009-03-14 MickeM 
+2009-03-14 MickeM
  * Rebuilt installer UI (still missing write config function)
  * Added debug entry to log filename used by debug log metrics.
  * Fixed so alias will not require the allow_nasty_metachars option set under external sripts module.
 
-2009-03-02 MickeM 
+2009-03-02 MickeM
  * Added catch handlers and error logging to NSCA Thread
  * Fixed issue with CheckProcState and administrator login!
  + Added debug module to installer
@@ -1648,39 +2470,39 @@
    Will only find files on the "first level" where as max-dir-depth=1 would find all parents and children etc. (-1 is the default and means find all)
  * Fixed issue with finding sub-folders and *.txt now it will always look for subfolders if they are present
 
-2009-02-26 MickeM 
+2009-02-26 MickeM
  * Fixed issue with debug logging (not it can be disabled again)
 
-2009-02-23 MickeM 
+2009-02-23 MickeM
  * Fixed build issues so NSCA now has all cryuptos available (verify with nsclient++ /about)
 
-2009-02-11 MickeM 
+2009-02-11 MickeM
  * Fixed so that performance data is always(?) renderd regardless of if we have bounds or not.
    This was primarily to fix issues where we have might not "unexpectedly" get performance data (might still be some issues here so let me know).
 
-2009-02-06 MickeM 
+2009-02-06 MickeM
  * Fixed so that arguments ($ARG1$) are parsed properly for alias in CheckExternalScript
 
-2009-02-05 MickeM 
+2009-02-05 MickeM
  * Fixed so the error message for "to small eventlog buffer" specifies the required size.
  * Changed so that event log buffer problems are "ignored in the result" (still logged in the error log).
 
-2009-02-03 MickeM 
+2009-02-03 MickeM
  * Added support for changing the time when using NSCA with the time_delay in NSC.ini
    time_delay=+4h or time_delay=-1h etc should can now be used when system time not the same as NSCA time.
 
-2009-01-30 MickeM 
+2009-01-30 MickeM
  * Added support for changing name and description of service from the /install command line
    NSClient++ /install [gui] [start] [service name] [description]
    NSClient++ /uninstall [gui] [stop] [service name]
    NSClient++ /start [gui] [service name]
    NSClient++ /stop [gui] [service name]
 
-2009-01-28 MickeM 
+2009-01-28 MickeM
  * Slightly improved error handling around socket creation
  * Fixed some pretty minor issues with the SysTray module (uncreation as well as new boost build).
 
-2009-01-25 MickeM 
+2009-01-25 MickeM
  * Fixed issue with checkVersion (#242)
  * Fixed spelling error (#244)
  * Fixed crash in CheckFile when a file was locked in exclusive mode (#254)
@@ -1688,23 +2510,23 @@
  * Updated the config file a bit: remving "beta" from a bunch of modules no longer in beta.  (#270)
  + Added more filter operatos to all numeric filters so they accept eq:, ne:, gt:, lt: in addition to =, >, <, <>, !, !=, in: (#269)
 
-2009-01-23 MickeM 
+2009-01-23 MickeM
  + Added better support for numerical hit matching in the eventlog module. You can now use exact and detailed matching.
     You can now use the following syntax:
     CheckEventLog ... warn=ne:1 crit=eq:0 ...
     To generate a warning if the number of hits are != 1 and a critical if the number of hits are = 0.
     Other operators available are: =, >, <, <>, !, !=, eq:, ne:, gt:, lt:
 
-2009-01-23 MickeM 
+2009-01-23 MickeM
  * Cleaned up the checkProcState code and it is not a lot better.
    - Removed race conditions (crashes?) as well as improved perfoamnce and better error handling.
  + Added new option 16bit to checkProcState. When set checkProcState will enumerate all 16 bit processes found running under NTVDM.
  * Fixed NRPE version reported "incorrectly". (Version is now takedn from NSClient++)
 
-2009-01-21 MickeM 
+2009-01-21 MickeM
  + Added experimental 16 bit process support to checkProcState
 
-2009-01-20 MickeM 
+2009-01-20 MickeM
  * Fixed issue with CheckWMI when no filter was specified.
 
 2009-01-17 MickeM
@@ -1713,7 +2535,7 @@
  * Fixed so PDH Collectors use the same exception as the rest of the PDH stuff (might give better errors when PDH breaks, but I doubt it)
  * removed debug output from -noboot
  + Added new command line pdhmatch option to use pattern matching on PDH queries
-   Usage: nsclient++ -noboot CheckSystem pdhmatch \Process(*)\Antal tr�dar
+   Usage: nsclient++ -noboot CheckSystem pdhmatch \Process(*)\Antal trådar
  * Improved error reporting in the PDH subsystem.
  + Added new module A_DebugLogMetrics.dll which can be used to generate debug info.
    Enable the module and a file called process_info.csv will be created under %APP_DATA%/nsclient++/process_info.csv which contains metrics.
@@ -1741,7 +2563,7 @@
     CheckServiceState missing=stopped ShowAll
 	OK: missing: not found
  * Fixed issue with : in service name.
- + Added some "reasonable default cheks" under [External Alias] for the CheckExternalScripts.dll module. 
+ + Added some "reasonable default cheks" under [External Alias] for the CheckExternalScripts.dll module.
 
 2008-09-17 MickeM - 0.3.4 RC-6
  * Added option [EventLog] lookup_names=0 to disable the evetlog name lookup (default is on)
@@ -1774,7 +2596,7 @@
 
 2008-09-09 MickeM - 0.3.4 RC-3
  * Improved error handling for the WMI checks.
- + CheckWMI: Added support for extracting numbers from strings 
+ + CheckWMI: Added support for extracting numbers from strings
  * Fixed performance data for "large float values" to be rendered without scientific notation. (#151)
  * Fixed issue with & and some commands via check_nt.
  * Fixed a crash on exit (which I added in Rc1).
@@ -1877,7 +2699,7 @@
 2008-05-14 MickeM
  * Fixed memoryleak in the service checker.
      I am really sorry I usualy write better code then this.
- + Added some "reasonable default cheks" under [External Alias] for the CheckExternalScripts.dll module. 
+ + Added some "reasonable default cheks" under [External Alias] for the CheckExternalScripts.dll module.
 
 2008-09-17 MickeM - 0.3.4 RC-6
  * Added option [EventLog] lookup_names=0 to disable the evetlog name lookup (default is on)
@@ -1910,7 +2732,7 @@
 
 2008-09-09 MickeM - 0.3.4 RC-3
  * Improved error handling for the WMI checks.
- + CheckWMI: Added support for extracting numbers from strings 
+ + CheckWMI: Added support for extracting numbers from strings
  * Fixed performance data for "large float values" to be rendered without scientific notation. (#151)
  * Fixed issue with & and some commands via check_nt.
  * Fixed a crash on exit (which I added in Rc1).
@@ -2084,17 +2906,17 @@
  * Fixed two spelling mistakes in the SysTray module.
  * Fixed 64-bit issues with installer
  * Fixed so installer uninstalls/installs the service
- 
+
 2008-02-26 MickeM
  + Added installer
- 
+
 2008-02-22 MickeM
  * Fixed issues in the NRPE module (now returns the correct status)
- + Added a lot of "error log" for when the packet size in NRPEListener is not correct 
+ + Added a lot of "error log" for when the packet size in NRPEListener is not correct
     (might make it simpler to diagnose problems)
 
 2008-02-20 MickeM
- + Added new module NRPEClient that can act as a NRPE client, might be useful for testing things and 
+ + Added new module NRPEClient that can act as a NRPE client, might be useful for testing things and
    eventually for relaying events.
    Usage: nsclient++ -noboot NRPEClient -H 192.168.0.1 -p 5666 -c check_something -a foo bar
    This is an early concept so don't expect much...
@@ -2104,7 +2926,7 @@
 
 2008-02-19 MickeM
  + Fixed a buffer overflow in the NRPE socket handling.
- 
+
 2008-02-18 MickeM
  + Added proper output handling to process subsystem (now you can execute programs that return "much" data.
  + Added select support for SSL_write (now you can send "any amount of data" to the (SSL) socket.
@@ -2119,18 +2941,18 @@
 
 2008-02-13 MickeM
  + Added string_length to [Settings] as well (used internally) for all "injected" buffers.
- * Fixed issue with scripts result truncated after 1024 chars 
+ * Fixed issue with scripts result truncated after 1024 chars
     (now they return "all" output and thus you can use the NRPE settings I added yesterday :)
  + Added hostname setting to [NSCA] section (must have been  when I did not add it before)
  + Added to NSCA truncates output when to long.
 
 2008-02-12 MickeM
- + Added new option for the [NRPE] section string_length which is the length of the NRPE strings 
+ + Added new option for the [NRPE] section string_length which is the length of the NRPE strings
    (notice you need to recompile the check_nrpe to match this value)
  * Improved exception handling in the PDH collector (hopefully less deadlocks)
 
 2008-02-11 MickeM
- + Added encryption support for NSCA module (about half of the algorithms are available, 
+ + Added encryption support for NSCA module (about half of the algorithms are available,
      if someone wants to use one not available let me know, and I will try to add it)
 
 2008-02-09 MickeM
@@ -2278,7 +3100,7 @@
  + Started to add makefiles to build from CLI
  + Added Finnish counters (#98)
  * Fixed performance counter issue with check_nt (#99)
- 
+
 2007-10-06 MickeM
  + Added auto-upda-te of versions and dates on build to make versions better updated.
  + Fixed x64 build and cleanup a bit.
@@ -2320,7 +3142,7 @@
  * Fixed a potential crash when a malformed check-file-age command was issued.
  + Added support for more then and NSClient command
  + Added net mask support to allowed_hosts (try with 192.168.0.1/24 and such)
- 
+
 2007-02-22 MickeM
  + Added debug output to see if the socket is bound and/or has shutdown.
  * Fixed a potential bug in the thread manager.
@@ -2352,9 +3174,9 @@
  * Fixed a W2k3 "bug" (actually just an incorrect error) but the:
    "e .\PDHCollector.cpp(130) Failed to query performance counters..." is no more...
  + Added option to NRPE/NSClient section to not-cache host names (for dyndns etc.)
-   NOTICE this is "not safe" really in so far as someone might hi-jack your DNS and quickly gain 
+   NOTICE this is "not safe" really in so far as someone might hi-jack your DNS and quickly gain
    access to your nagios box (probably only a theoretical problem but hey! :)
-   NOTICE this is "slow" since all hosts in the list are "looked up" each time you get a NRPE/NSClient 
+   NOTICE this is "slow" since all hosts in the list are "looked up" each time you get a NRPE/NSClient
    request it will be "slow" but I think it is not that much of a problem really.
    NOTICE I don't have the possibility to test this so feel free to report if it works and if it doesn't.
    Set cache_allowed_hosts=0 to disable host cache
@@ -2363,15 +3185,15 @@
  * Fixed a few more bugs to the INI/REG readers
 
 2006-04-02 MickeM
- * Could all magicians stop trying to kill me? 
+ * Could all magicians stop trying to kill me?
    *Please* i don't like to die!
 
 2006-03-31 MickeM
  * Damn necromancers! stop 0wning my ass all the time!
- 
+
 2006-03-29 MickeM
  + Added API for saving/reading settings
- 
+
 2006-03-28 MickeM
  + Added REG/INI parsers
  * *NOTICE* You need to add an option (use_file=1) to your nsc.ini file or new builds wont work.
@@ -2401,16 +3223,16 @@
  - I have looked into the event log problem and dates seem to work here so if anyone still have problems (use the syntax option to debug) let me know.
  * Moved listpdh and debugpdh into the CheckSystem module
  * Removed PDH dependencies from "core exe" means you can run NSClient++ without PDH (though you cant use the CheckSystem module)
- 
+
 2006-02-2? MickeM
  + Added new Interface for Modules (NSCommandLineExec that allows modules to execute things give from command line.
    Syntax is NSClient++ <module name> <command> [arguments] and if a module doesn't support this it is simply ignored.
  + Added new install/uninstall command to SystemTray module:
-   NSClient++.exe SystemTray install 
-   NSClient++.exe SystemTray uninstall 
+   NSClient++.exe SystemTray install
+   NSClient++.exe SystemTray uninstall
    That will install/uninstall the system tray module this sets the "Allow Service to Interact with Desktop" flag for the service.
  * Removed the "Allow Service to Interact with Desktop" flag from the /install option so that it no longer defaults to on (see commands to set this above).
- * Fixed so checkProcess isn't case sensitive.
+ * Fixed so checkProcess isn't case-sensitive.
  * Added (not finished) syntax option to event log checker to format the outputted data
 
 2006-02-12 MickeM
@@ -2429,15 +3251,15 @@
    This new command (in development) will allow various file checks such as age, size, date, etc on single or multiple files.
  + Added FILEAGE support to NSClient
  + Started to convert the web page to WIKI
- 
+
 2006-01-21 MickeM
  + Added WMI Check module (early alpha)
    This is an extremely early alpha more to see if there is an interest and how to progress with it.
    To use the WMI module enable the WMICheck.dll (nsc.ini) and then run the following check:
    CheckWMI MaxWarn=10 MaxCrit=15 "Query:load=Select LoadPercentage from win32_Processor"
-   The Max* are as every other check and sets limits. 
+   The Max* are as every other check and sets limits.
    The Query works similarly to other check commands i.e.. Query:<name>=<WMI query>
-   So any other WMI query should work (notice this is experimental and not stable and has virtually 
+   So any other WMI query should work (notice this is experimental and not stable and has virtually
    no error handling so it is likely to crash nsclient if you ask anything "non working".)
    I would *really* *really* like to get feedback on how to expand this concept to work better so feel free to come with feedback.
   * Fixed NT4 /install (should work now!)
@@ -2481,7 +3303,7 @@
  * Fixed drive checks from NSClient
 
 2005-07-11 MickeM
- * *ALOT* of bug fixes and enhancements all checking code has been centralized and rewritten also my internal check scripts 
+ * *ALOT* of bug fixes and enhancements all checking code has been centralized and rewritten also my internal check scripts
    have been extended to check a lot more things.
    *NOTICE* that EventLog has not been upgraded yet neither has the documentation.
  + Added MaxWarnCount / MinWarnCount to checkProcState to check number of processes running
@@ -2533,7 +3355,7 @@
  + Added NRPE support for checkCounter
  + Updated documentation
  * Make check commands ignore case
- + Added CheckHelpers module to alter the result of various check and similar things 
+ + Added CheckHelpers module to alter the result of various check and similar things
 
 2005-05-14 MickeM
  + Added support for Volumes (CheckDisk)
@@ -2554,7 +3376,7 @@
  * *ALOT* of fixes all over
  : We are now starting to get to something that is "stable"
  : This means that soon you might actually be able to use this.
- 
+
 2005-03-28 MickeM
  * Changed the Thread class a bit (mutex -> signal, and CreatThread does not return the instance)
  * Moved settings "keys" fro NRPE to config.h

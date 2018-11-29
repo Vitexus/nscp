@@ -1,35 +1,33 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <list>
 #include <pdh.h>
 #include <pdhmsg.h>
 #include <sstream>
-#include <error.hpp>
+#include <error/error.hpp>
 
 #include <boost/shared_ptr.hpp>
 
 namespace PDH {
-
 	typedef HANDLE PDH_HCOUNTER;
 	typedef HANDLE PDH_HQUERY;
 	typedef HANDLE PDH_HLOG;
@@ -38,8 +36,7 @@ namespace PDH {
 		PDH_STATUS status_;
 	public:
 		pdh_error() : status_(ERROR_SUCCESS) {}
-		pdh_error(PDH_STATUS status) : status_(status) {
-		}
+		pdh_error(PDH_STATUS status) : status_(status) {}
 		pdh_error(const pdh_error &other) : status_(other.status_) {}
 		pdh_error& operator=(pdh_error const& other) {
 			status_ = other.status_;
@@ -53,23 +50,23 @@ namespace PDH {
 		}
 
 		bool is_error() const {
-			return status_!=ERROR_SUCCESS;
+			return status_ != ERROR_SUCCESS;
 		}
 		bool is_ok() const {
-			return status_==ERROR_SUCCESS;
+			return status_ == ERROR_SUCCESS;
 		}
 		bool is_more_data() {
-			return status_==PDH_MORE_DATA;
+			return status_ == PDH_MORE_DATA;
 		}
 		bool is_invalid_data() {
-			return status_==PDH_INVALID_DATA || status_ == PDH_CSTATUS_INVALID_DATA;
+			return status_ == PDH_INVALID_DATA || status_ == PDH_CSTATUS_INVALID_DATA;
 		}
 		bool is_not_found() {
-			return status_==PDH_CSTATUS_NO_OBJECT || status_==PDH_CSTATUS_NO_COUNTER;
+			return status_ == PDH_CSTATUS_NO_OBJECT || status_ == PDH_CSTATUS_NO_COUNTER;
 		}
 
 		bool is_negative_denominator() {
-			return status_==PDH_CALC_NEGATIVE_DENOMINATOR;
+			return status_ == PDH_CALC_NEGATIVE_DENOMINATOR || status_ == PDH_CALC_NEGATIVE_VALUE;
 		}
 	};
 
@@ -86,33 +83,32 @@ namespace PDH {
 		pdh_exception(std::string error) : error_(error) {}
 		~pdh_exception() throw() {}
 		const char* what() const throw() { return error_.c_str(); }
-		
+
 		std::string reason() const {
 			return error_;
 		}
 	};
 
 	namespace types {
-			typedef enum data_type_struct {
-				type_int64, type_uint64
-			};
-			typedef enum data_format_struct {
-				format_large
-			};
-			typedef enum collection_strategy_struct {
-				rrd, static_value
-			};
+		typedef enum data_type_struct {
+			type_int64, type_uint64
+		};
+		typedef enum data_format_struct {
+			format_large
+		};
+		typedef enum collection_strategy_struct {
+			rrd, static_value
+		};
 	}
-	
-	
+
 	struct pdh_object {
 		std::string path;
 		std::string alias;
-		
+
 		types::data_type_struct type;
 		types::data_format_struct format;
 		types::collection_strategy_struct strategy_;
-		
+
 		long buffer_size;
 		unsigned long flags_;
 		std::string instances_;
@@ -174,6 +170,7 @@ namespace PDH {
 		virtual double get_average(long seconds) = 0;
 		virtual double get_value() = 0;
 		virtual long long get_int_value() = 0;
+		virtual double get_float_value() = 0;
 		virtual std::string get_name() const = 0;
 		virtual std::string get_counter() const = 0;
 
@@ -215,13 +212,14 @@ namespace PDH {
 
 	class impl_interface {
 	public:
-		virtual pdh_error PdhLookupPerfIndexByName(LPCTSTR szMachineName,LPCTSTR szName,DWORD *dwIndex) = 0;
-		virtual pdh_error PdhLookupPerfNameByIndex(LPCTSTR szMachineName,DWORD dwNameIndex,LPTSTR szNameBuffer,LPDWORD pcchNameBufferSize) = 0;
+		virtual pdh_error PdhLookupPerfIndexByName(LPCTSTR szMachineName, LPCTSTR szName, DWORD *dwIndex) = 0;
+		virtual pdh_error PdhLookupPerfNameByIndex(LPCTSTR szMachineName, DWORD dwNameIndex, LPTSTR szNameBuffer, LPDWORD pcchNameBufferSize) = 0;
 		virtual pdh_error PdhExpandCounterPath(LPCTSTR szWildCardPath, LPTSTR mszExpandedPathList, LPDWORD pcchPathListLength) = 0;
 		virtual pdh_error PdhGetCounterInfo(PDH::PDH_HCOUNTER hCounter, BOOLEAN bRetrieveExplainText, LPDWORD pdwBufferSize, PDH_COUNTER_INFO* lpBuffer) = 0;
 		virtual pdh_error PdhAddCounter(PDH::PDH_HQUERY hQuery, LPCWSTR szFullCounterPath, DWORD_PTR dwUserData, PDH::PDH_HCOUNTER * phCounter) = 0;
 		virtual pdh_error PdhAddEnglishCounter(PDH::PDH_HQUERY hQuery, LPCWSTR szFullCounterPath, DWORD_PTR dwUserData, PDH::PDH_HCOUNTER * phCounter) = 0;
 		virtual pdh_error PdhRemoveCounter(PDH::PDH_HCOUNTER hCounter) = 0;
+		virtual pdh_error PdhGetRawCounterValue(PDH::PDH_HCOUNTER hCounter, LPDWORD dwFormat, PPDH_RAW_COUNTER  pValue) = 0;
 		virtual pdh_error PdhGetFormattedCounterValue(PDH_HCOUNTER hCounter, DWORD dwFormat, LPDWORD lpdwType, PPDH_FMT_COUNTERVALUE pValue) = 0;
 		virtual pdh_error PdhOpenQuery(LPCWSTR szDataSource, DWORD_PTR dwUserData, PDH::PDH_HQUERY * phQuery) = 0;
 		virtual pdh_error PdhCloseQuery(PDH_HQUERY hQuery) = 0;

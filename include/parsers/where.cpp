@@ -1,5 +1,24 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <list>
-#include <iostream> 
+#include <iostream>
 #include <sstream>
 
 // #include <boost/spirit/include/qi.hpp>
@@ -18,7 +37,6 @@
 
 namespace parsers {
 	namespace where {
-
 		bool parser::parse(object_factory factory, std::string expr) {
 			constants::reset();
 
@@ -26,7 +44,7 @@ namespace parsers {
 
 			where_grammar::iterator_type iter = expr.begin();
 			where_grammar::iterator_type end = expr.end();
-			if (phrase_parse(iter, end, calc, ascii::space, resulting_tree)) {
+			if (phrase_parse(iter, end, calc, charset::space, resulting_tree)) {
 				rest = std::string(iter, end);
 				return rest.empty();
 			}
@@ -65,7 +83,7 @@ namespace parsers {
 				return false;
 			}
 		}
-		
+
 		bool parser::bind(object_converter context) {
 			try {
 				resulting_tree->bind(context);
@@ -83,21 +101,24 @@ namespace parsers {
 			return resulting_tree->require_object(context);
 		}
 
-		bool parser::evaluate(evaluation_context context) {
+		value_container parser::evaluate(evaluation_context context) {
 			try {
 				node_type result = resulting_tree->evaluate(context);
-				return result->get_int_value(context) == 1;
+				return result->get_value(context, type_int);
 			} catch (const std::exception &e) {
 				context->error(std::string("Evaluate exception: ") + e.what());
-				return false;
+				return value_container::create_nil();
 			} catch (...) {
 				context->error("Evaluate exception: " + result_as_tree());
-				return false;
+				return value_container::create_nil();
 			}
 		}
 
 		std::string parser::result_as_tree() const {
 			return resulting_tree->to_string();
+		}
+		std::string parser::result_as_tree(evaluation_context context) const {
+			return resulting_tree->to_string(context);
 		}
 	}
 }

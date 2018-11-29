@@ -8,20 +8,25 @@ package Plugin;
 message Common {
 
 	//
-	// A "nagios" status result.
+	// A "Nagios" status result.
 	//
 	enum ResultCode {
-		OK		= 0;
-		WARNING	= 1;
+		// An ok status in Nagios
+		OK			= 0;
+		// A warning status in Nagios
+		WARNING		= 1;
+		// A critical status in Nagios
 		CRITICAL	= 2;
-		UNKNOWN	= 3;
+		// Not able to determine status in Nagios
+		UNKNOWN		= 3;
 	};
 
 	//
 	// Type of data fields.
-	// @deprecated in favour of checking which field is available.
+	// @deprecated in favor of checking which field is available.
 	//
 	enum DataType {
+		// Number (64 bit signed)
 		INT = 1;
 		STRING = 2;
 		FLOAT = 3;
@@ -47,8 +52,7 @@ message Common {
 		// Boolean (true/false) payload
 		optional bool bool_data = 5;
 
-		// A string (multiple lines are separated by list entries
-		// @todo: remove repeated modifier from this field.
+		// A string (multiple lines are separated by list entries)
 		repeated string list_data = 6;
 	}
 
@@ -62,21 +66,8 @@ message Common {
 
 		// The value
 		required string value = 2;
-
-		// Optional extra fields to store various custom data
-		repeated string data = 3;
 	}
-	
 
-	//
-	// Main protocol version used
-	// @deprecated Makes very little sense and should be removed
-	//
-	enum Version {
-
-		// Version 1 message
-		VERSION_1 = 1;
-	};
 
 	//
 	// Field identifying a host entry
@@ -89,7 +80,7 @@ message Common {
 		// The host name
 		optional string host = 2;
 
-		// The address (usually the ip)
+		// The address
 		optional string address = 3;
 
 		// The protocol used to talk whit this host.
@@ -102,31 +93,26 @@ message Common {
 		// The content and use of this attributes are application defined.
 		repeated Common.KeyValue metadata = 6;
 
-		// A numer of tags defined for this host (can be used for routing purposes).
+		// A number of tags defined for this host
 		repeated string tags = 7;
 	};
 
 	//
-	// Header used in all messages.
+	// A common header used in all messages.
 	// Contains basic information about the message.
 	//
 	message Header {
 
-		// Version of message.
-		// @ deprecated Not really useful
-		required Common.Version version = 1;
-
-		// Maximmu supported version.
-		// Was planned to be used to negotiate version but was never used.
-		// @deprecated not used.
-		optional Common.Version max_supported_version = 2;
+		// Command.
+		// A bundle command when the entire chunk is sent "as-is".
+		optional string command = 1;
 
 		// Source (sending) system.
 		// This is the system which sends the message (me).
 		optional string source_id = 3;
 
 		// Sender is the original source of the message.
-		// THis is same as source unless message has been relayed.
+		// This is same as source unless message has been relayed.
 		optional string sender_id = 4;
 
 		// Recipient is the final destination.
@@ -134,13 +120,13 @@ message Common {
 		optional string recipient_id = 5;
 
 		// Destination (target) system.
-		// The system which will receive the message.
+		// The system which will receive the message next.
 		optional string destination_id = 6;
 
 		// Message identification.
 		// Has no meaning apart from identification.
 		// Set by source system and retained in any processing system.
-		optional int64 message_id = 16;
+		optional string message_id = 16;
 
 		// Meta data related to the message.
 		repeated Common.KeyValue metadata = 8;
@@ -154,74 +140,103 @@ message Common {
 	};
 
 	//
-	// Attachment is used to attach information to another request.
-	// This is usually used to send along additional information not directly relatedt to the request.
-	// Or send unstructured data which is not supported by the original request.
+	// How metrics are encoded into check results
+	// Nagios calls this performance data and we inherited the name.
 	//
-	message Attachment {
-
-		// Identifier of attachment (for reference purpouses)
-		optional int64 id = 1;
-
-		// The mime type for this attachment.
-		required string type = 2;
-
-		// Meta data related to the attachment.
-		repeated Common.KeyValue metadata = 3;
-
-		// A list of tags associated with the attachment.
-		repeated string tags = 4;
-
-		// The actual attachment (encoded)
-		required string data = 5;
-	};
-	
 	message PerformanceData {
+		//
+		// Numeric performance data
+		//
 		message IntValue {
+			// The value we are tracking
 			required int64 value = 1;
+			// The unit of all the values
 			optional string unit = 2;
+			// The warning threshold (if available)
 			optional int64 warning = 3;
+			// The warning critical (if available)
 			optional int64 critical = 4;
+			// The lowest possible value
 			optional int64 minimum = 6;
+			// The highest possible value
 			optional int64 maximum = 7;
 		}
+		//
+		// Textual performance data
+		//
 		message StringValue {
+			// The value
 			required string value = 1;
 		}
+		//
+		// Floating point performance data
+		//
 		message FloatValue {
+			// The value we are tracking
 			required double value = 1;
+			// The unit of all the values
 			optional string unit = 2;
+			// The warning threshold (if available)
 			optional double warning = 3;
+			// The warning critical (if available)
 			optional double critical = 4;
+			// The lowest possible value
 			optional double minimum = 6;
+			// The highest possible value
 			optional double maximum = 7;
 		}
+		//
+		// Boolean performance data
+		//
 		message BoolValue {
+			// The value we are tracking
 			required bool value = 1;
+			// The unit of all the values
 			optional string unit = 2;
+			// The warning threshold (if available)
 			optional bool warning = 3;
+			// The warning critical (if available)
 			optional bool critical = 4;
 		}
+		// The name of the value
 		required string alias = 1;
-		required Common.DataType type = 2;
+		// If the value is an integer (can be only one)
 		optional IntValue int_value = 3;
+		// If the value is a string (can be only one)
 		optional StringValue string_value = 4;
+		// If the value is a floating point number (can be only one)
 		optional FloatValue float_value = 5;
+		// If the value is a boolean (can be only one)
 		optional BoolValue bool_value = 6;
-		
-		// TODO add thresholds here!
 	}
-	
-	message Status {
-	
-		enum StatusType {
+
+	message Metric {
+		required string key = 1;
+		required AnyDataType value = 2;
+
+		optional string alias = 3;
+		optional string desc = 4;
+	}
+
+	message MetricsBundle {
+		required string key = 1;
+		repeated Metric value = 2;
+		repeated MetricsBundle children = 6;
+
+		optional string alias = 3;
+		optional string desc = 4;
+	}
+
+	message Result {
+
+		enum StatusCodeType {
 			STATUS_OK = 0;
 			STATUS_WARNING = 1;
 			STATUS_ERROR = 2;
 			STATUS_DELAYED = 3;
 		};
-	
-		required StatusType status = 1;
+
+		required StatusCodeType code = 1;
 		optional string message = 2;
 		optional string data = 3;
 	}
@@ -239,53 +254,45 @@ message QueryRequestMessage {
 		required string command = 2;
 		optional string alias = 3;
 		repeated string arguments = 4;
-
-		// The attachment is used to attach additional free form information.
-		repeated Common.Attachment attachments = 17;
 	};
 
-	required Common.Header header = 1;
+	optional Common.Header header = 1;
 	repeated Request payload = 2;
-
-	// The attachment is used to attach additional free form information.
-	repeated Common.Attachment attachments = 3;
 }
 
 //
 // Query response
 // Used for querying the client this is the "normal" check_nrpe message request.
-// Associated request is :py:class:`Plugin.QueryRequestMessage`
+// Associated request is `[QueryRequestMessage](#.Plugin.QueryRequestMessage)`
 //
 message QueryResponseMessage {
 
 	message Response {
+		message Line {
+			required string message = 1;
+			repeated Common.PerformanceData perf = 2;
+		}
 
 		optional int32 id = 1;
 		optional string source = 7;
-		required string command = 2;
+		optional string command = 2;
 		optional string alias = 3;
 		repeated string arguments = 16;
-		
-		required Common.ResultCode result = 4;
-		required string message = 5;
-		optional bytes data = 8;
-		repeated Common.PerformanceData perf = 6;
 
-		// The attachment is used to attach additional free form information.
-		repeated Common.Attachment attachments = 17;
-		
+		required Common.ResultCode result = 4;
+		repeated Line lines = 9;
+
+		optional bytes data = 5;
+
 	}
 
-	required Common.Header header = 1;
+	optional Common.Header header = 1;
 	repeated Response payload = 2;
-
-	// The attachment is used to attach additional free form information.
-	repeated Common.Attachment attachments = 3;
 }
 
 //
 // Execute command request and response.
-// Used for executing commands on clients similar to :py:class:`Plugin.QueryRequestMessage` but wont return nagios check data
+// Used for executing commands on clients similar to :py:class:`Plugin.QueryRequestMessage` but wont return Nagios check data
 // Associated response is :py:class:`Plugin.ExecuteResponseMessage`
 //
 message ExecuteRequestMessage {
@@ -293,36 +300,23 @@ message ExecuteRequestMessage {
 		optional int32 id = 1;
 		required string command = 2;
 		repeated string arguments = 3;
-
-		// The attachment is used to attach additional free form information.
-		repeated Common.Attachment attachments = 17;
 	};
 
-	required Common.Header header = 1;
+	optional Common.Header header = 1;
 	repeated Request payload = 2;
-
-	// The attachment is used to attach additional free form information.
-	repeated Common.Attachment attachments = 3;
 }
 message ExecuteResponseMessage {
 	message Response {
 		optional int32 id = 2;
 		required string command = 5;
 		repeated string arguments = 16;
-		
+
 		required Common.ResultCode result = 9;
 		required string message = 10;
 		optional bytes data = 7;
-
-		// The attachment is used to attach additional free form information.
-		repeated Common.Attachment attachments = 17;
-		
 	}
-	required Common.Header header = 1;
+	optional Common.Header header = 1;
 	repeated Response payload = 2;
-
-	// The attachment is used to attach additional free form information.
-	repeated Common.Attachment attachments = 3;
 }
 
 //
@@ -332,12 +326,10 @@ message ExecuteResponseMessage {
 // Associated response is :py:class:`Plugin.SubmitResponseMessage`
 //
 message SubmitRequestMessage {
-	required Common.Header header = 1;
+	// The header
+	optional Common.Header header = 1;
 	required string channel = 2;
 	repeated QueryResponseMessage.Response payload = 3;
-
-	// The attachment is used to attach additional free form information.
-	repeated Common.Attachment attachments = 4;
 }
 
 //
@@ -349,18 +341,27 @@ message SubmitResponseMessage {
 	message Response {
 		optional int32 id = 1;
 		required string command = 2;
-		required Common.Status status = 3;
-
-		// The attachment is used to attach additional free form information.
-		repeated Common.Attachment attachments = 17;
+		required Common.Result result = 3;
 	};
-	required Common.Header header = 1;
+	optional Common.Header header = 1;
 	repeated Response payload = 2;
-
-	// The attachment is used to attach additional free form information.
-	repeated Common.Attachment attachments = 3;
 }
 
+//
+// Execute command request and response.
+// Used for executing commands on clients similar to :py:class:`Plugin.QueryRequestMessage` but wont return Nagios check data
+// Associated response is :py:class:`Plugin.ExecuteResponseMessage`
+//
+message EventMessage {
+	message Request {
+		optional string event = 1;
+		repeated string arguments = 2;
+		repeated Common.KeyValue data = 3;
+	};
+
+	optional Common.Header header = 1;
+	repeated Request payload = 2;
+}
 
 //
 // Registration is an internal message.
@@ -369,7 +370,7 @@ message SubmitResponseMessage {
 // The registry is a central component inside NSClient++ and this is the way to interact with the registry.
 //
 message Registry {
-	enum ItemType { 
+	enum ItemType {
 		QUERY = 1;
 		COMMAND = 2;
 		HANDLER = 3;
@@ -378,6 +379,7 @@ message Registry {
 		ROUTER = 6;
 		MODULE = 7;
 		SCHEDULE = 8;
+		EVENT = 9;
 
 		ALL = 99;
 	};
@@ -389,10 +391,10 @@ message Registry {
 		optional string description = 2;
 
 		repeated Common.KeyValue metadata = 3;
-		
+
 		optional string min_version = 5;
 		optional string max_version = 6;
-		
+
 		optional bool advanced = 8;
 		repeated string plugin = 9;
 	};
@@ -413,8 +415,14 @@ message Registry {
 		optional string long_description = 7;
 		repeated KeyWordDescription keyword = 8;
 	};
+	message FieldDetail {
+		optional string name = 1;
+		optional string short_description = 2;
+		optional string long_description = 3;
+	};
 	message ParameterDetails {
 		repeated ParameterDetail parameter = 1;
+		repeated FieldDetail fields = 2;
 	}
 
 	message Schedule {
@@ -437,7 +445,7 @@ message RegistryRequestMessage {
 			required string name = 3;
 			optional Registry.Information info = 4;
 			optional bool unregister = 5;
-			
+
 			repeated string alias = 9;
 
 			repeated Registry.Schedule schedule = 20;
@@ -462,7 +470,7 @@ message RegistryRequestMessage {
 		optional Inventory inventory = 4;
 		optional Control control = 5;
 	};
-	required Common.Header header = 1;
+	optional Common.Header header = 1;
 	repeated Request payload = 2;
 };
 message RegistryResponseMessage {
@@ -474,6 +482,7 @@ message RegistryResponseMessage {
 			repeated string plugin = 1;
 			required Registry.ItemType type = 2;
 			required string name = 3;
+			optional string id = 6;
 			optional Registry.Information info = 4;
 			optional Registry.ParameterDetails parameters = 5;
 
@@ -483,25 +492,24 @@ message RegistryResponseMessage {
 		message Control {
 		};
 		optional int64 id = 1;
-		required Common.Status result = 2;
+		required Common.Result result = 2;
 
 		optional Registration registration = 3;
 		repeated Inventory inventory = 4;
 		optional Control control = 5;
 	};
 
-	required Common.Header header = 1;
+	optional Common.Header header = 1;
 	repeated Response payload = 2;
 };
 
-// // // // // // // // // // // // // // // // // // // // // // // // 
 //
 // Schedule Notification commands
 // Used when a schedule is executed
 //
-// // // // // // // // // // // // // // // // // // // // // // // // 
-
 message ScheduleNotificationMessage {
+
+	// A request message of a schule notification
 	message Request {
 		optional int64 id = 1;
 		required int32 plugin_id = 3;
@@ -510,7 +518,7 @@ message ScheduleNotificationMessage {
 
 		optional Registry.Schedule schedule = 20;
 	};
-	required Common.Header header = 1;
+	optional Common.Header header = 1;
 	repeated Request payload = 2;
 };
 
@@ -525,19 +533,19 @@ message Settings {
 		required string path = 1;
 		optional string key = 2;
 	};
-	message Query {
-		optional string expression = 1;
-	};
 	message Information {
 		optional string title = 1;
 		optional string description = 2;
+		optional string icon = 10;
 		optional Common.AnyDataType default_value = 3;
 		optional string min_version = 4;
 		optional string max_version = 5;
 		optional bool advanced = 6;
 		optional bool sample = 7;
+		optional bool is_template = 11;
 		optional string sample_usage = 8;
 		repeated string plugin = 9;
+		optional bool subkey = 12;
 	};
 	enum Command {
 		LOAD	= 1;
@@ -551,10 +559,10 @@ message SettingsRequestMessage {
 		message Registration {
 			optional Settings.Node node = 1;
 			optional Settings.Information info = 2;
+			optional string fields = 3;
 		};
 		message Query {
 			optional Settings.Node node = 1;
-			optional Settings.Query query = 4;
 			optional bool recursive = 2;
 			optional Common.DataType type = 3;
 			optional Common.AnyDataType default_value = 5;
@@ -566,11 +574,11 @@ message SettingsRequestMessage {
 		message Inventory {
 			optional string plugin = 11;
 			optional Settings.Node node = 1;
-			optional Settings.Query query = 10;
 			optional bool recursive_fetch = 2;
 			optional bool fetch_keys = 3;
 			optional bool fetch_paths = 4;
 			optional bool fetch_samples = 5;
+			optional bool fetch_templates = 7;
 			optional bool descriptions = 6;
 		};
 		message Control {
@@ -581,7 +589,7 @@ message SettingsRequestMessage {
 		};
 		optional int64 id = 1;
 		required int32 plugin_id = 3;
-		
+
 		optional Registration registration = 10;
 		optional Query query = 11;
 		optional Update update = 12;
@@ -589,7 +597,7 @@ message SettingsRequestMessage {
 		optional Control control = 14;
 		optional Status status = 15;
 	};
-	required Common.Header header = 1;
+	optional Common.Header header = 1;
 	repeated Request payload = 2;
 };
 message SettingsResponseMessage {
@@ -598,7 +606,7 @@ message SettingsResponseMessage {
 		};
 		message Query {
 			required Settings.Node node = 1;
-			required Common.AnyDataType value = 2;
+			optional Common.AnyDataType value = 2;
 		};
 		message Update {
 		};
@@ -615,8 +623,8 @@ message SettingsResponseMessage {
 			optional bool has_changed = 3;
 		};
 		optional int64 id = 1;
-		required Common.Status result = 2;
-		
+		required Common.Result result = 2;
+
 		optional Registration registration = 10;
 		optional Query query = 11;
 		optional Update update = 12;
@@ -625,7 +633,7 @@ message SettingsResponseMessage {
 		optional Status status = 15;
 	};
 
-	required Common.Header header = 1;
+	optional Common.Header header = 1;
 	repeated Response payload = 2;
 };
 
@@ -636,6 +644,7 @@ message SettingsResponseMessage {
 message LogEntry {
 	message Entry {
 		enum Level {
+			LOG_TRACE	= 1000;
 			LOG_DEBUG	= 500;
 			LOG_INFO 	= 150;
 			LOG_WARNING	=  50;
@@ -654,4 +663,100 @@ message LogEntry {
 }
 
 
+//
+// Metrics message
+// Used for fetching and sending metrics.
+//
+message MetricsQueryMessage {
+	message Request {
+		optional int64 id = 1;
+		optional string type = 2;
+	};
 
+	optional Common.Header header = 1;
+	repeated Request payload = 2;
+}
+
+//
+// Metrics message
+// Used for fetching and sending metrics.
+//
+message MetricsMessage {
+	message Response {
+		optional int64 id = 1;
+		required Common.Result result = 2;
+
+		repeated Common.MetricsBundle bundles = 3;
+	};
+
+	optional Common.Header header = 1;
+	repeated Response payload = 2;
+}
+
+
+//
+// Storage Structure Disk
+//
+message Storage {
+	message Entry {
+		optional string context = 1;
+		optional string key = 2;
+		optional Common.AnyDataType value = 3;
+		optional bool binary_data = 4;
+		optional bool private_data = 5;
+	};
+	message Block {
+		optional string owner = 1;
+		optional int64 version = 2;
+		optional Storage.Entry entry = 3;
+	};
+	message File {
+		optional int64 version = 1;
+		optional int64 entries = 2;
+	};
+};
+
+//
+// Storeage Request Message 
+// Used to save/load data in the NSClient++ local storage
+//
+message StorageRequestMessage {
+	message Request {
+		message Put {
+			optional Storage.Entry entry = 1;
+		};
+		message Get {
+			optional string context = 1;
+			optional string key = 2;
+		};
+		optional int64 id = 1;
+		optional int32 plugin_id = 2;
+
+		optional Put put = 3;
+		optional Get get = 4;
+	};
+	repeated Request payload = 2;
+};
+//
+// Storeage Response Message 
+// Used to save/load data in the NSClient++ local storage
+//
+message StorageResponseMessage {
+	message Response {
+		message Put {
+			optional string context = 1;
+			optional string key = 2;
+			optional string error = 3;
+		};
+		message Get {
+			repeated Storage.Entry entry = 1;
+		};
+		optional int64 id = 1;
+		optional Common.Result result = 2;
+
+		optional Put put = 3;
+		optional Get get = 4;
+	};
+
+	repeated Response payload = 2;
+};

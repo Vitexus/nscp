@@ -1,27 +1,51 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
-#include <map>
-#include <string>
-#include <algorithm>
-
-#include <boost/foreach.hpp>
-#include <boost/optional.hpp>
-#include <boost/shared_ptr.hpp>
-
+#include <nscapi/nscapi_settings_helper.hpp>
 #include <nscapi/nscapi_settings_proxy.hpp>
 #include <nscapi/nscapi_settings_object.hpp>
-#include <nscapi/nscapi_settings_helper.hpp>
 #include <nscapi/functions.hpp>
 #include <nscapi/nscapi_helper.hpp>
 #include <nscapi/nscapi_helper_singleton.hpp>
 #include <nscapi/macros.hpp>
 
+#include <str/utils.hpp>
+
+#include <boost/foreach.hpp>
+#include <boost/optional.hpp>
+#include <boost/shared_ptr.hpp>
+
+#include <map>
+#include <string>
+#include <algorithm>
+
 namespace sh = nscapi::settings_helper;
 
 namespace alias {
-	struct command_object {
+	struct command_object : public nscapi::settings_objects::object_instance_interface {
+		typedef nscapi::settings_objects::object_instance_interface parent;
 
-		nscapi::settings_objects::template_object tpl;
+		command_object(std::string alias, std::string path)
+			: parent(alias, path) {}
+
 		std::string command;
 		std::list<std::string> arguments;
 
@@ -37,12 +61,14 @@ namespace alias {
 
 		std::string to_string() const {
 			std::stringstream ss;
-			ss << tpl.to_string() << "{command: " << command << ", arguments: ";
+			ss << get_alias() << "[" << get_alias() << "] = "
+				<< "{tpl: " << parent::to_string();
+			ss << ", command: " << command << ", arguments: ";
 			bool first = true;
 			BOOST_FOREACH(const std::string &s, arguments) {
 				if (first)
 					first = false;
-				else 
+				else
 					ss << ',';
 				ss << s;
 			}
@@ -50,15 +76,42 @@ namespace alias {
 			return ss.str();
 		}
 
+		void read(boost::shared_ptr<nscapi::settings_proxy> proxy, bool oneliner, bool is_sample) {
+			parent::read(proxy, oneliner, is_sample);
+			set_alias(boost::algorithm::to_lower_copy(get_alias()));
+
+			set_command(get_value());
+
+			nscapi::settings_helper::settings_registry settings(proxy);
+			nscapi::settings_helper::path_extension root_path = settings.path(get_path());
+			if (is_sample)
+				root_path.set_sample();
+
+			if (oneliner)
+				return;
+
+			root_path.add_path()
+				("alias: " + get_alias(), "The configuration section for the " + get_alias() + " alias")
+				;
+
+			root_path.add_key()
+				("command", sh::string_fun_key(boost::bind(&command_object::set_command, this, _1)),
+					"COMMAND", "Command to execute")
+				;
+
+
+			settings.register_all();
+			settings.notify();
+		}
+
 		void set_command(std::string str) {
 			if (str.empty())
 				return;
 			try {
-				strEx::parse_command(str, command, arguments);
+				str::utils::parse_command(str, command, arguments);
 			} catch (const std::exception &e) {
-
 				NSC_LOG_MESSAGE("Failed to parse arguments for command using old split string method: " + utf8::utf8_from_native(e.what()) + ": " + str);
-				std::list<std::string> list = strEx::s::splitEx(str, std::string(" "));
+				std::list<std::string> list = str::utils::split_lst(str, std::string(" "));
 				if (list.size() > 0) {
 					command = list.front();
 					list.pop_front();
@@ -68,15 +121,15 @@ namespace alias {
 				BOOST_FOREACH(const std::string &s, list) {
 					std::size_t len = s.length();
 					if (buffer.empty()) {
-						if (len > 2 && s[0] == '\"' && s[len-1]  == '\"') {
-							buffer.push_back(s.substr(1, len-2));
+						if (len > 2 && s[0] == '\"' && s[len - 1] == '\"') {
+							buffer.push_back(s.substr(1, len - 2));
 						} else if (len > 1 && s[0] == '\"') {
 							buffer.push_back(s);
 						} else {
 							arguments.push_back(s);
 						}
 					} else {
-						if (len > 1 && s[len-1] == '\"') {
+						if (len > 1 && s[len - 1] == '\"') {
 							std::string tmp;
 							BOOST_FOREACH(const std::string &s2, buffer) {
 								if (tmp.empty()) {
@@ -85,7 +138,7 @@ namespace alias {
 									tmp += " " + s2;
 								}
 							}
-							arguments.push_back(tmp + " " + s.substr(0, len-1));
+							arguments.push_back(tmp + " " + s.substr(0, len - 1));
 							buffer.clear();
 						} else {
 							buffer.push_back(s);
@@ -99,64 +152,8 @@ namespace alias {
 				}
 			}
 		}
-
 	};
-	typedef boost::optional<command_object> optional_command_object;
+	typedef boost::shared_ptr<command_object> command_object_instance;
 
-	struct command_reader {
-		typedef command_object object_type;
-
-		static void post_process_object(object_type &object) {
-			std::transform(object.tpl.alias.begin(), object.tpl.alias.end(), object.tpl.alias.begin(), ::tolower);
-		}
-		static void init_default(object_type& object) {}
-
-
-		static void read_object(boost::shared_ptr<nscapi::settings_proxy> proxy, object_type &object, bool oneliner, bool is_sample) {
-			object.set_command(object.tpl.value);
-			std::string alias;
-
-			nscapi::settings_helper::settings_registry settings(proxy);
-			nscapi::settings_helper::path_extension root_path = settings.path(object.tpl.path);
-			if (is_sample)
-				root_path.set_sample();
-
-			if (oneliner) {
-				std::string::size_type pos = object.tpl.path.find_last_of("/");
-				if (pos != std::string::npos) {
-					std::string path = object.tpl.path.substr(0, pos);
-					std::string key = object.tpl.path.substr(pos+1);
-					proxy->register_key(path, key, NSCAPI::key_string, object.tpl.alias, "Alias for " + object.tpl.alias + ". To configure this item add a section called: " + object.tpl.path, "", false, false);
-					proxy->set_string(path, key, object.tpl.value);
-					return;
-				}
-			}
-
-
-			root_path.add_path()
-				("ALIAS DEFENITION", "Alias definition for: " + object.tpl.alias)
-				;
-
-			root_path.add_key()
-				("command", sh::string_fun_key<std::string>(boost::bind(&object_type::set_command, &object, _1)),
-				"COMMAND", "Command to execute")
-				;
-			object.tpl.read_object(root_path);
-
-			settings.register_all();
-			settings.notify();
-			if (!alias.empty())
-				object.tpl.alias = alias;
-		}
-
-		static void apply_parent(object_type &object, object_type &parent) {
-			using namespace nscapi::settings_objects;
-			import_string(object.command, parent.command);
-			if (object.arguments.empty() && !parent.arguments.empty())
-				object.arguments = parent.arguments;
-		}
-
-	};
-	typedef nscapi::settings_objects::object_handler<command_object, command_reader> command_handler;
+	typedef nscapi::settings_objects::object_handler<command_object> command_handler;
 }
-

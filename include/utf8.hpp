@@ -1,23 +1,22 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 #include <string>
 #include <locale>
@@ -44,7 +43,7 @@ namespace utf8 {
 
 	/** Converts a std::String with UTF-8 encoding into a std::wstring.	*/
 	template<typename StringT>
-	StringT cvt(std::string const & string );
+	StringT cvt(std::string const & string);
 
 	/** Nop specialization for std::string. */
 	template <>
@@ -64,25 +63,25 @@ namespace utf8 {
 		int nChars = MultiByteToWideChar(CP_ACP, 0, str.c_str(), len, NULL, 0);
 		if (nChars == 0)
 			return L"";
-		wchar_t *buffer = new wchar_t[nChars+1];
+		wchar_t *buffer = new wchar_t[nChars + 1];
 		if (buffer == NULL)
 			return L"";
 		MultiByteToWideChar(CP_ACP, 0, str.c_str(), len, buffer, nChars);
 		buffer[nChars] = 0;
 		std::wstring buf(buffer, nChars);
-		delete [] buffer;
+		delete[] buffer;
 		return buf;
 #else
 		size_t utf8Length = str.length();
 		size_t outbytesLeft = utf8Length*sizeof(wchar_t);
 
 		//Copy the instring
-		char *inString = new char[str.length()+1];
+		char *inString = new char[str.length() + 1];
 		strcpy(inString, str.c_str());
 
 		//Create buffer for output
-		char *outString = (char*)new wchar_t[utf8Length+1];
-		memset(outString, 0, sizeof(wchar_t)*(utf8Length+1));
+		char *outString = (char*)new wchar_t[utf8Length + 1];
+		memset(outString, 0, sizeof(wchar_t)*(utf8Length + 1));
 
 		char *inPointer = inString;
 		char *outPointer = outString;
@@ -91,7 +90,7 @@ namespace utf8 {
 		iconv(convDesc, &inPointer, &utf8Length, &outPointer, &outbytesLeft);
 		iconv_close(convDesc);
 
-		std::wstring retval( (wchar_t *)outString );
+		std::wstring retval((wchar_t *)outString);
 
 		//Cleanup
 		delete[] inString;
@@ -123,25 +122,25 @@ namespace utf8 {
 		int nChars = MultiByteToWideChar(uiEncoding, 0, str.c_str(), len, NULL, 0);
 		if (nChars == 0)
 			return L"";
-		wchar_t *buffer = new wchar_t[nChars+1];
+		wchar_t *buffer = new wchar_t[nChars + 1];
 		if (buffer == NULL)
 			return L"";
 		MultiByteToWideChar(uiEncoding, 0, str.c_str(), len, buffer, nChars);
 		buffer[nChars] = 0;
 		std::wstring buf(buffer, nChars);
-		delete [] buffer;
+		delete[] buffer;
 		return buf;
 #else
 		size_t utf8Length = str.length();
 		size_t outbytesLeft = utf8Length*sizeof(wchar_t);
 
 		//Copy the instring
-		char *inString = new char[str.length()+1];
+		char *inString = new char[str.length() + 1];
 		strcpy(inString, str.c_str());
 
 		//Create buffer for output
-		char *outString = (char*)new wchar_t[utf8Length+1];
-		memset(outString, 0, sizeof(wchar_t)*(utf8Length+1));
+		char *outString = (char*)new wchar_t[utf8Length + 1];
+		memset(outString, 0, sizeof(wchar_t)*(utf8Length + 1));
 
 		char *inPointer = inString;
 		char *outPointer = outString;
@@ -150,7 +149,7 @@ namespace utf8 {
 		iconv(convDesc, &inPointer, &utf8Length, &outPointer, &outbytesLeft);
 		iconv_close(convDesc);
 
-		std::wstring retval( (wchar_t *)outString );
+		std::wstring retval((wchar_t *)outString);
 
 		//Cleanup
 		delete[] inString;
@@ -176,11 +175,11 @@ namespace utf8 {
 		return buf;
 #else
 		size_t wideSize = sizeof(wchar_t)*str.length();
-		size_t outbytesLeft = wideSize+sizeof(char); //We cannot know how many wide character there is yet
+		size_t outbytesLeft = wideSize + sizeof(char); //We cannot know how many wide character there is yet
 
 		//Copy the instring
-		char *inString = (char*)new wchar_t[str.length()+1];
-		memcpy(inString, str.c_str(), wideSize+sizeof(wchar_t));
+		char *inString = (char*)new wchar_t[str.length() + 1];
+		memcpy(inString, str.c_str(), wideSize + sizeof(wchar_t));
 
 		//Create buffer for output
 		char *outString = new char[outbytesLeft];
@@ -203,7 +202,6 @@ namespace utf8 {
 #endif
 	}
 
-
 	inline std::string to_system(std::wstring const & str) {
 #ifdef WIN32
 		// figure out how many narrow characters we are going to get
@@ -219,11 +217,11 @@ namespace utf8 {
 		return buf;
 #else
 		size_t wideSize = sizeof(wchar_t)*str.length();
-		size_t outbytesLeft = wideSize+sizeof(char); //We cannot know how many wide character there is yet
+		size_t outbytesLeft = wideSize + sizeof(char); //We cannot know how many wide character there is yet
 
 		//Copy the instring
-		char *inString = (char*)new wchar_t[str.length()+1];
-		memcpy(inString, str.c_str(), wideSize+sizeof(wchar_t));
+		char *inString = (char*)new wchar_t[str.length() + 1];
+		memcpy(inString, str.c_str(), wideSize + sizeof(wchar_t));
 
 		//Create buffer for output
 		char *outString = new char[outbytesLeft];
@@ -262,11 +260,11 @@ namespace utf8 {
 		return buf;
 #else
 		size_t wideSize = sizeof(wchar_t)*str.length();
-		size_t outbytesLeft = wideSize+sizeof(char); //We cannot know how many wide character there is yet
+		size_t outbytesLeft = wideSize + sizeof(char); //We cannot know how many wide character there is yet
 
 		//Copy the instring
-		char *inString = (char*)new wchar_t[str.length()+1];
-		memcpy(inString, str.c_str(), wideSize+sizeof(wchar_t));
+		char *inString = (char*)new wchar_t[str.length() + 1];
+		memcpy(inString, str.c_str(), wideSize + sizeof(wchar_t));
 
 		//Create buffer for output
 		char *outString = new char[outbytesLeft];
@@ -296,25 +294,25 @@ namespace utf8 {
 		int nChars = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), len, NULL, 0);
 		if (nChars == 0)
 			return L"";
-		wchar_t *buffer = new wchar_t[nChars+1];
+		wchar_t *buffer = new wchar_t[nChars + 1];
 		if (buffer == NULL)
 			return L"";
 		MultiByteToWideChar(CP_UTF8, 0, str.c_str(), len, buffer, nChars);
 		buffer[nChars] = 0;
 		std::wstring buf(buffer, nChars);
-		delete [] buffer;
+		delete[] buffer;
 		return buf;
 #else
 		size_t utf8Length = str.length();
 		size_t outbytesLeft = utf8Length*sizeof(wchar_t);
 
 		//Copy the instring
-		char *inString = new char[str.length()+1];
+		char *inString = new char[str.length() + 1];
 		strcpy(inString, str.c_str());
 
 		//Create buffer for output
-		char *outString = (char*)new wchar_t[utf8Length+1];
-		memset(outString, 0, sizeof(wchar_t)*(utf8Length+1));
+		char *outString = (char*)new wchar_t[utf8Length + 1];
+		memset(outString, 0, sizeof(wchar_t)*(utf8Length + 1));
 
 		char *inPointer = inString;
 		char *outPointer = outString;
@@ -323,7 +321,7 @@ namespace utf8 {
 		iconv(convDesc, &inPointer, &utf8Length, &outPointer, &outbytesLeft);
 		iconv_close(convDesc);
 
-		std::wstring retval( (wchar_t *)outString );
+		std::wstring retval((wchar_t *)outString);
 
 		//Cleanup
 		delete[] inString;
@@ -341,8 +339,7 @@ namespace utf8 {
 	}
 }
 
-namespace boost
-{
+namespace boost {
 	template<>
 	inline std::wstring lexical_cast<std::wstring, std::string>(const std::string& arg) {
 		return utf8::cvt<std::wstring>(arg);

@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <boost/program_options.hpp>
@@ -6,14 +25,12 @@
 
 namespace po = boost::program_options;
 class cli_parser : public boost::noncopyable {
-
 	NSClient* core_;
 	po::options_description common_light;
 	po::options_description common;
 	po::options_description settings;
 	po::options_description service;
 	po::options_description client;
-	po::options_description unittest;
 	po::options_description test;
 
 	bool help;
@@ -24,10 +41,10 @@ class cli_parser : public boost::noncopyable {
 	std::vector<std::string> defines;
 	std::string settings_store;
 	std::vector<std::string> unknown_options;
-	
+
 	typedef boost::function<int(int, char**)> handler_function;
-	typedef std::map<std::string,handler_function> handler_map;
-	typedef std::map<std::string,std::string> alias_map;
+	typedef std::map<std::string, handler_function> handler_map;
+	typedef std::map<std::string, std::string> alias_map;
 
 	void init_logger();
 	handler_map get_handlers();

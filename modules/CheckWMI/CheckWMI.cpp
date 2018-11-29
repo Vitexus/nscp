@@ -1,23 +1,21 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include <map>
 #include <vector>
@@ -26,13 +24,12 @@
 #include <boost/program_options.hpp>
 
 #include "CheckWMI.h"
-#include <strEx.h>
+#include <str/xtos.hpp>
 #include <time.h>
 
 #include <nscapi/nscapi_program_options.hpp>
 #include <nscapi/nscapi_protobuf_functions.hpp>
 #include <nscapi/nscapi_settings_helper.hpp>
-
 
 namespace sh = nscapi::settings_helper;
 namespace po = boost::program_options;
@@ -48,28 +45,27 @@ void target_helper::add_target(nscapi::settings_helper::settings_impl_interface_
 			target.hostname = alias;
 
 		settings.add_path_to_settings()
-			(target.hostname, "TARGET LIST SECTION", "A list of available remote target systems")
+			(target.hostname, "Targets", "A list of available remote target systems")
 
 			;
 
 		settings.add_key_to_settings("targets/" + target.hostname)
 			("hostname", sh::string_key(&target.hostname),
-			"TARGET HOSTNAME", "Hostname or ip address of target")
+				"TARGET HOSTNAME", "Hostname or ip address of target")
 
 			("username", sh::string_key(&target.username),
-			"TARGET USERNAME", "Username used to authenticate with")
+				"TARGET USERNAME", "Username used to authenticate with")
 
 			("password", sh::string_key(&target.password),
-			"TARGET PASSWORD", "Password used to authenticate with")
+				"TARGET PASSWORD", "Password used to authenticate with")
 
 			("protocol", sh::string_key(&target.protocol),
-			"TARGET PROTOCOL", "Protocol identifier used to route requests")
+				"TARGET PROTOCOL", "Protocol identifier used to route requests")
 
 			;
 
 		settings.register_all();
 		settings.notify();
-
 	} catch (const std::exception &e) {
 		NSC_LOG_ERROR_EXR("loading: ", e);
 	} catch (...) {
@@ -83,13 +79,14 @@ bool CheckWMI::loadModuleEx(std::string alias, NSCAPI::moduleLoadMode) {
 	//settings.set_alias(_T("targets"));
 
 	settings.add_path_to_settings()
-		("targets", sh::fun_values_path(boost::bind(&target_helper::add_target, &targets, get_settings_proxy(), _1, _2)), 
-		"TARGET LIST SECTION", "A list of available remote target systems",
-		"TARGET DEFENTION", "For more configuration options add a dedicated section")
+		("targets", sh::fun_values_path(boost::bind(&target_helper::add_target, &targets, get_settings_proxy(), _1, _2)),
+			"TARGET LIST SECTION", "A list of available remote target systems",
+			"TARGET DEFENTION", "For more configuration options add a dedicated section")
 		;
 
 	settings.register_all();
 	settings.notify();
+
 	return true;
 }
 bool CheckWMI::unloadModule() {
@@ -100,7 +97,7 @@ std::string build_namespace(std::string ns, std::string computer) {
 	if (ns.empty())
 		ns = "root\\cimv2";
 	if (!computer.empty())
-		ns ="\\\\" + computer + "\\" + ns;
+		ns = "\\\\" + computer + "\\" + ns;
 	return ns;
 }
 
@@ -112,7 +109,6 @@ std::string build_namespace(std::string ns, std::string computer) {
 #include <parsers/where/filter_handler_impl.hpp>
 
 namespace wmi_filter {
-
 	struct filter_obj {
 		wmi_impl::row &row;
 		filter_obj(wmi_impl::row &row) : row(row) {}
@@ -131,14 +127,11 @@ namespace wmi_filter {
 	typedef parsers::where::filter_handler_impl<boost::shared_ptr<filter_obj> > native_context;
 	struct filter_obj_handler : public native_context {
 		filter_obj_handler() {
-
 		}
 	};
 	typedef modern_filter::modern_filters<filter_obj, filter_obj_handler> filter;
-
 }
 void CheckWMI::check_wmi(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-
 	typedef wmi_filter::filter filter_type;
 	modern_filter::data_container data;
 	modern_filter::cli_helper<filter_type> filter_helper(request, response, data);
@@ -149,7 +142,7 @@ void CheckWMI::check_wmi(const Plugin::QueryRequestMessage::Request &request, Pl
 
 	filter_type filter;
 	filter_helper.add_options("", "", "", filter.get_filter_syntax(), "ignored");
-	filter_helper.add_syntax("${list}", filter.get_format_syntax(), "%(line)", "", "", "");
+	filter_helper.add_syntax("${list}", "%(line)", "", "", "");
 	filter_helper.get_desc().add_options()
 		("target", po::value<std::string>(&given_target), "The target to check (for checking remote machines).")
 		("user", po::value<std::string>(&target_info.username), "Remote username when checking remote machines.")
@@ -193,12 +186,11 @@ void CheckWMI::check_wmi(const Plugin::QueryRequestMessage::Request &request, Pl
 	} catch (const wmi_impl::wmi_exception &e) {
 		return nscapi::protobuf::functions::set_response_bad(*response, "WMIQuery failed: " + e.reason());
 	}
-	modern_filter::perf_writer writer(response);
-	filter_helper.post_process(filter, &writer);
+	filter_helper.post_process(filter);
 }
 
 inline std::string pad(const std::string &s, const std::size_t &c) {
-	return s + std::string(c-s.size(), ' ');
+	return s + std::string(c - s.size(), ' ');
 }
 
 typedef  std::vector<std::string> row_type;
@@ -206,19 +198,19 @@ std::string render_table(const std::vector<std::size_t> &widths, const row_type 
 	std::size_t count = widths.size();
 	std::stringstream ss;
 	std::string line;
-	for (int i=0;i<count;++i) {
-		line += std::string(widths[i]+3, '-');
+	for (int i = 0; i < count; ++i) {
+		line += std::string(widths[i] + 3, '-');
 	}
 	ss << line << "\n";
 	if (headers.size() != widths.size())
-		throw wmi_impl::wmi_exception("Invalid header size");
-	for (int i=0;i<count;++i)
+		throw wmi_impl::wmi_exception(E_INVALIDARG, "Invalid header size");
+	for (int i = 0; i < count; ++i)
 		ss << " " << pad(headers[i], widths[i]) << " ";
 	ss << "\n" << line << "\n";
 	BOOST_FOREACH(const row_type &row, rows) {
 		if (row.size() != widths.size())
-			throw wmi_impl::wmi_exception("Invalid row size");
-		for (int i=0;i<count;++i)
+			throw wmi_impl::wmi_exception(E_INVALIDARG, "Invalid row size");
+		for (int i = 0; i < count; ++i)
 			ss << " " << pad(row[i], widths[i]) << " ";
 		ss << "\n";
 	}
@@ -232,7 +224,7 @@ std::string render(const row_type &headers, std::vector<std::size_t> &widths, wm
 	while (e.has_next()) {
 		wmi_impl::row wmi_row = e.get_next();
 		row_type row;
-		for (std::size_t i=0;i<count;i++) {
+		for (std::size_t i = 0; i < count; i++) {
 			std::string c = wmi_row.get_string(headers[i]);
 			widths[i] = (std::max)(c.size(), widths[i]);
 			row.push_back(c);
@@ -241,7 +233,6 @@ std::string render(const row_type &headers, std::vector<std::size_t> &widths, wm
 	}
 	return render_table(widths, headers, rows);
 }
-
 
 std::string list_ns_rec(std::string ns, std::string user, std::string password) {
 	std::stringstream ss;
@@ -256,10 +247,9 @@ std::string list_ns_rec(std::string ns, std::string user, std::string password) 
 	return ss.str();
 }
 
-NSCAPI::nagiosReturn CheckWMI::commandLineExec(const std::string &command, const std::list<std::string> &arguments, std::string &result) {
+NSCAPI::nagiosReturn CheckWMI::commandLineExec(const int target_mode, const std::string &command, const std::list<std::string> &arguments, std::string &result) {
 	try {
 		if (command == "wmi" || command == "help" || command.empty()) {
-
 			namespace po = boost::program_options;
 
 			std::string query, ns, user, password, list_cls, list_inst;
@@ -289,7 +279,7 @@ NSCAPI::nagiosReturn CheckWMI::commandLineExec(const std::string &command, const
 				ss << "wmi Command line syntax:" << std::endl;
 				ss << desc;
 				result = ss.str();
-				return NSCAPI::isSuccess;
+				return NSCAPI::exec_return_codes::returnOK;
 			}
 
 			std::vector<std::string> args(arguments.begin(), arguments.end());
@@ -302,7 +292,7 @@ NSCAPI::nagiosReturn CheckWMI::commandLineExec(const std::string &command, const
 				ss << "CheckWMI Command line syntax:" << std::endl;
 				ss << desc;
 				result = ss.str();
-				return NSCAPI::isSuccess;
+				return NSCAPI::exec_return_codes::returnOK;
 			}
 			simple = vm.count("simple") > 0;
 
@@ -321,10 +311,10 @@ NSCAPI::nagiosReturn CheckWMI::commandLineExec(const std::string &command, const
 						widths.push_back(col.size());
 					}
 					result = render(headers, widths, wmiQuery.execute());
-					return NSCAPI::isSuccess;
+					return NSCAPI::exec_return_codes::returnOK;
 				} catch (const wmi_impl::wmi_exception &e) {
 					result += "ERROR: " + e.reason();
-					return NSCAPI::hasFailed;
+					return NSCAPI::exec_return_codes::returnERROR;
 				}
 			} else if (vm.count("list-classes")) {
 				try {
@@ -336,10 +326,10 @@ NSCAPI::nagiosReturn CheckWMI::commandLineExec(const std::string &command, const
 						ss << wmi_row.get_string("__CLASS") << "\n";
 					}
 					result = ss.str();
-					return NSCAPI::isSuccess;
+					return NSCAPI::exec_return_codes::returnOK;
 				} catch (const wmi_impl::wmi_exception &e) {
 					result += "ERROR: " + e.reason();
-					return NSCAPI::hasFailed;
+					return NSCAPI::exec_return_codes::returnERROR;
 				}
 			} else if (vm.count("list-instances")) {
 				try {
@@ -351,10 +341,10 @@ NSCAPI::nagiosReturn CheckWMI::commandLineExec(const std::string &command, const
 						ss << wmi_row.get_string("Name") << "\n";
 					}
 					result = ss.str();
-					return NSCAPI::isSuccess;
+					return NSCAPI::exec_return_codes::returnOK;
 				} catch (const wmi_impl::wmi_exception &e) {
 					result += "ERROR: " + e.reason();
-					return NSCAPI::hasFailed;
+					return NSCAPI::exec_return_codes::returnERROR;
 				}
 			} else if (vm.count("list-ns")) {
 				try {
@@ -366,11 +356,11 @@ NSCAPI::nagiosReturn CheckWMI::commandLineExec(const std::string &command, const
 						ss << wmi_row.get_string("Name") << "\n";
 					}
 					result = ss.str();
-					return NSCAPI::isSuccess;
+					return NSCAPI::exec_return_codes::returnOK;
 				} catch (wmi_impl::wmi_exception e) {
 					NSC_LOG_ERROR_EXR("WMIQuery failed: ", e);
 					result += "ERROR: " + e.reason();
-					return NSCAPI::hasFailed;
+					return NSCAPI::exec_return_codes::returnERROR;
 				}
 			} else if (vm.count("list-all-ns")) {
 				try {
@@ -378,13 +368,14 @@ NSCAPI::nagiosReturn CheckWMI::commandLineExec(const std::string &command, const
 				} catch (wmi_impl::wmi_exception e) {
 					NSC_LOG_ERROR_EXR("WMIQuery failed: ", e);
 					result += "ERROR: " + e.reason();
-					return NSCAPI::hasFailed;
+					return NSCAPI::exec_return_codes::returnERROR;
 				}
 			}
+			return NSCAPI::exec_return_codes::returnOK;
 		}
-		return NSCAPI::isSuccess;
+		return NSCAPI::cmd_return_codes::returnIgnored;
 	} catch (std::exception e) {
 		result += "ERROR: " + utf8::utf8_from_native(e.what());
-		return NSCAPI::hasFailed;
+		return NSCAPI::exec_return_codes::returnERROR;
 	}
 }

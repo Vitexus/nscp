@@ -1,4 +1,26 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
+
+#include <str/xtos.hpp>
+
 
 #include <boost/asio.hpp>
 #include <boost/foreach.hpp>
@@ -10,11 +32,11 @@
 #include <boost/asio/ssl.hpp>
 #include <boost/asio/ssl/basic_context.hpp>
 #endif
-#include <unicode_char.hpp>
-#include <strEx.h>
+
+#include <list>
+#include <string>
 
 namespace socket_helpers {
-
 #ifdef USE_SSL
 	void write_certs(std::string cert, bool ca);
 #endif
@@ -37,22 +59,20 @@ namespace socket_helpers {
 		///
 		/// @author mickem
 		const char* what() const throw() { return error.c_str(); }
-
+		const std::string reason() const { return error; }
 	};
 
 	struct allowed_hosts_manager {
 		template<class addr_type_t>
 		struct host_record {
-			host_record(std::string host, addr_type_t addr, addr_type_t mask) 
+			host_record(std::string host, addr_type_t addr, addr_type_t mask)
 				: host(host)
 				, addr(addr)
-				, mask(mask)
-				{}
-			host_record(const host_record &other) 
+				, mask(mask) {}
+			host_record(const host_record &other)
 				: host(other.host)
 				, addr(other.addr)
-				, mask(other.mask)
-				{}
+				, mask(other.mask) {}
 			const host_record& operator=(const host_record &other) {
 				host = other.host;
 				addr = other.addr;
@@ -91,14 +111,14 @@ namespace socket_helpers {
 
 		template<class T>
 		inline bool match_host(const T &allowed, const T &mask, const T &remote) const {
-			for (std::size_t i=0;i<allowed.size(); i++) {
-				if ( (allowed[i]&mask[i]) != (remote[i]&mask[i]) )
+			for (std::size_t i = 0; i < allowed.size(); i++) {
+				if ((allowed[i] & mask[i]) != (remote[i] & mask[i]))
 					return false;
 			}
 			return true;
 		}
 		bool is_allowed(const boost::asio::ip::address &address, std::list<std::string> &errors) {
-			return (entries_v4.empty()&&entries_v6.empty())
+			return (entries_v4.empty() && entries_v6.empty())
 				|| (address.is_v4() && is_allowed_v4(address.to_v4().to_bytes(), errors))
 				|| (address.is_v6() && is_allowed_v6(address.to_v6().to_bytes(), errors))
 				|| (address.is_v6() && address.to_v6().is_v4_compatible() && is_allowed_v4(address.to_v6().to_v4().to_bytes(), errors))
@@ -123,16 +143,15 @@ namespace socket_helpers {
 			}
 			return false;
 		}
-//		std::wstring to_wstring();
+		//		std::wstring to_wstring();
 		std::string to_string();
 	};
 
 	struct connection_info {
-
 		struct ssl_opts {
 			ssl_opts() : enabled(false) {}
 
-			ssl_opts(const ssl_opts &other) 
+			ssl_opts(const ssl_opts &other)
 				: enabled(other.enabled)
 				, certificate(other.certificate)
 				, certificate_format(other.certificate_format)
@@ -141,8 +160,7 @@ namespace socket_helpers {
 				, allowed_ciphers(other.allowed_ciphers)
 				, dh_key(other.dh_key)
 				, verify_mode(other.verify_mode)
-				, ssl_options(other.ssl_options)
-			{}
+				, ssl_options(other.ssl_options) {}
 			ssl_opts& operator=(const ssl_opts &other) {
 				enabled = other.enabled;
 				certificate = other.certificate;
@@ -155,7 +173,6 @@ namespace socket_helpers {
 				ssl_options = other.ssl_options;
 				return *this;
 			}
-
 
 			bool enabled;
 			std::string certificate;
@@ -173,19 +190,22 @@ namespace socket_helpers {
 			std::string to_string() const {
 				std::stringstream ss;
 				if (enabled) {
-					ss << "ssl: " << verify_mode;
-					ss << ", cert: " << certificate << " (" << certificate_format << "), " << certificate_key;
+					ss << "ssl enabled: " << verify_mode;
+					if (!certificate.empty())
+						ss << ", cert: " << certificate << " (" << certificate_format << "), " << certificate_key;
+					else
+						ss << ", no certificate";
 					ss << ", dh: " << dh_key << ", ciphers: " << allowed_ciphers << ", ca: " << ca_path;
 					ss << ", options: " << ssl_options;
-				} else 
+				} else
 					ss << "ssl disabled";
 				return ss.str();
 			}
 #ifdef USE_SSL
-			void configure_ssl_context(boost::asio::ssl::context &context, std::list<std::string> &errors);
-			boost::asio::ssl::context::verify_mode get_verify_mode();
-			boost::asio::ssl::context::file_format get_certificate_format();
-			boost::asio::ssl::context::file_format get_certificate_key_format();
+			void configure_ssl_context(boost::asio::ssl::context &context, std::list<std::string> &errors) const;
+			boost::asio::ssl::context::verify_mode get_verify_mode() const;
+			boost::asio::ssl::context::file_format get_certificate_format() const;
+			boost::asio::ssl::context::file_format get_certificate_key_format() const;
 			long get_ctx_opts() const;
 #endif
 		};
@@ -203,7 +223,7 @@ namespace socket_helpers {
 
 		connection_info() : back_log(backlog_default), port_("0"), thread_pool_size(0), timeout(30), retry(2), reuse(true) {}
 
-		connection_info(const connection_info &other) 
+		connection_info(const connection_info &other)
 			: address(other.address)
 			, back_log(other.back_log)
 			, port_(other.port_)
@@ -212,9 +232,7 @@ namespace socket_helpers {
 			, retry(other.retry)
 			, reuse(other.reuse)
 			, ssl(other.ssl)
-			, allowed_hosts(other.allowed_hosts)
-			{
-			}
+			, allowed_hosts(other.allowed_hosts) {}
 		connection_info& operator=(const connection_info &other) {
 			address = other.address;
 			back_log = other.back_log;
@@ -228,27 +246,32 @@ namespace socket_helpers {
 			return *this;
 		}
 
-
 		std::list<std::string> validate_ssl();
 		std::list<std::string> validate();
 
 		bool get_reuse() const { return reuse; }
 		std::string get_port() const { return port_; }
+		unsigned short get_int_port() const { return str::stox<unsigned short>(port_); }
 		std::string get_address() const { return address; }
 		std::string get_endpoint_string() const {
 			return address + ":" + get_port();
 		}
 		long get_ctx_opts();
+
+		std::string to_string() const {
+			std::stringstream ss;
+			ss << "address: " << get_endpoint_string();
+			ss << ", " << ssl.to_string();
+			return ss.str();
+		}
 	};
-
-
 
 	namespace io {
 		void set_result(boost::optional<boost::system::error_code>* a, boost::system::error_code b);
 
 		struct timed_writer : public boost::enable_shared_from_this<timed_writer> {
 			boost::asio::io_service &io_service;
-			boost::posix_time::time_duration duration;
+			//boost::posix_time::time_duration duration;
 			boost::asio::deadline_timer timer;
 
 			boost::optional<boost::system::error_code> timer_result;
@@ -284,8 +307,7 @@ namespace socket_helpers {
 					if (read_result) {
 						read_result.reset();
 						return true;
-					}
-					else if (timer_result) {
+					} else if (timer_result) {
 						socket.close();
 						return false;
 					}
@@ -297,9 +319,7 @@ namespace socket_helpers {
 				if (!ec)
 					a->reset(ec);
 			}
-
 		};
-
 
 		template <typename AsyncWriteStream, typename RawSocket, typename MutableBufferSequence>
 		bool write_with_timeout(AsyncWriteStream& sock, RawSocket& rawSocket, const MutableBufferSequence& buffers, boost::posix_time::time_duration duration) {
@@ -316,8 +336,7 @@ namespace socket_helpers {
 				if (read_result) {
 					timer.cancel();
 					return true;
-				}
-				else if (timer_result) {
+				} else if (timer_result) {
 					rawSocket.close();
 					return false;
 				}
@@ -327,7 +346,6 @@ namespace socket_helpers {
 				throw boost::system::system_error(*read_result);
 			return false;
 		}
-
 
 		struct timed_reader : public boost::enable_shared_from_this<timed_reader> {
 			boost::asio::io_service &io_service;
@@ -342,8 +360,8 @@ namespace socket_helpers {
 				timer.cancel();
 			}
 
-			void start_timer(boost::posix_time::time_duration duration) {
-				timer.expires_from_now(duration);
+			void start_timer(boost::posix_time::time_duration duration_) {
+				timer.expires_from_now(duration_);
 				timer.async_wait(boost::bind(&timed_reader::set_result, shared_from_this(), &timer_result, _1));
 			}
 			void stop_timer() {
@@ -367,8 +385,7 @@ namespace socket_helpers {
 					if (write_result) {
 						write_result.reset();
 						return true;
-					}
-					else if (timer_result) {
+					} else if (timer_result) {
 						socket.close();
 						return false;
 					}
@@ -379,9 +396,7 @@ namespace socket_helpers {
 				if (!ec)
 					a->reset(ec);
 			}
-
 		};
-
 
 		template <typename AsyncReadStream, typename RawSocket, typename MutableBufferSequence>
 		bool read_with_timeout(AsyncReadStream& sock, RawSocket& rawSocket, const MutableBufferSequence& buffers, boost::posix_time::time_duration duration) {
@@ -402,11 +417,11 @@ namespace socket_helpers {
 					rawSocket.close();
 					return false;
 				} else {
-// 					if (!rawSocket.is_open()) {
-// 						timer.cancel();
-// 						rawSocket.close();
-// 						return false;
-// 					}
+					// 					if (!rawSocket.is_open()) {
+					// 						timer.cancel();
+					// 						rawSocket.close();
+					// 						return false;
+					// 					}
 				}
 			}
 

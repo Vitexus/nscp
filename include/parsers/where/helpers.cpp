@@ -1,11 +1,29 @@
-#include <strEx.h>
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include <str/xtos.hpp>
 
 #include <parsers/where/helpers.hpp>
 
 namespace parsers {
 	namespace where {
 		namespace helpers {
-
 			std::string type_to_string(value_type type) {
 				if (type == type_bool)
 					return "bool";
@@ -13,6 +31,8 @@ namespace parsers {
 					return "string";
 				if (type == type_int)
 					return "int";
+				if (type == type_float)
+					return "float";
 				if (type == type_date)
 					return "date";
 				if (type == type_size)
@@ -22,16 +42,21 @@ namespace parsers {
 				if (type == type_tbd)
 					return "tbd";
 				if (type >= type_custom)
-					return "u:" + strEx::s::xtos(type-type_custom);
+					return "u:" + str::xtos(type - type_custom);
+				if (type >= type_custom_float)
+					return "uf:" + str::xtos(type - type_custom_float);
 				if (type >= type_custom_string)
-					return "us:" + strEx::s::xtos(type-type_custom_string);
+					return "us:" + str::xtos(type - type_custom_string);
 				if (type >= type_custom_int)
-					return "ui:" + strEx::s::xtos(type-type_custom_int);
-				return "unknown:" + strEx::s::xtos(type);
+					return "ui:" + str::xtos(type - type_custom_int);
+				return "unknown:" + str::xtos(type);
 			}
 
 			bool type_is_int(value_type type) {
 				return type == type_int || type == type_bool || type == type_date || type == type_size || (type >= type_custom_int && type < type_custom_int_end);
+			}
+			bool type_is_float(value_type type) {
+				return type == type_float || type == type_int || type == type_bool || type == type_date || type == type_size || (type >= type_custom_int && type < type_custom_int_end) || (type >= type_custom_float && type < type_custom_float_end);
 			}
 			bool type_is_string(value_type type) {
 				return type == type_string || (type >= type_custom_string && type < type_custom_string_end);
@@ -74,7 +99,6 @@ namespace parsers {
 				return "?";
 			}
 
-
 			bool can_convert(value_type src, value_type dst) {
 				if (src == type_invalid || dst == type_invalid)
 					return false;
@@ -82,15 +106,31 @@ namespace parsers {
 					return false;
 				if (src == type_tbd)
 					return true;
+				if (src == type_int && dst == type_float)
+					return true;
 				if (src == type_int && dst == type_string)
 					return true;
 				if (src == type_int && dst == type_bool)
+					return true;
+				if (src == type_float && dst == type_int)
+					return true;
+				if (src == type_float && dst == type_string)
+					return true;
+				if (src == type_float && dst == type_bool)
 					return true;
 				if (src == type_string && dst == type_int)
 					return true;
 				if (src == type_bool && dst == type_int)
 					return true;
+				if (src == type_string && dst == type_float)
+					return true;
+				if (src == type_bool && dst == type_float)
+					return true;
+				if (src >= type_custom_float && src < type_custom_float_end && dst == type_float)
+					return true;
 				if (src >= type_custom_int && src < type_custom_int_end && dst == type_int)
+					return true;
+				if (src >= type_custom_string && src < type_custom_string_end && dst == type_float)
 					return true;
 				if (src >= type_custom_string && src < type_custom_string_end && dst == type_int)
 					return true;
@@ -119,9 +159,15 @@ namespace parsers {
 						return type_tbd;
 					if (lt == type_multi)
 						lt = left->infer_type(factory, rt);
-					else 
+					else
 						rt = right->infer_type(factory, lt);
 				}
+				if (lt == rt)
+					return lt;
+				if (type_is_float(lt) && type_is_int(rt))
+					rt = right->infer_type(factory, lt);
+				if (type_is_float(rt) && type_is_int(lt))
+					lt = left->infer_type(factory, rt);
 				if (lt == rt)
 					return lt;
 				if (rt == type_invalid || lt == type_invalid)
@@ -154,27 +200,26 @@ namespace parsers {
 			bool is_upper(operators op) {
 				return op == op_ge || op == op_gt;
 			}
-			
 
-			boost::tuple<long long, std::string> read_arguments(parsers::where::evaluation_context context, parsers::where::node_type subject, std::string default_unit) {
+			read_arg_type read_arguments(parsers::where::evaluation_context context, parsers::where::node_type subject, std::string default_unit) {
 				std::list<parsers::where::node_type> list = subject->get_list_value(context);
 				if (list.empty())
 					list.push_back(subject);
-				long long value;
+				long long value_int = 0;
+				double value_float = 0.0;
 				std::string unit = default_unit;
 				std::list<parsers::where::node_type>::const_iterator cit;
 				if (list.size() > 0) {
 					cit = list.begin();
-					value = (*cit)->get_int_value(context);
+					value_int = (*cit)->get_int_value(context);
+					value_float = (*cit)->get_float_value(context);
 				}
 				if (list.size() > 1) {
 					++cit;
-					unit = (*cit)->get_string_value(context);
+					unit = (*cit)->get_value(context, type_string).get_string(unit);
 				}
-				return boost::make_tuple(value, unit);
+				return boost::make_tuple(value_int, value_float, unit);
 			}
-			
 		}
 	}
 }
-

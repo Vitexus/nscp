@@ -1,97 +1,128 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
-#include <boost/noncopyable.hpp>
+/*
+ * Copyright 2004-2016 The NSClient++ Authors - https://nsclient.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include <utf8.hpp>
 #include <nscapi/nscapi_protobuf_functions.hpp>
+#include <nscapi/nscapi_protobuf.hpp>
+#include <nscapi/nscapi_protobuf_nagios.hpp>
+
+#include <str/utils.hpp>
+#include <str/xtos.hpp>
+#include <nsclient/nsclient_exception.hpp>
+
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/optional.hpp>
+
+#include <iostream>
 
 #define THROW_INVALID_SIZE(size) \
-	throw nscapi_exception(std::string("Whoops, invalid payload size: ") + strEx::s::xtos(size) + " != 1 at line " + strEx::s::xtos(__LINE__));
+	throw nsclient::nsclient_exception(std::string("Whoops, invalid payload size: ") + str::xtos(size) + " != 1 at line " + str::xtos(__LINE__));
 
 namespace nscapi {
 	namespace protobuf {
+
+		inline Plugin::Common::ResultCode gbp_status_to_gbp_nagios(Plugin::Common::Result::StatusCodeType ret) {
+			if (ret == Plugin::Common_Result_StatusCodeType_STATUS_OK)
+				return Plugin::Common_ResultCode_OK;
+			return Plugin::Common_ResultCode_UNKNOWN;
+		}
+		inline Plugin::Common::Result::StatusCodeType gbp_to_nagios_gbp_status(Plugin::Common::ResultCode ret) {
+			if (ret == Plugin::Common_ResultCode_UNKNOWN || ret == Plugin::Common_ResultCode_WARNING || ret == Plugin::Common_ResultCode_CRITICAL)
+				return Plugin::Common_Result_StatusCodeType_STATUS_ERROR;
+			return Plugin::Common_Result_StatusCodeType_STATUS_OK;
+		}
+
 		double trim_to_double(std::string s) {
 			std::string::size_type pend = s.find_first_not_of("0123456789,.-");
 			if (pend != std::string::npos)
-				s = s.substr(0,pend);
-			strEx::replace(s, ",", ".");
+				s = s.substr(0, pend);
+			str::utils::replace(s, ",", ".");
 			if (s.empty()) {
 				return 0.0;
 			}
 			try {
-				return strEx::stod(s);
+				return str::stox<double>(s);
 			} catch (...) {
 				return 0.0;
 			}
 		}
 
-		void functions::create_simple_header(Plugin::Common::Header* hdr)  {
-			hdr->set_version(Plugin::Common_Version_VERSION_1);
-			hdr->set_max_supported_version(Plugin::Common_Version_VERSION_1);
-			// @todo add additional fields here!
-		}
-
-		//////////////////////////////////////////////////////////////////////////
-
-		void functions::add_host(Plugin::Common::Header* hdr, const destination_container &dst)  {
-			::Plugin::Common::Host *host = hdr->add_hosts();
-			if (!dst.id.empty())
-				host->set_id(dst.id);
-			if (!dst.address.host.empty())
-				host->set_address(dst.address.to_string());
-			if (!dst.has_protocol())
-				host->set_protocol(dst.get_protocol());
-			if (!dst.comment.empty())
-				host->set_comment(dst.comment);
-			BOOST_FOREACH(const std::string &t, dst.tags) {
-				host->add_tags(t);
-			}
-			BOOST_FOREACH(const destination_container::data_map::value_type &kvp, dst.data) {
-				::Plugin::Common_KeyValue* x = host->add_metadata();
-				x->set_key(kvp.first);
-				x->set_value(kvp.second);
-			}
-		}
-
-		bool functions::parse_destination(const ::Plugin::Common_Header &header, const std::string tag, destination_container &data, const bool expand_meta) {
-			for (int i=0;i<header.hosts_size();++i) {
-				const ::Plugin::Common::Host &host = header.hosts(i);
-				if (host.id() == tag) {
-					data.id = tag;
-					if (!host.address().empty())
-						data.address.import(net::parse(host.address()));
-					if (!host.comment().empty())
-						data.comment = host.comment();
-					if (expand_meta) {
-						for(int j=0;j<host.tags_size(); ++j) {
-							data.tags.insert(host.tags(j));
-						}
-						for(int j=0;j<host.metadata_size(); ++j) {
-							data.data[host.metadata(j).key()] = host.metadata(j).value();
-						}
-					}
-					return true;
+		std::string functions::query_data_to_nagios_string(const Plugin::QueryResponseMessage &message, std::size_t max_length) {
+			std::stringstream ss;
+			for (int i = 0; i < message.payload_size(); ++i) {
+				Plugin::QueryResponseMessage::Response p = message.payload(i);
+				for (int j = 0; j < p.lines_size(); ++j) {
+					Plugin::QueryResponseMessage::Response::Line l = p.lines(j);
+					if (l.perf_size() > 0)
+						ss << l.message() << "|" << build_performance_data(l, max_length);
+					else
+						ss << l.message();
 				}
 			}
-			return false;
+			return ss.str();
+		}
+
+		void functions::set_response_good(::Plugin::QueryResponseMessage_Response &response, std::string message) {
+			response.set_result(::Plugin::Common_ResultCode_OK);
+			response.add_lines()->set_message(message);
+		}
+
+		void functions::set_response_good_wdata(::Plugin::QueryResponseMessage_Response &response, std::string message) {
+			response.set_result(::Plugin::Common_ResultCode_OK);
+			response.set_data(message);
+			response.add_lines()->set_message("see data segment");
+		}
+
+		void functions::set_response_good_wdata(::Plugin::SubmitResponseMessage_Response &response, std::string message) {
+			response.mutable_result()->set_code(::Plugin::Common_Result_StatusCodeType_STATUS_OK);
+			response.mutable_result()->set_data(message);
+			response.mutable_result()->set_message("see data segment");
+		}
+
+		void functions::set_response_good_wdata(::Plugin::ExecuteResponseMessage_Response &response, std::string message) {
+			response.set_result(::Plugin::Common_ResultCode_OK);
+			response.set_data(message);
+			response.set_message("see data segment");
+			if (!response.has_command())
+				response.set_command("unknown");
+		}
+
+		void functions::set_response_good(::Plugin::SubmitResponseMessage_Response &response, std::string message) {
+			response.mutable_result()->set_code(::Plugin::Common_Result_StatusCodeType_STATUS_OK);
+			response.mutable_result()->set_message(message);
+			if (!response.has_command())
+				response.set_command("unknown");
+		}
+
+		void functions::set_response_good(::Plugin::ExecuteResponseMessage_Response &response, std::string message) {
+			response.set_result(::Plugin::Common_ResultCode_OK);
+			response.set_message(message);
+			if (!response.has_command())
+				response.set_command("unknown");
+		}
+
+		std::string functions::query_data_to_nagios_string(const Plugin::QueryResponseMessage::Response &p, std::size_t max_length) {
+			std::stringstream ss;
+			for (int j = 0; j < p.lines_size(); ++j) {
+				Plugin::QueryResponseMessage::Response::Line l = p.lines(j);
+				if (l.perf_size() > 0)
+					ss << l.message() << "|" << build_performance_data(l, max_length);
+				else
+					ss << l.message();
+			}
+			return ss.str();
 		}
 
 		//////////////////////////////////////////////////////////////////////////
@@ -102,7 +133,7 @@ namespace nscapi {
 			Plugin::SubmitRequestMessage request;
 			request.mutable_header()->CopyFrom(response.header());
 			request.mutable_header()->set_source_id(request.mutable_header()->recipient_id());
-			for (int i=0;i<request.mutable_header()->hosts_size();i++) {
+			for (int i = 0; i < request.mutable_header()->hosts_size(); i++) {
 				Plugin::Common_Host *host = request.mutable_header()->mutable_hosts(i);
 				if (host->id() == request.mutable_header()->recipient_id()) {
 					host->clear_address();
@@ -115,7 +146,7 @@ namespace nscapi {
 			if (!source.empty()) {
 				request.mutable_header()->set_sender_id(source);
 				bool found = false;
-				for (int i=0;i<request.mutable_header()->hosts_size();i++) {
+				for (int i = 0; i < request.mutable_header()->hosts_size(); i++) {
 					Plugin::Common_Host *host = request.mutable_header()->mutable_hosts(i);
 					if (host->id() == source) {
 						host->set_address(source);
@@ -128,7 +159,7 @@ namespace nscapi {
 					host->set_address(source);
 				}
 			}
-			for (int i=0;i<response.payload_size();++i) {
+			for (int i = 0; i < response.payload_size(); ++i) {
 				request.add_payload()->CopyFrom(response.payload(i));
 				if (!alias.empty())
 					request.mutable_payload(i)->set_alias(alias);
@@ -141,7 +172,7 @@ namespace nscapi {
 			exec_response_message.ParseFromString(data);
 			Plugin::QueryResponseMessage query_response_message;
 			query_response_message.mutable_header()->CopyFrom(exec_response_message.header());
-			for (int i=0;i<exec_response_message.payload_size();++i) {
+			for (int i = 0; i < exec_response_message.payload_size(); ++i) {
 				Plugin::ExecuteResponseMessage::Response p = exec_response_message.payload(i);
 				append_simple_query_response_payload(query_response_message.add_payload(), p.command(), p.result(), p.message());
 			}
@@ -152,9 +183,9 @@ namespace nscapi {
 			submit_response_message.ParseFromString(data);
 			Plugin::QueryResponseMessage query_response_message;
 			query_response_message.mutable_header()->CopyFrom(submit_response_message.header());
-			for (int i=0;i<submit_response_message.payload_size();++i) {
+			for (int i = 0; i < submit_response_message.payload_size(); ++i) {
 				Plugin::SubmitResponseMessage::Response p = submit_response_message.payload(i);
-				append_simple_query_response_payload(query_response_message.add_payload(), p.command(), gbp_status_to_gbp_nagios(p.status().status()), p.status().message(), "");
+				append_simple_query_response_payload(query_response_message.add_payload(), p.command(), gbp_status_to_gbp_nagios(p.result().code()), p.result().message(), "");
 			}
 			data = query_response_message.SerializeAsString();
 		}
@@ -164,25 +195,9 @@ namespace nscapi {
 			submit_response_message.ParseFromString(data);
 			Plugin::ExecuteResponseMessage exec_response_message;
 			exec_response_message.mutable_header()->CopyFrom(submit_response_message.header());
-			for (int i=0;i<submit_response_message.payload_size();++i) {
+			for (int i = 0; i < submit_response_message.payload_size(); ++i) {
 				Plugin::SubmitResponseMessage::Response p = submit_response_message.payload(i);
-				append_simple_exec_response_payload(exec_response_message.add_payload(), p.command(), gbp_status_to_gbp_nagios(p.status().status()), p.status().message());
-			}
-			data = exec_response_message.SerializeAsString();
-		}
-		void functions::make_exec_from_query(std::string &data) {
-			Plugin::QueryResponseMessage query_response_message;
-			query_response_message.ParseFromString(data);
-			Plugin::ExecuteResponseMessage exec_response_message;
-			exec_response_message.mutable_header()->CopyFrom(query_response_message.header());
-			for (int i=0;i<query_response_message.payload_size();++i) {
-				Plugin::QueryResponseMessage::Response p = query_response_message.payload(i);
-				std::string s = build_performance_data(p);
-				if (!s.empty())
-					s = p.message() + "|" + s;
-				else
-					s = p.message();
-				append_simple_exec_response_payload(exec_response_message.add_payload(), p.command(), p.result(), s);
+				append_simple_exec_response_payload(exec_response_message.add_payload(), p.command(), gbp_status_to_gbp_nagios(p.result().code()), p.result().message());
 			}
 			data = exec_response_message.SerializeAsString();
 		}
@@ -194,31 +209,29 @@ namespace nscapi {
 
 		void functions::create_simple_submit_request(std::string channel, std::string command, NSCAPI::nagiosReturn ret, std::string msg, std::string perf, std::string &buffer) {
 			Plugin::SubmitRequestMessage message;
-			create_simple_header(message.mutable_header());
 			message.set_channel(channel);
 
 			Plugin::QueryResponseMessage::Response *payload = message.add_payload();
 			payload->set_command(command);
-			payload->set_message(msg);
 			payload->set_result(nagios_status_to_gpb(ret));
+			::Plugin::QueryResponseMessage_Response_Line* l = payload->add_lines();
+			l->set_message(msg);
 			if (!perf.empty())
-				parse_performance_data(payload, perf);
+				parse_performance_data(l, perf);
 
 			message.SerializeToString(&buffer);
 		}
 
-		void functions::create_simple_submit_response(const std::string channel, const std::string command, const NSCAPI::nagiosReturn ret, const std::string msg, std::string &buffer) {
+		void functions::create_simple_submit_response_ok(const std::string channel, const std::string command, const std::string msg, std::string &buffer) {
 			Plugin::SubmitResponseMessage message;
-			create_simple_header(message.mutable_header());
-			//message.set_channel(to_string(channel));
 
 			Plugin::SubmitResponseMessage::Response *payload = message.add_payload();
 			payload->set_command(command);
-			payload->mutable_status()->set_message(msg);
-			payload->mutable_status()->set_status(status_to_gpb(ret));
+			payload->mutable_result()->set_message(msg);
+			payload->mutable_result()->set_code(Plugin::Common_Result_StatusCodeType_STATUS_OK);
 			message.SerializeToString(&buffer);
 		}
-		NSCAPI::errorReturn functions::parse_simple_submit_response(const std::string &request, std::string &response) {
+		bool functions::parse_simple_submit_response(const std::string &request, std::string &response) {
 			Plugin::SubmitResponseMessage message;
 			message.ParseFromString(request);
 
@@ -226,94 +239,51 @@ namespace nscapi {
 				THROW_INVALID_SIZE(message.payload_size());
 			}
 			::Plugin::SubmitResponseMessage::Response payload = message.payload().Get(0);
-			response = payload.mutable_status()->message();
-			return gbp_to_status(payload.mutable_status()->status());
+			response = payload.mutable_result()->message();
+			return payload.mutable_result()->code() == Plugin::Common_Result_StatusCodeType_STATUS_OK;
 		}
 		void functions::create_simple_query_request(std::string command, std::list<std::string> arguments, std::string &buffer) {
 			Plugin::QueryRequestMessage message;
-			create_simple_header(message.mutable_header());
 
 			Plugin::QueryRequestMessage::Request *payload = message.add_payload();
-			payload->set_command(utf8::cvt<std::string>(command));
+			payload->set_command(command);
 
 			BOOST_FOREACH(std::string s, arguments) {
-				payload->add_arguments(utf8::cvt<std::string>(s));
+				payload->add_arguments(s);
 			}
 
 			message.SerializeToString(&buffer);
 		}
 		void functions::create_simple_query_request(std::string command, std::vector<std::string> arguments, std::string &buffer) {
 			Plugin::QueryRequestMessage message;
-			create_simple_header(message.mutable_header());
 
 			Plugin::QueryRequestMessage::Request *payload = message.add_payload();
-			payload->set_command(utf8::cvt<std::string>(command));
+			payload->set_command(command);
 
 			BOOST_FOREACH(std::string s, arguments) {
-				payload->add_arguments(utf8::cvt<std::string>(s));
+				payload->add_arguments(s);
 			}
 
 			message.SerializeToString(&buffer);
 		}
 
-		NSCAPI::nagiosReturn functions::create_simple_query_response_unknown(std::string command, std::string msg, std::string &buffer) {
-			Plugin::QueryResponseMessage message;
-			create_simple_header(message.mutable_header());
-
-			::Plugin::QueryResponseMessage::Response *payload = message.add_payload();
-			payload->set_command(command);
-			payload->set_message(msg);
-			payload->set_result(Plugin::Common_ResultCode_UNKNOWN);
-
-			message.SerializeToString(&buffer);
-			return NSCAPI::returnUNKNOWN;
-		}
-		NSCAPI::nagiosReturn functions::create_simple_query_response(std::string command, NSCAPI::nagiosReturn ret, std::string msg, std::string perf, std::string &buffer) {
-			Plugin::QueryResponseMessage message;
-			create_simple_header(message.mutable_header());
-
-			append_simple_query_response_payload(message.add_payload(), command, ret, msg, perf);
-
-			message.SerializeToString(&buffer);
-			return ret;
-		}
-		NSCAPI::nagiosReturn functions::create_simple_query_response(std::string command, NSCAPI::nagiosReturn ret, std::string msg, std::string &buffer) {
-			Plugin::QueryResponseMessage message;
-			create_simple_header(message.mutable_header());
-
-			::Plugin::QueryResponseMessage::Response *payload = message.add_payload();
-			payload->set_command(utf8::cvt<std::string>(command));
-			payload->set_message(utf8::cvt<std::string>(msg));
-			payload->set_result(nagios_status_to_gpb(ret));
-
-			message.SerializeToString(&buffer);
-			return ret;
-		}
-
-		void functions::append_simple_submit_request_payload(Plugin::QueryResponseMessage::Response *payload, std::string command, NSCAPI::nagiosReturn ret, std::string msg, std::string perf) {
-			payload->set_command(command);
-			payload->set_message(msg);
-			payload->set_result(nagios_status_to_gpb(ret));
-			if (!perf.empty())
-				parse_performance_data(payload, perf);
-		}
-
 		void functions::append_simple_query_response_payload(Plugin::QueryResponseMessage::Response *payload, std::string command, NSCAPI::nagiosReturn ret, std::string msg, std::string perf) {
 			payload->set_command(command);
-			payload->set_message(msg);
 			payload->set_result(nagios_status_to_gpb(ret));
+			Plugin::QueryResponseMessage::Response::Line *l = payload->add_lines();
+			l->set_message(msg);
 			if (!perf.empty())
-				parse_performance_data(payload, perf);
+				parse_performance_data(l, perf);
 		}
 		void functions::append_simple_exec_response_payload(Plugin::ExecuteResponseMessage::Response *payload, std::string command, int ret, std::string msg) {
 			payload->set_command(command);
 			payload->set_message(msg);
 			payload->set_result(nagios_status_to_gpb(ret));
 		}
-		void functions::append_simple_submit_response_payload(Plugin::SubmitResponseMessage::Response *payload, std::string command, int ret, std::string msg) {
+		void functions::append_simple_submit_response_payload(Plugin::SubmitResponseMessage::Response *payload, std::string command, bool result, std::string msg) {
 			payload->set_command(command);
-			payload->mutable_status()->set_status(status_to_gpb(ret));
-			payload->mutable_status()->set_message(msg);
+			payload->mutable_result()->set_code(result? Plugin::Common_Result_StatusCodeType_STATUS_OK:Plugin::Common_Result_StatusCodeType_STATUS_ERROR);
+			payload->mutable_result()->set_message(msg);
 		}
 
 		void functions::append_simple_query_request_payload(Plugin::QueryRequestMessage::Request *payload, std::string command, std::vector<std::string> arguments) {
@@ -331,7 +301,6 @@ namespace nscapi {
 		}
 
 		void functions::parse_simple_query_request(std::list<std::string> &args, const std::string &request) {
-			decoded_simple_command_data data;
 
 			Plugin::QueryRequestMessage message;
 			message.ParseFromString(request);
@@ -340,71 +309,44 @@ namespace nscapi {
 				THROW_INVALID_SIZE(message.payload_size());
 			}
 			::Plugin::QueryRequestMessage::Request payload = message.payload().Get(0);
-			for (int i=0;i<payload.arguments_size();i++) {
+			for (int i = 0; i < payload.arguments_size(); i++) {
 				args.push_back(payload.arguments(i));
 			}
 		}
-		functions::decoded_simple_command_data functions::parse_simple_query_request(const std::string command, const std::string &request) {
-			decoded_simple_command_data data;
-
-			data.command = command;
-			Plugin::QueryRequestMessage message;
-			message.ParseFromString(request);
-
-			if (message.payload_size() != 1) {
-				THROW_INVALID_SIZE(message.payload_size());
-			}
-			::Plugin::QueryRequestMessage::Request payload = message.payload().Get(0);
-			for (int i=0;i<payload.arguments_size();i++) {
-				data.args.push_back(payload.arguments(i));
-			}
-			return data;
-		}
-		functions::decoded_simple_command_data functions::parse_simple_query_request(const char* char_command, const std::string &request) {
-			decoded_simple_command_data data;
-
-			data.command = char_command;
-			Plugin::QueryRequestMessage message;
-			message.ParseFromString(request);
-
-			if (message.payload_size() != 1) {
-				THROW_INVALID_SIZE(message.payload_size());
-			}
-			::Plugin::QueryRequestMessage::Request payload = message.payload().Get(0);
-			for (int i=0;i<payload.arguments_size();i++) {
-				data.args.push_back(payload.arguments(i));
-			}
-			return data;
-		}
-		functions::decoded_simple_command_data functions::parse_simple_query_request(const ::Plugin::QueryRequestMessage::Request &payload) {
-			decoded_simple_command_data data;
-			data.command = payload.command();
-			for (int i=0;i<payload.arguments_size();i++) {
-				data.args.push_back(payload.arguments(i));
-			}
-			return data;
-		}
-		int functions::parse_simple_query_response(const std::string &response, std::string &msg, std::string &perf) {
+		int functions::parse_simple_query_response(const std::string &response, std::string &msg, std::string &perf, std::size_t max_length) {
 			Plugin::QueryResponseMessage message;
 			message.ParseFromString(response);
 
-			if (message.payload_size() == 0) {
-				return NSCAPI::returnUNKNOWN;
-			} else if (message.payload_size() > 1) {
+			if (message.payload_size() == 0 || message.payload(0).lines_size() == 0) {
+				return NSCAPI::query_return_codes::returnUNKNOWN;
+			} else if (message.payload_size() > 1 && message.payload(0).lines_size() > 1) {
 				THROW_INVALID_SIZE(message.payload_size());
 			}
 
 			Plugin::QueryResponseMessage::Response payload = message.payload().Get(0);
-			msg = utf8::cvt<std::string>(payload.message());
-			perf = utf8::cvt<std::string>(build_performance_data(payload));
+			BOOST_FOREACH(const Plugin::QueryResponseMessage::Response::Line &l, payload.lines()) {
+				msg += l.message();
+				std::string tmpPerf = build_performance_data(l, max_length);
+				if (!tmpPerf.empty()) {
+					if (perf.empty()) {
+						perf = tmpPerf;
+					} else {
+						perf += " " + tmpPerf;
+					}
+				}
+			}
 			return gbp_to_nagios_status(payload.result());
 		}
 
 		//////////////////////////////////////////////////////////////////////////
 
-		void functions::create_simple_exec_request(const std::string &command, const std::list<std::string> & args, std::string &request) {
+		void functions::create_simple_exec_request(const std::string &module, const std::string &command, const std::list<std::string> & args, std::string &request) {
 			Plugin::ExecuteRequestMessage message;
-			create_simple_header(message.mutable_header());
+			if (!module.empty()) {
+				::Plugin::Common_KeyValue* kvp = message.mutable_header()->add_metadata();
+				kvp->set_key("target");
+				kvp->set_value(module);
+			}
 
 			Plugin::ExecuteRequestMessage::Request *payload = message.add_payload();
 			payload->set_command(command);
@@ -415,9 +357,13 @@ namespace nscapi {
 			message.SerializeToString(&request);
 		}
 
-		void functions::create_simple_exec_request(const std::string &command, const std::vector<std::string> & args, std::string &request) {
+		void functions::create_simple_exec_request(const std::string &module, const std::string &command, const std::vector<std::string> & args, std::string &request) {
 			Plugin::ExecuteRequestMessage message;
-			create_simple_header(message.mutable_header());
+			if (!module.empty()) {
+				::Plugin::Common_KeyValue* kvp = message.mutable_header()->add_metadata();
+				kvp->set_key("target");
+				kvp->set_value(module);
+			}
 
 			Plugin::ExecuteRequestMessage::Request *payload = message.add_payload();
 			payload->set_command(command);
@@ -432,46 +378,17 @@ namespace nscapi {
 			Plugin::ExecuteResponseMessage message;
 			message.ParseFromString(response);
 
-			for (int i=0;i<message.payload_size(); i++) {
-				result.push_back(utf8::cvt<std::string>(message.payload(i).message()));
-				int r=gbp_to_nagios_status(message.payload(i).result());
+			for (int i = 0; i < message.payload_size(); i++) {
+				result.push_back(message.payload(i).message());
+				int r = gbp_to_nagios_status(message.payload(i).result());
 				if (r > ret)
 					ret = r;
 			}
 			return ret;
 		}
-		functions::decoded_simple_command_data functions::parse_simple_exec_request(const std::string &request) {
-			Plugin::ExecuteRequestMessage message;
-			message.ParseFromString(request);
 
-			return parse_simple_exec_request(message);
-		}
-		functions::decoded_simple_command_data functions::parse_simple_exec_request(const Plugin::ExecuteRequestMessage &message) {
-			decoded_simple_command_data data;
-			if (message.has_header())
-				data.target = message.header().recipient_id();
-
-			if (message.payload_size() != 1) {
-				THROW_INVALID_SIZE(message.payload_size());
-			}
-			Plugin::ExecuteRequestMessage::Request payload = message.payload().Get(0);
-			data.command = payload.command();
-			for (int i=0;i<payload.arguments_size();i++) {
-				data.args.push_back(payload.arguments(i));
-			}
-			return data;
-		}
-		functions::decoded_simple_command_data functions::parse_simple_exec_request_payload(const Plugin::ExecuteRequestMessage::Request &payload) {
-			decoded_simple_command_data data;
-			data.command = payload.command();
-			for (int i=0;i<payload.arguments_size();i++) {
-				data.args.push_back(payload.arguments(i));
-			}
-			return data;
-		}
 		int functions::create_simple_exec_response(const std::string &command, NSCAPI::nagiosReturn ret, const std::string result, std::string &response) {
 			Plugin::ExecuteResponseMessage message;
-			create_simple_header(message.mutable_header());
 
 			Plugin::ExecuteResponseMessage::Response *payload = message.add_payload();
 			payload->set_command(command);
@@ -479,19 +396,18 @@ namespace nscapi {
 
 			payload->set_result(nagios_status_to_gpb(ret));
 			message.SerializeToString(&response);
-			return ret;
+			return NSCAPI::cmd_return_codes::isSuccess;
 		}
 		int functions::create_simple_exec_response_unknown(std::string command, std::string result, std::string &response) {
 			Plugin::ExecuteResponseMessage message;
-			create_simple_header(message.mutable_header());
 
 			Plugin::ExecuteResponseMessage::Response *payload = message.add_payload();
 			payload->set_command(command);
 			payload->set_message(result);
 
-			payload->set_result(nagios_status_to_gpb(NSCAPI::returnUNKNOWN));
+			payload->set_result(nagios_status_to_gpb(NSCAPI::exec_return_codes::returnERROR));
 			message.SerializeToString(&response);
-			return NSCAPI::returnUNKNOWN;
+			return NSCAPI::cmd_return_codes::isSuccess;
 		}
 
 		//////////////////////////////////////////////////////////////////////////
@@ -502,25 +418,25 @@ namespace nscapi {
 			if (unit[0] == 'K')
 				return 1024ll;
 			if (unit[0] == 'M')
-				return 1024ll*1024ll;
+				return 1024ll * 1024ll;
 			if (unit[0] == 'G')
-				return 1024ll*1024ll*1024ll;
+				return 1024ll * 1024ll * 1024ll;
 			if (unit[0] == 'T')
-				return 1024ll*1024ll*1024ll*1024ll;
+				return 1024ll * 1024ll * 1024ll * 1024ll;
 			return 1;
 		}
 		std::string functions::extract_perf_value_as_string(const ::Plugin::Common_PerformanceData &perf) {
 			if (perf.has_int_value()) {
 				const Plugin::Common::PerformanceData::IntValue &val = perf.int_value();
 				if (val.has_unit())
-					return strEx::s::xtos_non_sci(val.value()*get_multiplier(val.unit()));
-				return strEx::s::xtos_non_sci(val.value());
+					return str::xtos_non_sci(val.value()*get_multiplier(val.unit()));
+				return str::xtos_non_sci(val.value());
 			} else if (perf.has_bool_value()) {
 				const Plugin::Common::PerformanceData::BoolValue &val = perf.bool_value();
-				return val.value()?"true":"false";
+				return val.value() ? "true" : "false";
 			} else if (perf.has_float_value()) {
 				const Plugin::Common::PerformanceData::FloatValue &val = perf.float_value();
-				return strEx::s::xtos_non_sci(val.value()*get_multiplier(val.unit()));
+				return str::xtos_non_sci(val.value()*get_multiplier(val.unit()));
 			} else if (perf.has_string_value()) {
 				const Plugin::Common::PerformanceData::StringValue& val = perf.string_value();
 				return val.value();
@@ -535,7 +451,7 @@ namespace nscapi {
 				return val.value();
 			} else if (perf.has_bool_value()) {
 				const Plugin::Common::PerformanceData::BoolValue &val = perf.bool_value();
-				return val.value()?1:0;
+				return val.value() ? 1 : 0;
 			} else if (perf.has_float_value()) {
 				const Plugin::Common::PerformanceData::FloatValue &val = perf.float_value();
 				if (val.has_unit())
@@ -550,20 +466,20 @@ namespace nscapi {
 			if (perf.has_int_value()) {
 				const Plugin::Common::PerformanceData::IntValue &val = perf.int_value();
 				if (val.has_unit())
-					return strEx::s::xtos_non_sci(val.maximum()*get_multiplier(val.unit()));
-				return strEx::s::xtos_non_sci(val.maximum());
+					return str::xtos_non_sci(val.maximum()*get_multiplier(val.unit()));
+				return str::xtos_non_sci(val.maximum());
 			} else if (perf.has_bool_value() || perf.has_string_value()) {
 				return "";
 			} else if (perf.has_float_value()) {
 				const Plugin::Common::PerformanceData::FloatValue &val = perf.float_value();
 				if (val.has_unit())
-					return strEx::s::xtos_non_sci(val.maximum()*get_multiplier(val.unit()));
-				return strEx::s::xtos_non_sci(val.maximum());
+					return str::xtos_non_sci(val.maximum()*get_multiplier(val.unit()));
+				return str::xtos_non_sci(val.maximum());
 			}
 			return "unknown";
 		}
 
-		void functions::parse_performance_data(Plugin::QueryResponseMessage::Response *payload, const std::string &perff) {
+		void functions::parse_performance_data(Plugin::QueryResponseMessage::Response::Line *payload, const std::string &perff) {
 			std::string perf = perff;
 			// TODO: make this work with const!
 
@@ -581,7 +497,7 @@ namespace nscapi {
 				if (p != 0)
 					perf = perf.substr(p);
 				if (perf[0] == perf_lable_enclosure[0]) {
-					p = perf.find(perf_lable_enclosure[0], 1)+1;
+					p = perf.find(perf_lable_enclosure[0], 1) + 1;
 					if (p == std::string::npos)
 						return;
 				}
@@ -601,27 +517,25 @@ namespace nscapi {
 						perf = perf.substr(p);
 				}
 				std::vector<std::string> items;
-				strEx::split(items, chunk, perf_item_splitter);
+				str::utils::split(items, chunk, perf_item_splitter);
 				if (items.size() < 1) {
 					Plugin::Common::PerformanceData* perfData = payload->add_perf();
-					perfData->set_type(Plugin::Common_DataType_STRING);
-					std::pair<std::string,std::string> fitem = strEx::split("", perf_equal_sign);
+					std::pair<std::string, std::string> fitem = str::utils::split2("", perf_equal_sign);
 					perfData->set_alias("invalid");
 					Plugin::Common_PerformanceData_StringValue* stringPerfData = perfData->mutable_string_value();
 					stringPerfData->set_value("invalid performance data");
 					break;
 				}
 
-				std::pair<std::string,std::string> fitem = strEx::split(items[0], perf_equal_sign);
+				std::pair<std::string, std::string> fitem = str::utils::split2(items[0], perf_equal_sign);
 				std::string alias = fitem.first;
-				if (alias.size() > 0 && alias[0] == perf_lable_enclosure[0] && alias[alias.size()-1] == perf_lable_enclosure[0])
-					alias = alias.substr(1, alias.size()-2);
+				if (alias.size() > 0 && alias[0] == perf_lable_enclosure[0] && alias[alias.size() - 1] == perf_lable_enclosure[0])
+					alias = alias.substr(1, alias.size() - 2);
 
 				if (alias.empty())
 					continue;
 				Plugin::Common::PerformanceData* perfData = payload->add_perf();
-				perfData->set_type(Plugin::Common_DataType_FLOAT);
-				perfData->set_alias(utf8::cvt<std::string>(alias));
+				perfData->set_alias(alias);
 				Plugin::Common_PerformanceData_FloatValue* floatPerfData = perfData->mutable_float_value();
 
 				std::string::size_type pstart = fitem.second.find_first_of(perf_valid_number);
@@ -635,8 +549,8 @@ namespace nscapi {
 				if (pend == std::string::npos) {
 					floatPerfData->set_value(trim_to_double(fitem.second));
 				} else {
-					floatPerfData->set_value(trim_to_double(fitem.second.substr(0,pend)));
-					floatPerfData->set_unit(utf8::cvt<std::string>(fitem.second.substr(pend)));
+					floatPerfData->set_value(trim_to_double(fitem.second.substr(0, pend)));
+					floatPerfData->set_unit(fitem.second.substr(pend));
 				}
 				if (items.size() >= 2 && items[1].size() > 0)
 					floatPerfData->set_warning(trim_to_double(items[1]));
@@ -649,200 +563,287 @@ namespace nscapi {
 			}
 		}
 
-		std::string functions::build_performance_data(Plugin::QueryResponseMessage::Response const &payload) {
-			std::stringstream ss;
-			ss.precision(5);
+		void parse_float_perf_value(std::stringstream &ss, const Plugin::Common_PerformanceData_FloatValue &val) {
+			ss << str::xtos_non_sci(val.value());
+			if (val.has_unit())
+				ss << val.unit();
+			if (!val.has_warning() && !val.has_critical() && !val.has_minimum() && !val.has_maximum()) {
+				return;
+			}
+			ss << ";";
+			if (val.has_warning())
+				ss << str::xtos_non_sci(val.warning());
+			if (!val.has_critical() && !val.has_minimum() && !val.has_maximum()) {
+				return;
+			}
+			ss << ";";
+			if (val.has_critical())
+				ss << str::xtos_non_sci(val.critical());
+			if (!val.has_minimum() && !val.has_maximum()) {
+				return;
+			}
+			ss << ";";
+			if (val.has_minimum())
+				ss << str::xtos_non_sci(val.minimum());
+			if (!val.has_maximum()) {
+				return;
+			}
+			ss << ";";
+			if (val.has_maximum())
+				ss << str::xtos_non_sci(val.maximum());
+			return;
+		}
+
+		void parse_int_perf_value(std::stringstream &ss, const Plugin::Common_PerformanceData_IntValue &val) {
+			ss << val.value();
+			if (val.has_unit())
+				ss << val.unit();
+			if (!val.has_warning() && !val.has_critical() && !val.has_minimum() && !val.has_maximum()) {
+				return;
+			}
+			ss << ";";
+			if (val.has_warning())
+				ss << val.warning();
+			if (!val.has_critical() && !val.has_minimum() && !val.has_maximum()) {
+				return;
+			}
+			ss << ";";
+			if (val.has_critical())
+				ss << val.critical();
+			if (!val.has_minimum() && !val.has_maximum()) {
+				return;
+			}
+			ss << ";";
+			if (val.has_minimum())
+				ss << val.minimum();
+			if (!val.has_maximum()) {
+				return;
+			}
+			ss << ";";
+			if (val.has_maximum())
+				ss << val.maximum();
+			return;
+		}
+
+		std::string functions::build_performance_data(Plugin::QueryResponseMessage::Response::Line const &payload, std::size_t len) {
+			std::string ret;
 
 			bool first = true;
-			for (int i=0;i<payload.perf_size();i++) {
+			for (int i = 0; i < payload.perf_size(); i++) {
+				std::stringstream ss;
+				ss.precision(5);
 				Plugin::Common::PerformanceData perfData = payload.perf(i);
 				if (!first)
 					ss << " ";
 				first = false;
 				ss << '\'' << perfData.alias() << "'=";
 				if (perfData.has_float_value()) {
-					Plugin::Common_PerformanceData_FloatValue fval = perfData.float_value();
-
-					ss << strEx::s::xtos_non_sci(fval.value());
-					if (fval.has_unit())
-						ss << fval.unit();
-					if (!fval.has_warning() && !fval.has_critical() && !fval.has_minimum() && !fval.has_maximum())
-						continue;
-					ss << ";";
-					if (fval.has_warning())
-						ss << strEx::s::xtos_non_sci(fval.warning());
-					if (!fval.has_critical() && !fval.has_minimum() && !fval.has_maximum())
-						continue;
-					ss << ";";
-					if (fval.has_critical())
-						ss << strEx::s::xtos_non_sci(fval.critical());
-					if (!fval.has_minimum() && !fval.has_maximum())
-						continue;
-					ss << ";";
-					if (fval.has_minimum())
-						ss << strEx::s::xtos_non_sci(fval.minimum());
-					if (!fval.has_maximum())
-						continue;
-					ss << ";";
-					if (fval.has_maximum())
-						ss << strEx::s::xtos_non_sci(fval.maximum());
+					parse_float_perf_value(ss, perfData.float_value());
 				} else if (perfData.has_int_value()) {
-					Plugin::Common_PerformanceData_IntValue fval = perfData.int_value();
-					ss << fval.value();
-					if (fval.has_unit())
-						ss << fval.unit();
-					if (!fval.has_warning() && !fval.has_critical() && !fval.has_minimum() && !fval.has_maximum())
-						continue;
-					ss << ";";
-					if (fval.has_warning())
-						ss << fval.warning();
-					if (!fval.has_critical() && !fval.has_minimum() && !fval.has_maximum())
-						continue;
-					ss << ";";
-					if (fval.has_critical())
-						ss << fval.critical();
-					if (!fval.has_minimum() && !fval.has_maximum())
-						continue;
-					ss << ";";
-					if (fval.has_minimum())
-						ss << fval.minimum();
-					if (!fval.has_maximum())
-						continue;
-					ss << ";";
-					if (fval.has_maximum())
-						ss << fval.maximum();
+					parse_int_perf_value(ss, perfData.int_value());
+				}
+				std::string tmp = ss.str();
+				if (len == no_truncation || ret.length() + tmp.length() <= len) {
+					ret += tmp;
 				}
 			}
-			return ss.str();
+			return ret;
 		}
 
-		Plugin::Common::ResultCode functions::nagios_status_to_gpb(int ret)
-		{
-			if (ret == NSCAPI::returnOK)
+		Plugin::Common::ResultCode functions::nagios_status_to_gpb(int ret) {
+			if (ret == NSCAPI::query_return_codes::returnOK)
 				return Plugin::Common_ResultCode_OK;
-			if (ret == NSCAPI::returnWARN)
+			if (ret == NSCAPI::query_return_codes::returnWARN)
 				return Plugin::Common_ResultCode_WARNING;
-			if (ret == NSCAPI::returnCRIT)
+			if (ret == NSCAPI::query_return_codes::returnCRIT)
 				return Plugin::Common_ResultCode_CRITICAL;
 			return Plugin::Common_ResultCode_UNKNOWN;
 		}
 
-		int functions::gbp_to_nagios_status(Plugin::Common::ResultCode ret)
-		{
+		int functions::gbp_to_nagios_status(Plugin::Common::ResultCode ret) {
 			if (ret == Plugin::Common_ResultCode_OK)
-				return NSCAPI::returnOK;
+				return NSCAPI::query_return_codes::returnOK;
 			if (ret == Plugin::Common_ResultCode_WARNING)
-				return NSCAPI::returnWARN;
+				return NSCAPI::query_return_codes::returnWARN;
 			if (ret == Plugin::Common_ResultCode_CRITICAL)
-				return NSCAPI::returnCRIT;
-			return NSCAPI::returnUNKNOWN;
+				return NSCAPI::query_return_codes::returnCRIT;
+			return NSCAPI::query_return_codes::returnUNKNOWN;
 		}
 
-		Plugin::Common::ResultCode functions::parse_nagios(const std::string &status)
-		{
+		void functions::set_response_bad(::Plugin::QueryResponseMessage_Response &response, std::string message) {
+			response.set_result(Plugin::Common_ResultCode_UNKNOWN);
+			response.add_lines()->set_message(message);
+			if (!response.has_command())
+				response.set_command("unknown");
+		}
+
+		void functions::set_response_bad(::Plugin::SubmitResponseMessage::Response &response, std::string message) {
+			response.mutable_result()->set_code(::Plugin::Common_Result_StatusCodeType_STATUS_ERROR);
+			response.mutable_result()->set_message(message);
+			if (!response.has_command())
+				response.set_command("unknown");
+		}
+
+		void functions::set_response_bad(::Plugin::ExecuteResponseMessage::Response &response, std::string message) {
+			response.set_result(Plugin::Common_ResultCode_UNKNOWN);
+			response.set_message(message);
+			if (!response.has_command())
+				response.set_command("unknown");
+		}
+
+		Plugin::Common::ResultCode functions::parse_nagios(const std::string &status) {
 			std::string lcstat = boost::to_lower_copy(status);
-			if (lcstat == "o" || lcstat == "ok")
+			if (lcstat == "o" || lcstat == "ok" || lcstat == "0")
 				return Plugin::Common_ResultCode_OK;
-			if (lcstat == "w" || lcstat == "warn" || lcstat == "warning")
+			if (lcstat == "w" || lcstat == "warn" || lcstat == "warning" || lcstat == "1")
 				return Plugin::Common_ResultCode_WARNING;
-			if (lcstat == "c" || lcstat == "crit" || lcstat == "critical")
+			if (lcstat == "c" || lcstat == "crit" || lcstat == "critical" || lcstat == "2")
 				return Plugin::Common_ResultCode_CRITICAL;
 			return Plugin::Common_ResultCode_UNKNOWN;
-		}
-
-		NSCAPI::messageTypes functions::gpb_to_log(Plugin::LogEntry::Entry::Level ret)
-		{
-			if (ret == Plugin::LogEntry_Entry_Level_LOG_CRITICAL)
-				return NSCAPI::log_level::critical;
-			if (ret == Plugin::LogEntry_Entry_Level_LOG_DEBUG)
-				return NSCAPI::log_level::debug;
-			if (ret == Plugin::LogEntry_Entry_Level_LOG_ERROR)
-				return NSCAPI::log_level::error;
-			if (ret == Plugin::LogEntry_Entry_Level_LOG_INFO)
-				return NSCAPI::log_level::info;
-			if (ret == Plugin::LogEntry_Entry_Level_LOG_WARNING)
-				return NSCAPI::log_level::warning;
-			return NSCAPI::log_level::error;
-		}
-
-		//////////////////////////////////////////////////////////////////////////
-		//
-		// deprecated: wstring functions
-		//
-		int functions::parse_simple_submit_request_payload(const Plugin::QueryResponseMessage::Response &payload, std::wstring &alias, std::wstring &message, std::wstring &perf) {
-			alias = utf8::cvt<std::wstring>(payload.alias());
-			if (alias.empty())
-				alias = utf8::cvt<std::wstring>(payload.command());
-			message = utf8::cvt<std::wstring>(payload.message());
-			perf = utf8::cvt<std::wstring>(build_performance_data(payload));
-			return gbp_to_nagios_status(payload.result());
-		}
-		int functions::parse_simple_submit_request_payload(const Plugin::QueryResponseMessage::Response &payload, std::string &alias, std::string &message, std::string &perf) {
-			alias = payload.alias();
-			if (alias.empty())
-				alias = payload.command();
-			message = payload.message();
-			perf = build_performance_data(payload);
-			return gbp_to_nagios_status(payload.result());
-		}
-		int functions::parse_simple_submit_request_payload(const Plugin::QueryResponseMessage::Response &payload, std::wstring &alias, std::wstring &message) {
-			alias = utf8::cvt<std::wstring>(payload.alias());
-			if (alias.empty())
-				alias = utf8::cvt<std::wstring>(payload.command());
-			message = utf8::cvt<std::wstring>(payload.message());
-			return gbp_to_nagios_status(payload.result());
 		}
 
 		namespace functions {
 
+			struct settings_query_data {
+				::Plugin::SettingsRequestMessage request_message;
+				::Plugin::SettingsResponseMessage response_message;
+				std::string response_buffer;
+				int plugin_id;
+				
+				settings_query_data(int plugin_id) : plugin_id(plugin_id) {}
+			};
+
+			struct  settings_query_key_values_data {
+				std::string path;
+				boost::optional<std::string> key;
+				boost::optional<std::string> str_value;
+				boost::optional<long long> int_value;
+				boost::optional<bool> bool_value;
+
+				settings_query_key_values_data(std::string path) : path(path) {}
+				settings_query_key_values_data(std::string path, std::string key, std::string str_value) : path(path), key(key), str_value(str_value) {}
+				settings_query_key_values_data(std::string path, std::string key, long long int_value) : path(path), key(key), int_value(int_value) {}
+				settings_query_key_values_data(std::string path, std::string key, bool bool_value) : path(path), key(key), bool_value(bool_value) {}
+				settings_query_key_values_data(const settings_query_key_values_data& other) : path(other.path), key(other.key), str_value(other.str_value), int_value(other.int_value), bool_value(other.bool_value) {}
+
+				settings_query_key_values_data& operator=(const settings_query_key_values_data& other) {
+					path = other.path;
+					key = other.key;
+					str_value = other.str_value;
+					int_value = other.int_value;
+					bool_value = other.bool_value;
+					return *this;
+				}
+
+
+			};
+
+			settings_query::key_values::key_values(std::string path) : pimpl(new settings_query_key_values_data(path)) {}
+			settings_query::key_values::key_values(std::string path, std::string key, std::string str_value) : pimpl(new settings_query_key_values_data(path, key, str_value)) {}
+			settings_query::key_values::key_values(std::string path, std::string key, long long int_value) : pimpl(new settings_query_key_values_data(path, key, int_value)) {}
+			settings_query::key_values::key_values(std::string path, std::string key, bool bool_value) : pimpl(new settings_query_key_values_data(path, key, bool_value)) {}
+
+			settings_query::key_values::key_values(const key_values &other)
+				: pimpl(new settings_query_key_values_data(*other.pimpl)) {}
+			settings_query::key_values& settings_query::key_values::operator= (const key_values &other) {
+				pimpl->operator=(*other.pimpl);
+				return *this;
+			}
+
+			settings_query::key_values::~key_values() {
+				delete pimpl;
+			}
+
+
+			bool settings_query::key_values::matches(const char* path, const char* key) const {
+				if (!pimpl || !pimpl->key)
+					return false;
+				return pimpl->path == path && *pimpl->key == key;
+			}
+			bool settings_query::key_values::matches(const char* path) const {
+				if (!pimpl->key)
+					return false;
+				return pimpl->path == path;
+			}
+			bool settings_query::key_values::matches(const std::string &path, const std::string &key) const {
+				if (!pimpl || !pimpl->key)
+					return false;
+				return pimpl->path == path && *pimpl->key == key;
+			}
+			bool settings_query::key_values::matches(const std::string &path) const {
+				if (!pimpl)
+					return false;
+				return pimpl->path == path;
+			}
+
+			std::string settings_query::key_values::path() const {
+				if (!pimpl)
+					return "";
+				return pimpl->path;
+			}
+			std::string settings_query::key_values::key() const {
+				if (!pimpl || !pimpl->key)
+					return "";
+				return *pimpl->key;
+			}
+
 			std::string settings_query::key_values::get_string() const {
-				if (str_value)
-					return *str_value;
-				if (int_value)
-					return strEx::s::xtos(*int_value);
-				if (bool_value)
-					return *bool_value?"true":"false";
+				if (pimpl->str_value)
+					return *pimpl->str_value;
+				if (pimpl->int_value)
+					return str::xtos(*pimpl->int_value);
+				if (pimpl->bool_value)
+					return *pimpl->bool_value ? "true" : "false";
 				return "";
 			}
 
 			long long settings_query::key_values::get_int() const {
-				if (str_value)
-					return strEx::s::stox<long long>(*str_value);
-				if (int_value)
-					return *int_value;
-				if (bool_value)
-					return *bool_value?1:0;
+				if (pimpl->str_value)
+					return str::stox<long long>(*pimpl->str_value);
+				if (pimpl->int_value)
+					return *pimpl->int_value;
+				if (pimpl->bool_value)
+					return *pimpl->bool_value ? 1 : 0;
 				return 0;
 			}
 
 			bool settings_query::key_values::get_bool() const {
-				if (str_value) {
-					std::string s = *str_value;
+				if (pimpl->str_value) {
+					std::string s = *pimpl->str_value;
 					std::transform(s.begin(), s.end(), s.begin(), ::tolower);
 					return s == "true" || s == "1";
 				}
-				if (int_value)
-					return *int_value == 1;
-				if (bool_value)
-					return *bool_value;
+				if (pimpl->int_value)
+					return *pimpl->int_value == 1;
+				if (pimpl->bool_value)
+					return *pimpl->bool_value;
 				return "";
 			}
 
-
-			settings_query::settings_query(int plugin_id) : plugin_id(plugin_id) {
-				create_simple_header(request_message.mutable_header());
+			settings_query::settings_query(int plugin_id) : pimpl(new settings_query_data(plugin_id)) {
+			}
+			settings_query::~settings_query() {
+				delete pimpl;
 			}
 
 			void settings_query::set(const std::string path, const std::string key, const std::string value) {
-				::Plugin::SettingsRequestMessage::Request *r = request_message.add_payload();
-				r->set_plugin_id(plugin_id);
+				::Plugin::SettingsRequestMessage::Request *r = pimpl->request_message.add_payload();
+				r->set_plugin_id(pimpl->plugin_id);
 				r->mutable_update()->mutable_node()->set_path(path);
 				r->mutable_update()->mutable_node()->set_key(key);
 				r->mutable_update()->mutable_value()->set_string_data(value);
 			}
+
+			void settings_query::erase(const std::string path, const std::string key) {
+				::Plugin::SettingsRequestMessage::Request *r = pimpl->request_message.add_payload();
+				r->set_plugin_id(pimpl->plugin_id);
+				r->mutable_update()->mutable_node()->set_path(path);
+				r->mutable_update()->mutable_node()->set_key(key);
+			}
+
 			void settings_query::get(const std::string path, const std::string key, const std::string def) {
-				::Plugin::SettingsRequestMessage::Request *r = request_message.add_payload();
-				r->set_plugin_id(plugin_id);
+				::Plugin::SettingsRequestMessage::Request *r = pimpl->request_message.add_payload();
+				r->set_plugin_id(pimpl->plugin_id);
 				r->mutable_query()->mutable_node()->set_path(path);
 				r->mutable_query()->mutable_node()->set_key(key);
 				r->mutable_query()->set_type(::Plugin::Common_DataType_STRING);
@@ -850,8 +851,8 @@ namespace nscapi {
 				r->mutable_query()->set_recursive(false);
 			}
 			void settings_query::get(const std::string path, const std::string key, const char* def) {
-				::Plugin::SettingsRequestMessage::Request *r = request_message.add_payload();
-				r->set_plugin_id(plugin_id);
+				::Plugin::SettingsRequestMessage::Request *r = pimpl->request_message.add_payload();
+				r->set_plugin_id(pimpl->plugin_id);
 				r->mutable_query()->mutable_node()->set_path(path);
 				r->mutable_query()->mutable_node()->set_key(key);
 				r->mutable_query()->set_type(::Plugin::Common_DataType_STRING);
@@ -859,8 +860,8 @@ namespace nscapi {
 				r->mutable_query()->set_recursive(false);
 			}
 			void settings_query::get(const std::string path, const std::string key, const long long def) {
-				::Plugin::SettingsRequestMessage::Request *r = request_message.add_payload();
-				r->set_plugin_id(plugin_id);
+				::Plugin::SettingsRequestMessage::Request *r = pimpl->request_message.add_payload();
+				r->set_plugin_id(pimpl->plugin_id);
 				r->mutable_query()->mutable_node()->set_path(path);
 				r->mutable_query()->mutable_node()->set_key(key);
 				r->mutable_query()->set_type(::Plugin::Common_DataType_INT);
@@ -868,8 +869,8 @@ namespace nscapi {
 				r->mutable_query()->set_recursive(false);
 			}
 			void settings_query::get(const std::string path, const std::string key, const bool def) {
-				::Plugin::SettingsRequestMessage::Request *r = request_message.add_payload();
-				r->set_plugin_id(plugin_id);
+				::Plugin::SettingsRequestMessage::Request *r = pimpl->request_message.add_payload();
+				r->set_plugin_id(pimpl->plugin_id);
 				r->mutable_query()->mutable_node()->set_path(path);
 				r->mutable_query()->mutable_node()->set_key(key);
 				r->mutable_query()->set_type(::Plugin::Common_DataType_BOOL);
@@ -877,46 +878,54 @@ namespace nscapi {
 				r->mutable_query()->set_recursive(false);
 			}
 
+			void settings_query::list(const std::string path, const bool recursive) {
+				::Plugin::SettingsRequestMessage::Request *r = pimpl->request_message.add_payload();
+				r->set_plugin_id(pimpl->plugin_id);
+				r->mutable_inventory()->mutable_node()->set_path(path);
+				r->mutable_inventory()->set_fetch_keys(true);
+				r->mutable_inventory()->set_recursive_fetch(recursive);
+			}
+
 
 			void settings_query::save() {
-				::Plugin::SettingsRequestMessage::Request *r = request_message.add_payload();
-				r->set_plugin_id(plugin_id);
+				::Plugin::SettingsRequestMessage::Request *r = pimpl->request_message.add_payload();
+				r->set_plugin_id(pimpl->plugin_id);
 				r->mutable_control()->set_command(Plugin::Settings_Command_SAVE);
 			}
 			void settings_query::load() {
-				::Plugin::SettingsRequestMessage::Request *r = request_message.add_payload();
-				r->set_plugin_id(plugin_id);
+				::Plugin::SettingsRequestMessage::Request *r = pimpl->request_message.add_payload();
+				r->set_plugin_id(pimpl->plugin_id);
 				r->mutable_control()->set_command(Plugin::Settings_Command_LOAD);
 			}
 			void settings_query::reload() {
-				::Plugin::SettingsRequestMessage::Request *r = request_message.add_payload();
-				r->set_plugin_id(plugin_id);
+				::Plugin::SettingsRequestMessage::Request *r = pimpl->request_message.add_payload();
+				r->set_plugin_id(pimpl->plugin_id);
 				r->mutable_control()->set_command(Plugin::Settings_Command_RELOAD);
 			}
 			const std::string settings_query::request() const {
-				return request_message.SerializeAsString();
+				return pimpl->request_message.SerializeAsString();
 			}
 
-			bool settings_query::validate_response() {
-				response_message.ParsePartialFromString(response_buffer);
+			bool settings_query::validate_response() const {
+				pimpl->response_message.ParsePartialFromString(pimpl->response_buffer);
 				bool ret = true;
-				for (int i=0;i<response_message.payload_size();++i) {
-					if (response_message.payload(i).result().status() != Plugin::Common::Status::STATUS_OK)
+				for (int i = 0; i < pimpl->response_message.payload_size(); ++i) {
+					if (pimpl->response_message.payload(i).result().code() != Plugin::Common_Result_StatusCodeType_STATUS_OK)
 						ret = false;
 				}
 				return ret;
 			}
 			std::string settings_query::get_response_error() const {
 				std::string ret;
-				for (int i=0;i<response_message.payload_size();++i) {
-					ret += response_message.payload(i).result().message();
+				for (int i = 0; i < pimpl->response_message.payload_size(); ++i) {
+					ret += pimpl->response_message.payload(i).result().message();
 				}
 				return ret;
 			}
 			std::list<settings_query::key_values> settings_query::get_query_key_response() const {
 				std::list<key_values> ret;
-				for (int i=0;i<response_message.payload_size();++i) {
-					::Plugin::SettingsResponseMessage::Response pl = response_message.payload(i);
+				for (int i = 0; i < pimpl->response_message.payload_size(); ++i) {
+					::Plugin::SettingsResponseMessage::Response pl = pimpl->response_message.payload(i);
 					if (pl.has_query()) {
 						::Plugin::SettingsResponseMessage::Response::Query q = pl.query();
 						if (q.node().has_key() && q.has_value()) {
@@ -929,10 +938,75 @@ namespace nscapi {
 						} else {
 							ret.push_back(key_values(q.node().path()));
 						}
+					} else if (pl.inventory_size() > 0) {
+						BOOST_FOREACH(const ::Plugin::SettingsResponseMessage::Response::Inventory &q, pl.inventory()) {
+							if (q.node().has_key() && q.has_value()) {
+								if (q.value().has_string_data())
+									ret.push_back(key_values(q.node().path(), q.node().key(), q.value().string_data()));
+								else if (q.value().has_int_data())
+									ret.push_back(key_values(q.node().path(), q.node().key(), static_cast<long long>(q.value().int_data())));
+								else if (q.value().has_bool_data())
+									ret.push_back(key_values(q.node().path(), q.node().key(), q.value().bool_data()));
+							} else if (q.node().has_key() && q.has_info() && q.info().has_default_value()) {
+								if (q.info().default_value().has_string_data())
+									ret.push_back(key_values(q.node().path(), q.node().key(), q.info().default_value().string_data()));
+								else if (q.info().default_value().has_int_data())
+									ret.push_back(key_values(q.node().path(), q.node().key(), static_cast<long long>(q.info().default_value().int_data())));
+								else if (q.info().default_value().has_bool_data())
+									ret.push_back(key_values(q.node().path(), q.node().key(), q.info().default_value().bool_data()));
+							} else {
+								ret.push_back(key_values(q.node().path()));
+							}
+						}
 					}
 				}
 				return ret;
 			}
+
+			std::string& settings_query::response() const { 
+				return pimpl->response_buffer; 
+			}
+
+
+
+
+			void copy_response(const std::string command, ::Plugin::QueryResponseMessage::Response* target, const ::Plugin::ExecuteResponseMessage::Response source) {
+				::Plugin::QueryResponseMessage::Response::Line* line = target->add_lines();
+				line->set_message(source.message());
+				target->set_command(command);
+			}
+			void copy_response(const std::string command, ::Plugin::QueryResponseMessage::Response* target, const ::Plugin::SubmitResponseMessage::Response source) {
+				::Plugin::QueryResponseMessage::Response::Line* line = target->add_lines();
+				line->set_message(source.result().message());
+				target->set_command(command);
+				target->set_result(gbp_status_to_gbp_nagios(source.result().code()));
+			}
+			void copy_response(const std::string command, ::Plugin::QueryResponseMessage::Response* target, const ::Plugin::QueryResponseMessage::Response source) {
+				target->CopyFrom(source);
+			}
+			void copy_response(const std::string command, ::Plugin::ExecuteResponseMessage::Response* target, const ::Plugin::ExecuteResponseMessage::Response source) {
+				target->CopyFrom(source);
+			}
+			void copy_response(const std::string command, ::Plugin::ExecuteResponseMessage::Response* target, const ::Plugin::SubmitResponseMessage::Response source) {
+				target->set_message(source.result().message());
+				target->set_command(source.command());
+				target->set_result(gbp_status_to_gbp_nagios(source.result().code()));
+			}
+			void copy_response(const std::string command, ::Plugin::ExecuteResponseMessage::Response* target, const ::Plugin::QueryResponseMessage::Response source) {
+				target->set_message(query_data_to_nagios_string(source, no_truncation));
+				target->set_command(source.command());
+				target->set_result(source.result());
+			}
+			void copy_response(const std::string command, ::Plugin::SubmitResponseMessage::Response* target, const ::Plugin::ExecuteResponseMessage::Response source) {
+				target->mutable_result()->set_message(source.message());
+			}
+			void copy_response(const std::string command, ::Plugin::SubmitResponseMessage::Response* target, const ::Plugin::SubmitResponseMessage::Response source) {
+				target->CopyFrom(source);
+			}
+			void copy_response(const std::string command, ::Plugin::SubmitResponseMessage::Response* target, const ::Plugin::QueryResponseMessage::Response source) {
+				target->mutable_result()->set_message(query_data_to_nagios_string(source, -1));
+				target->mutable_result()->set_code(gbp_to_nagios_gbp_status(source.result()));
+			}
 		}
- 	}
+	}
 }

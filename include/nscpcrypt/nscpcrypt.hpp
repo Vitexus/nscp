@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <sstream>
@@ -6,7 +25,6 @@
 
 namespace nscp {
 	namespace encryption {
-
 		class encryption_exception : public std::exception {
 			std::string msg_;
 		public:
@@ -43,7 +61,6 @@ namespace nscp {
 				delete core_;
 			}
 
-
 			static bool hasEncryption(int encryption_method);
 			static any_encryption* get_encryption_core(int encryption_method);
 			static std::string generate_transmitted_iv(unsigned int len = TRANSMITTED_IV_SIZE);
@@ -59,7 +76,7 @@ namespace nscp {
 				if (core_ == NULL)
 					return "<NULL>";
 				std::stringstream ss;
-				ss << "Name: " << core_->getName() 
+				ss << "Name: " << core_->getName()
 					<< ", block size: " << core_->get_blockSize()
 					<< ", key size: " << core_->get_keySize();
 				return ss.str();

@@ -1,26 +1,45 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include "simple_registry.hpp"
-#include <boost/tuple/tuple.hpp>
-#include <wstring.hpp>
 
-class EventLogRecord {
+#include <nsclient/nsclient_exception.hpp>
+#include <str/wstring.hpp>
+#include <str/utils.hpp>
+
+#include <boost/tuple/tuple.hpp>
+#include <boost/noncopyable.hpp>
+
+class EventLogRecord : boost::noncopyable {
 	const EVENTLOGRECORD *pevlr_;
-	__int64 currentTime_;
 	std::string file_;
 public:
-	EventLogRecord(std::string file, const EVENTLOGRECORD *pevlr, __int64 currentTime) : file_(file), pevlr_(pevlr), currentTime_(currentTime) {
+	EventLogRecord(std::string file, const EVENTLOGRECORD *pevlr) : file_(file), pevlr_(pevlr) {
+		if (pevlr == NULL)
+			throw nsclient::nsclient_exception("Invalid eventlog record");
 	}
-	inline __int64 timeGenerated() const {
-		return (currentTime_-pevlr_->TimeGenerated)*1000;
-	}
-	inline __int64 timeWritten() const {
-		return (currentTime_-pevlr_->TimeWritten)*1000;
-	}
-	inline __int64 generated() const {
+	inline unsigned long long generated() const {
 		return pevlr_->TimeGenerated;
 	}
-	inline __int64 written() const {
+	inline unsigned long long written() const {
 		return pevlr_->TimeWritten;
 	}
 	inline WORD category() const {
@@ -31,19 +50,19 @@ public:
 	}
 	inline std::wstring get_computer() const {
 		size_t len = wcslen(reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(pevlr_) + sizeof(EVENTLOGRECORD)));
-		return reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(pevlr_) + sizeof(EVENTLOGRECORD) + (len+1)*sizeof(wchar_t));
+		return reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(pevlr_) + sizeof(EVENTLOGRECORD) + (len + 1)*sizeof(wchar_t));
 	}
 	inline DWORD eventID() const {
-		return (pevlr_->EventID&0xffff);
+		return (pevlr_->EventID & 0xffff);
 	}
 	inline DWORD severity() const {
-		return (pevlr_->EventID>>30) & 0x3;
+		return (pevlr_->EventID >> 30) & 0x3;
 	}
 	inline DWORD facility() const {
-		return (pevlr_->EventID>>16) & 0xfff;
+		return (pevlr_->EventID >> 16) & 0xfff;
 	}
 	inline WORD customer() const {
-		return (pevlr_->EventID>>29) & 0x1;
+		return (pevlr_->EventID >> 29) & 0x1;
 	}
 	inline DWORD raw_id() const {
 		return pevlr_->EventID;
@@ -55,27 +74,27 @@ public:
 
 	std::wstring userSID() const {
 		if (pevlr_->UserSidOffset == 0)
-			return _T("");
+			return L" ";
 		PSID p = NULL; // = reinterpret_cast<const void*>(reinterpret_cast<const BYTE*>(pevlr_) + + pevlr_->UserSidOffset);
 		DWORD userLen = 0;
 		DWORD domainLen = 0;
 		SID_NAME_USE sidName;
 
 		LookupAccountSid(NULL, p, NULL, &userLen, NULL, &domainLen, &sidName);
-		LPTSTR user = new TCHAR[userLen+10];
-		LPTSTR domain = new TCHAR[domainLen+10];
+		LPTSTR user = new TCHAR[userLen + 10];
+		LPTSTR domain = new TCHAR[domainLen + 10];
 
 		LookupAccountSid(NULL, p, user, &userLen, domain, &domainLen, &sidName);
 		user[userLen] = 0;
 		domain[domainLen] = 0;
 		std::wstring ustr = user;
 		std::wstring dstr = domain;
-		delete [] user;
-		delete [] domain;
+		delete[] user;
+		delete[] domain;
 		if (!dstr.empty())
-			dstr = dstr + _T("\\");
+			dstr = dstr + L"\\";
 		if (ustr.empty() && dstr.empty())
-			return _T("missing");
+			return L"missing";
 
 		return dstr + ustr;
 	}
@@ -83,10 +102,10 @@ public:
 	std::wstring enumStrings() const {
 		std::wstring ret;
 		const TCHAR* p = reinterpret_cast<const TCHAR*>(reinterpret_cast<const BYTE*>(pevlr_) + pevlr_->StringOffset);
-		for (unsigned int i =0;i<pevlr_->NumStrings;i++) {
+		for (unsigned int i = 0; i < pevlr_->NumStrings; i++) {
 			std::wstring s = p;
 			if (!s.empty())
-				s += _T(", ");
+				s += L", ";
 			ret += s;
 			p = &p[wcslen(p) + 1];
 		}
@@ -102,17 +121,17 @@ public:
 	static WORD translateType(std::wstring sType) {
 		if (sType.empty())
 			return EVENTLOG_ERROR_TYPE;
-		if (sType == _T("error"))
+		if (sType == L"error")
 			return EVENTLOG_ERROR_TYPE;
-		if (sType == _T("warning"))
+		if (sType == L"warning")
 			return EVENTLOG_WARNING_TYPE;
-		if (sType == _T("success"))
+		if (sType == L"success")
 			return EVENTLOG_SUCCESS;
-		if (sType == _T("info"))
+		if (sType == L"info")
 			return EVENTLOG_INFORMATION_TYPE;
-		if (sType == _T("auditSuccess"))
+		if (sType == L"auditSuccess")
 			return EVENTLOG_AUDIT_SUCCESS;
-		if (sType == _T("auditFailure"))
+		if (sType == L"auditFailure")
 			return EVENTLOG_AUDIT_FAILURE;
 		return static_cast<WORD>(strEx::stox<WORD>(sType));
 	}
@@ -131,33 +150,33 @@ public:
 			return EVENTLOG_AUDIT_SUCCESS;
 		if (sType == "auditFailure")
 			return EVENTLOG_AUDIT_FAILURE;
-		return strEx::s::stox<WORD>(sType);
+		return str::stox<WORD>(sType);
 	}
 	static std::wstring translateType(WORD dwType) {
 		if (dwType == EVENTLOG_ERROR_TYPE)
-			return _T("error");
+			return L"error";
 		if (dwType == EVENTLOG_WARNING_TYPE)
-			return _T("warning");
+			return L"warning";
 		if (dwType == EVENTLOG_SUCCESS)
-			return _T("success");
+			return L"success";
 		if (dwType == EVENTLOG_INFORMATION_TYPE)
-			return _T("info");
+			return L"info";
 		if (dwType == EVENTLOG_AUDIT_SUCCESS)
-			return _T("auditSuccess");
+			return L"auditSuccess";
 		if (dwType == EVENTLOG_AUDIT_FAILURE)
-			return _T("auditFailure");
+			return L"auditFailure";
 		return strEx::xtos(dwType);
 	}
 	static WORD translateSeverity(std::wstring sType) {
 		if (sType.empty())
 			return 0;
-		if (sType == _T("success"))
+		if (sType == L"success")
 			return 0;
-		if (sType == _T("informational"))
+		if (sType == L"informational")
 			return 1;
-		if (sType == _T("warning"))
+		if (sType == L"warning")
 			return 2;
-		if (sType == _T("error"))
+		if (sType == L"error")
 			return 3;
 		return static_cast<WORD>(strEx::stox<WORD>(sType));
 	}
@@ -172,31 +191,31 @@ public:
 			return 2;
 		if (sType == "error")
 			return 3;
-		return strEx::s::stox<WORD>(sType);
+		return str::stox<WORD>(sType);
 	}
 	static std::wstring translateSeverity(WORD dwType) {
 		if (dwType == 0)
-			return _T("success");
+			return L"success";
 		if (dwType == 1)
-			return _T("informational");
+			return L"informational";
 		if (dwType == 2)
-			return _T("warning");
+			return L"warning";
 		if (dwType == 3)
-			return _T("error");
+			return L"error";
 		return strEx::xtos(dwType);
 	}
 	bool get_dll(std::wstring &file_or_error) const {
 		try {
-			file_or_error = simple_registry::registry_key::get_string(HKEY_LOCAL_MACHINE, _T("SYSTEM\\CurrentControlSet\\Services\\EventLog\\") + utf8::cvt<std::wstring>(file_) + (std::wstring)_T("\\") + get_source(), _T("EventMessageFile"));
+			file_or_error = simple_registry::registry_key::get_string(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\EventLog\\" + utf8::cvt<std::wstring>(file_) + (std::wstring)L"\\" + get_source(), L"EventMessageFile");
 			return true;
 		} catch (simple_registry::registry_exception &) {
 		}
 		try {
-			std::wstring providerGuid = simple_registry::registry_key::get_string(HKEY_LOCAL_MACHINE, _T("SYSTEM\\CurrentControlSet\\Services\\EventLog\\") + utf8::cvt<std::wstring>(file_) + (std::wstring)_T("\\") + get_source(), _T("ProviderGuid"));
-			file_or_error = simple_registry::registry_key::get_string(HKEY_LOCAL_MACHINE, _T("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WINEVT\\Publishers") + providerGuid, _T("MessageFileName"));
+			std::wstring providerGuid = simple_registry::registry_key::get_string(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\EventLog\\" + utf8::cvt<std::wstring>(file_) + (std::wstring)L"\\" + get_source(), L"ProviderGuid");
+			file_or_error = simple_registry::registry_key::get_string(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WINEVT\\Publishers" + providerGuid, L"MessageFileName");
 			return true;
 		} catch (simple_registry::registry_exception &e) {
-			file_or_error = _T("Could not extract DLL for eventsource: ") + get_source() + _T(": ") + utf8::cvt<std::wstring>(e.reason());
+			file_or_error = L"Could not extract DLL for eventsource: " + get_source() + L": " + utf8::cvt<std::wstring>(e.reason());
 			return false;
 		}
 	}
@@ -206,38 +225,37 @@ public:
 		std::size_t size;
 		tchar_array(std::size_t size) : buffer(NULL), size(size) {
 			buffer = new TCHAR*[size];
-			for (std::size_t i=0;i<size;i++) 
+			for (std::size_t i = 0; i < size; i++)
 				buffer[i] = NULL;
 		}
 		~tchar_array() {
-			for (std::size_t i=0;i<size;i++) 
-				delete [] buffer[i];
-			delete [] buffer;
+			for (std::size_t i = 0; i < size; i++)
+				delete[] buffer[i];
+			delete[] buffer;
 		}
 		std::size_t set(std::size_t i, const TCHAR* str) {
 			std::size_t len = wcslen(str);
-			buffer[i] = new TCHAR[len+2];
-			wcsncpy(buffer[i], str, len+1);
+			buffer[i] = new TCHAR[len + 2];
+			wcsncpy(buffer[i], str, len + 1);
 			return len;
 		}
 		TCHAR** get_buffer_unsafe() { return buffer; }
-
 	};
 
-	boost::tuple<DWORD,std::wstring> safe_format(HMODULE hDLL, DWORD dwLang) const {
+	boost::tuple<DWORD, std::wstring> safe_format(HMODULE hDLL, DWORD dwLang) const {
 		LPVOID lpMsgBuf;
-		unsigned long dwRet = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_HMODULE|FORMAT_MESSAGE_ARGUMENT_ARRAY|FORMAT_MESSAGE_IGNORE_INSERTS,hDLL,
-			pevlr_->EventID,dwLang,(LPTSTR)&lpMsgBuf,0,NULL);
+		unsigned long dwRet = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_ARGUMENT_ARRAY | FORMAT_MESSAGE_IGNORE_INSERTS, hDLL,
+			pevlr_->EventID, dwLang, (LPTSTR)&lpMsgBuf, 0, NULL);
 		if (dwRet == 0) {
-			return boost::tuple<DWORD,std::wstring>(GetLastError(), _T(""));
+			return boost::tuple<DWORD, std::wstring>(GetLastError(), L" ");
 		}
 		std::wstring msg = reinterpret_cast<wchar_t*>(lpMsgBuf);
 		LocalFree(lpMsgBuf);
 		const TCHAR* p = reinterpret_cast<const TCHAR*>(reinterpret_cast<const BYTE*>(pevlr_) + pevlr_->StringOffset);
-		for (unsigned int i = 0;i<pevlr_->NumStrings;i++) {
-			strEx::replace(msg, _T("%")+strEx::xtos(i+1), std::wstring(p));
+		for (unsigned int i = 0; i < pevlr_->NumStrings; i++) {
+			strEx::replace(msg, L"%" + strEx::xtos(i + 1), std::wstring(p));
 			std::size_t len = wcslen(p);
-			p = &(p[len+1]);
+			p = &(p[len + 1]);
 		}
 		return boost::make_tuple(0, msg);
 	}
@@ -248,47 +266,47 @@ public:
 		if (!get_dll(file)) {
 			return file;
 		}
-		BOOST_FOREACH(const std::wstring &dll, strEx::splitEx(file, _T(";"))) {
+		BOOST_FOREACH(const std::wstring &dll, strEx::splitEx(file, L";")) {
 			//std::wstring msg = error::format::message::from_module((*cit), eventID(), _sz);
 			std::wstring msg;
 			try {
 				HMODULE hDLL = LoadLibraryEx(dll.c_str(), NULL, DONT_RESOLVE_DLL_REFERENCES);
 				if (hDLL == NULL) {
-					msg = _T("failed to load: ") + dll + _T(", reason: ") + strEx::xtos(GetLastError());
+					msg = L"failed to load: " + dll + L", reason: " + strEx::xtos(GetLastError());
 					continue;
 				}
 				if (dwLang == 0)
-					dwLang = MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT);
-				boost::tuple<DWORD,std::wstring> formated_data = safe_format(hDLL, dwLang);
+					dwLang = MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT);
+				boost::tuple<DWORD, std::wstring> formated_data = safe_format(hDLL, dwLang);
 				if (formated_data.get<0>() != 0) {
 					FreeLibrary(hDLL);
 					if (formated_data.get<0>() == 15100) {
 						// Invalid MUI file (wrong language)
-						msg = _T("");
+						msg = L" ";
 						continue;
 					}
 					if (formated_data.get<0>() == 317) {
 						// Missing message
-						msg = _T("");
+						msg = L" ";
 						continue;
 					}
-					msg = _T("failed to lookup error code: ") + strEx::xtos(eventID()) + _T(" from DLL: ") + dll + _T("( reason: ") + strEx::xtos(formated_data.get<0>()) + _T(")");
+					msg = L"failed to lookup error code: " + strEx::xtos(eventID()) + L" from DLL: " + dll + L"( reason: " + strEx::xtos(formated_data.get<0>()) + L")";
 					continue;
 				}
 				FreeLibrary(hDLL);
 				msg = formated_data.get<1>();
 			} catch (...) {
-				msg = _T("Unknown exception getting message");
+				msg = L"Unknown exception getting message";
 			}
-			strEx::replace(msg, _T("\n"), _T(" "));
-			strEx::replace(msg, _T("\t"), _T(" "));
-			std::string::size_type pos = msg.find_last_not_of(_T("\n\t "));
+			strEx::replace(msg, L"\n", L" ");
+			strEx::replace(msg, L"\t", L" ");
+			std::string::size_type pos = msg.find_last_not_of(L"\n\t ");
 			if (pos != std::string::npos) {
-				msg = msg.substr(0,pos);
+				msg = msg.substr(0, pos);
 			}
 			if (!msg.empty()) {
 				if (!ret.empty())
-					ret += _T(", ");
+					ret += L", ";
 				ret += msg;
 			}
 		}
@@ -302,9 +320,9 @@ public:
 		__int64 lgTemp;
 		__int64 SecsTo1970 = 116444736000000000;
 
-		lgTemp = Int32x32To64(time,10000000) + SecsTo1970;
+		lgTemp = Int32x32To64(time, 10000000) + SecsTo1970;
 
-		FileTime.dwLowDateTime = (DWORD) lgTemp;
+		FileTime.dwLowDateTime = (DWORD)lgTemp;
 		FileTime.dwHighDateTime = (DWORD)(lgTemp >> 32);
 
 		FileTimeToLocalFileTime(&FileTime, &LocalFileTime);

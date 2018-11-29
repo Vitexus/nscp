@@ -1,61 +1,94 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <list>
 #include <pdh.h>
 #include <pdhmsg.h>
 #include <sstream>
-#include <error.hpp>
+#include <error/error.hpp>
+
+#include <buffer.hpp>
 
 #include <pdh/pdh_interface.hpp>
 #include <pdh/pdh_enumerations.hpp>
 
-namespace PDH {
+#include <utf8.hpp>
 
+#include <boost/foreach.hpp>
+
+namespace PDH {
 	std::list<std::string> Enumerations::expand_wild_card_path(const std::string &query, std::string &error) {
 		std::list<std::string> ret;
 		std::wstring wquery = utf8::cvt<std::wstring>(query);
-		TCHAR* szBuffer = NULL;
-		DWORD dwBufLen = 0;
+		hlp::buffer<TCHAR> buffer(1024);
+		DWORD dwBufLen = buffer.size();
 		try {
-			pdh_error status = factory::get_impl()->PdhExpandWildCardPath(NULL, wquery.c_str(), szBuffer, &dwBufLen, 0);
+			pdh_error status = factory::get_impl()->PdhExpandWildCardPath(NULL, wquery.c_str(), buffer, &dwBufLen, 0);
 			if (status.is_more_data()) {
-				szBuffer = new TCHAR[dwBufLen+1];
-				pdh_error status = factory::get_impl()->PdhExpandWildCardPath(NULL, wquery.c_str(), szBuffer, &dwBufLen, 0);
+				buffer.resize(dwBufLen + 10);
+				dwBufLen = buffer.size();
+				status = factory::get_impl()->PdhExpandWildCardPath(NULL, wquery.c_str(), buffer, &dwBufLen, 0);
+			}
+			if (status.is_not_found()) {
+				error = status.get_message();
+				status = factory::get_impl()->PdhExpandWildCardPath(NULL, wquery.c_str(), buffer, &dwBufLen, 0);
+
+				HQUERY hQuery;
+				status = factory::get_impl()->PdhOpenQuery(NULL, NULL, &hQuery);
 				if (status.is_error()) {
-					delete [] szBuffer;
+					error = status.get_message();
 					return ret;
 				}
 
-				if (dwBufLen > 0) {
-					TCHAR *cp=szBuffer;
-					while(*cp != L'\0') {
-						ret.push_back(utf8::cvt<std::string>(cp));
-						cp += wcslen(cp)+1;
-					}
+				// TODO Create query: QUERY
+				PDH_HCOUNTER hCounter;
+				status = factory::get_impl()->PdhAddEnglishCounter(hQuery, wquery.c_str(), NULL, &hCounter);
+				if (status.is_error()) {
+					error = status.get_message();
+					return ret;
 				}
-				delete [] szBuffer;
-			} else if (status.is_error()) {
+
+				hlp::buffer<TCHAR, PDH_COUNTER_INFO*> tBuf2(2048);
+				DWORD bufSize = tBuf2.size();
+
+				status = factory::get_impl()->PdhGetCounterInfo(hCounter, FALSE, &bufSize, tBuf2.get());
+				if (status.is_error()) {
+					error = status.get_message();
+					return ret;
+				}
+				std::wstring counterName = tBuf2.get()->szFullPath;
+				error = "";
+				return expand_wild_card_path(utf8::cvt<std::string>(counterName), error);
+			}
+			if (status.is_error()) {
 				error = status.get_message();
+				return ret;
+			}
+			if (dwBufLen > 0) {
+				TCHAR *cp = buffer.get();
+				while (*cp != L'\0') {
+					std::wstring tmp = cp;
+					ret.push_back(utf8::cvt<std::string>(tmp));
+					cp += wcslen(cp) + 1;
+				}
 			}
 		} catch (std::exception &e) {
 			error = utf8::utf8_from_native(e.what());
@@ -70,34 +103,34 @@ namespace PDH {
 		DWORD dwInstanceBufLen = 0;
 		TCHAR* szInstanceBuffer = NULL;
 		try {
-			pdh_error status = factory::get_impl()->PdhEnumObjectItems(NULL, NULL, object.name_w().c_str(), szCounterBuffer, &dwCounterBufLen, szInstanceBuffer, &dwInstanceBufLen, dwDetailLevel, 0);
+			pdh_error status = factory::get_impl()->PdhEnumObjectItems(NULL, NULL, utf8::cvt<std::wstring>(object.name).c_str(), szCounterBuffer, &dwCounterBufLen, szInstanceBuffer, &dwInstanceBufLen, dwDetailLevel, 0);
 			if (status.is_more_data()) {
-				szCounterBuffer = new TCHAR[dwCounterBufLen+1];
-				szInstanceBuffer = new TCHAR[dwInstanceBufLen+1];
+				szCounterBuffer = new TCHAR[dwCounterBufLen + 1];
+				szInstanceBuffer = new TCHAR[dwInstanceBufLen + 1];
 
-				status = factory::get_impl()->PdhEnumObjectItems(NULL, NULL, object.name_w().c_str(), szCounterBuffer, &dwCounterBufLen, szInstanceBuffer, &dwInstanceBufLen, dwDetailLevel, 0);
+				status = factory::get_impl()->PdhEnumObjectItems(NULL, NULL, utf8::cvt<std::wstring>(object.name).c_str(), szCounterBuffer, &dwCounterBufLen, szInstanceBuffer, &dwInstanceBufLen, dwDetailLevel, 0);
 				if (status.is_error()) {
-					delete [] szCounterBuffer;
-					delete [] szInstanceBuffer;
+					delete[] szCounterBuffer;
+					delete[] szInstanceBuffer;
 					object.error = "Failed to enumerate object: " + object.name;
 				}
 
 				if (dwCounterBufLen > 0 && objects) {
-					TCHAR *cp=szCounterBuffer;
-					while(*cp != '\0') {
+					TCHAR *cp = szCounterBuffer;
+					while (*cp != '\0') {
 						object.counters.push_back(utf8::cvt<std::string>(cp));
-						cp += lstrlen(cp)+1;
+						cp += lstrlen(cp) + 1;
 					}
 				}
 				if (dwInstanceBufLen > 0 && instances) {
-					TCHAR *cp=szInstanceBuffer;
-					while(*cp != '\0') {
+					TCHAR *cp = szInstanceBuffer;
+					while (*cp != '\0') {
 						object.instances.push_back(utf8::cvt<std::string>(cp));
-						cp += lstrlen(cp)+1;
+						cp += lstrlen(cp) + 1;
 					}
 				}
-				delete [] szCounterBuffer;
-				delete [] szInstanceBuffer;
+				delete[] szCounterBuffer;
+				delete[] szInstanceBuffer;
 			} else {
 				object.error = "Failed to enumerate object: " + object.name;
 			}
@@ -116,19 +149,19 @@ namespace PDH {
 		if (!status.is_more_data())
 			throw pdh_exception("PdhEnumObjects failed when trying to retrieve size of object buffer", status);
 
-		szObjectBuffer = new TCHAR[dwObjectBufLen+1024];
+		szObjectBuffer = new TCHAR[dwObjectBufLen + 1024];
 		status = factory::get_impl()->PdhEnumObjects(NULL, NULL, szObjectBuffer, &dwObjectBufLen, dwDetailLevel, FALSE);
 		if (status.is_error())
 			throw pdh_exception("PdhEnumObjects failed when trying to retrieve object buffer", status);
 
-		TCHAR *cp=szObjectBuffer;
-		while(*cp != '\0') {
+		TCHAR *cp = szObjectBuffer;
+		while (*cp != '\0') {
 			Object o;
 			o.name = utf8::cvt<std::string>(cp);
 			ret.push_back(o);
-			cp += lstrlen(cp)+1;
+			cp += lstrlen(cp) + 1;
 		}
-		delete [] szObjectBuffer;
+		delete[] szObjectBuffer;
 
 		if (objects || instances) {
 			BOOST_FOREACH(Object &o, ret) {

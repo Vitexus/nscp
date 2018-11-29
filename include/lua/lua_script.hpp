@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <map>
@@ -11,17 +30,15 @@ extern "C" {
 #include <luna.h>
 
 #ifdef HAVE_LUA_PB
+#include <nscapi/nscapi_protobuf.hpp>
 #include <plugin.pb-lua.h>
 #endif
 
 #include <lua/lua_cpp.hpp>
 #include <scripts/script_interface.hpp>
 
-
 namespace lua {
-
 	struct lua_traits {
-
 		static const std::string user_data_tag;
 
 		struct user_data_type {
@@ -36,9 +53,7 @@ namespace lua {
 			int function_ref;
 		};
 		typedef function function_type;
-
 	};
-
 
 	typedef lua::lua_wrapper lua_wrapper;
 
@@ -46,7 +61,6 @@ namespace lua {
 	typedef scripts::core_provider core_provider;
 	typedef scripts::settings_provider settings_provider;
 	typedef scripts::regitration_provider<lua_traits> regitration_provider;
-
 
 	class core_wrapper {
 	private:
@@ -91,8 +105,8 @@ namespace lua {
 		int register_simple_cmdline(lua_State *L);
 		int subscription(lua_State *L);
 		int simple_subscription(lua_State *L);
-//	private:
-//		boost::shared_ptr<regitration_provider> get();
+		//	private:
+		//		boost::shared_ptr<regitration_provider> get();
 	};
 
 	class settings_wrapper {

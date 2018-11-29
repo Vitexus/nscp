@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <boost/thread.hpp>
@@ -19,17 +38,16 @@ struct real_time_thread {
 
 	bool cache_;
 	bool debug_;
-	std::string filters_path_;
 
 	real_time_thread(nscapi::core_wrapper *core, int plugin_id) : core(core), plugin_id(plugin_id), enabled_(false), start_age_(0), debug_(false), cache_(false) {
 		set_start_age("30m");
 	}
 
 	void add_realtime_filter(boost::shared_ptr<nscapi::settings_proxy> proxy, std::string key, std::string query);
-	void set_enabled(bool flag) { enabled_ = flag; } 
+	void set_enabled(bool flag) { enabled_ = flag; }
 	void set_start_age(std::string age) {
-		start_age_ = strEx::stoi64_as_time(age);
-	} 
+		start_age_ = str::format::stox_as_time_sec<unsigned long long>(age, "s");
+	}
 
 	void set_language(std::string lang);
 	void set_filter(boost::shared_ptr<nscapi::settings_proxy> proxy, std::string flt) {
@@ -39,6 +57,8 @@ struct real_time_thread {
 	bool has_filters() {
 		return !filters_.has_objects();
 	}
+
+	void set_path(const std::string &p);
 	bool start();
 	bool stop();
 

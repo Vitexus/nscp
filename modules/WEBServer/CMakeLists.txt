@@ -17,35 +17,59 @@ ENDIF(JSON_SPIRIT_FOUND)
 
 SET(SRCS ${SRCS}
 	"${TARGET}.cpp"
+  
+  static_controller.cpp
+  token_store.cpp
+  grant_store.cpp
+  session_manager_interface.cpp
+  metrics_handler.cpp
+  error_handler.cpp
+
+  modules_controller.cpp
+  query_controller.cpp
+  scripts_controller.cpp
+  legacy_command_controller.cpp
+  legacy_controller.cpp
+  api_controller.cpp
+  log_controller.cpp
+  info_controller.cpp
+  settings_controller.cpp
+
 	${NSCP_INCLUDEDIR}/socket/socket_helpers.cpp
 	${NSCP_INCLUDEDIR}/client/simple_client.cpp
+  
+  
+
+	${NSCP_INCLUDEDIR}/metrics/metrics_store_map.cpp
 
 	${NSCP_DEF_PLUGIN_CPP}
 )
 
+add_definitions(-DMG_ENABLE_HTTP_WEBSOCKET=0)
+add_definitions(-DMG_ENABLE_BROADCAST=1)
+add_definitions(-DMG_ENABLE_THREADS)
 ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
 IF(OPENSSL_FOUND)
 	INCLUDE_DIRECTORIES(${OPENSSL_INCLUDE_DIR})
-	ADD_DEFINITIONS(-DUSE_SSL)
+	add_definitions(-DMG_ENABLE_SSL=1)
+	add_definitions(-DMG_DISABLE_PFS=1)
+	add_definitions(-DUSE_SSL)
 	SET(EXTRA_LIBS ${EXTRA_LIBS} ${OPENSSL_LIBRARIES})
-	IF(WIN32 AND NOT USE_STATIC_RUNTIME)
-		SET(SRCS ${SRCS} ${OPENSSL_INCLUDE_DIR}/../inc32/openssl/applink.c)
-	ENDIF(WIN32 AND NOT USE_STATIC_RUNTIME)
 ENDIF(OPENSSL_FOUND)
-INCLUDE_DIRECTORIES(${MONGOOSE_INCLUDE_DIR})
-SET(EXTRA_LIBS ${EXTRA_LIBS} ${MONGOOSE_LIBRARY})
+INCLUDE_DIRECTORIES(../../libs/mongoose-cpp)
 
 IF(WIN32)
 	SET(SRCS ${SRCS}
 		"${TARGET}.h"
-		${NSCP_INCLUDEDIR}/socket/socket_helpers.hpp
 		${NSCP_INCLUDEDIR}/client/simple_client.hpp
+		${NSCP_INCLUDEDIR}/metrics/metrics_store_map.hpp
+		${NSCP_INCLUDEDIR}/socket/socket_helpers.hpp
+
+		info_controller.hpp
+		settings_controller.cpp
 
 		${NSCP_DEF_PLUGIN_HPP}
 	)
-	IF(NOT USE_STATIC_RUNTIME)
-		ADD_DEFINITIONS(-DOPENSSL_APPLINK_SHIM=${OPENSSL_INCLUDE_DIR}/../inc32/openssl/applink.c)
-	ENDIF(NOT USE_STATIC_RUNTIME)
 ENDIF(WIN32)
 
 add_library(${TARGET} MODULE ${SRCS})
@@ -53,10 +77,11 @@ OPENSSL_LINK_FIX(${TARGET})
 
 target_link_libraries(${TARGET}
 	${Boost_FILESYSTEM_LIBRARY}
-	${Boost_THREAD_LIBRARY}
 	${Boost_DATE_TIME_LIBRARY}
+	${Boost_REGEX_LIBRARY}
 	${NSCP_DEF_PLUGIN_LIB}
 	${EXTRA_LIBS}
 	${JSON_LIB}
+	nscp_mongoose
 )
 INCLUDE(${BUILD_CMAKE_FOLDER}/module.cmake)

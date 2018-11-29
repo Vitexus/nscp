@@ -1,10 +1,35 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <map>
 #include <list>
 
+#include <boost/optional/optional.hpp>
+
+#include <settings/settings_value.hpp>
+
 namespace nscapi {
 	namespace settings_helper {
+
+
 
 		class settings_impl_interface {
 		public:
@@ -35,7 +60,11 @@ namespace nscapi {
 			/// @param advanced advanced options will only be included if they are changed
 			///
 			/// @author mickem
-			virtual void register_key(std::string path, std::string key, int type, std::string title, std::string description, std::string defValue, bool advanced, bool sample) = 0;
+			virtual void register_key(std::string path, std::string key, int type, std::string title, std::string description, nscapi::settings::settings_value defValue, bool advanced, bool sample) = 0;
+
+			virtual void register_subkey(std::string path, std::string title, std::string description, bool advanced, bool sample) = 0;
+
+			virtual void register_tpl(std::string path, std::string title, std::string icon, std::string description, std::string fields) = 0;
 
 			//////////////////////////////////////////////////////////////////////////
 			/// Get a string value if it does not exist the default value will be returned
@@ -118,6 +147,10 @@ namespace nscapi {
 
 
 			virtual std::string expand_path(std::string key) = 0;
+
+
+			virtual void remove_key(std::string path, std::string key) = 0;
+			virtual void remove_path(std::string path) = 0;
 
 			//////////////////////////////////////////////////////////////////////////
 			/// Log an ERROR message.

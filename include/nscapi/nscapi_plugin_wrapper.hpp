@@ -1,23 +1,22 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <string>
@@ -91,33 +90,33 @@ namespace nscapi {
 
 		static int NSModuleHelperInit(nscapi::core_api::lpNSAPILoader f) {
 			try { 
-				return nscapi::plugin_singleton->get_core()->load_endpoints(f)?NSCAPI::isSuccess:NSCAPI::hasFailed;
+				return nscapi::plugin_singleton->get_core()->load_endpoints(f)?NSCAPI::api_return_codes::isSuccess:NSCAPI::api_return_codes::hasFailed;
 			} catch (...) { 
 				NSC_LOG_CRITICAL("Unknown exception in: wrapModuleHelperInit");
-				return NSCAPI::hasFailed; 
+				return NSCAPI::api_return_codes::hasFailed;
 			} 
 		}
 		static void set_alias(const char *default_alias, const char *alias) {
 			nscapi::plugin_singleton->get_core()->set_alias(default_alias, alias);
 		}
 		static int NSLoadModule() { 
-			return NSCAPI::hasFailed; 
+			return NSCAPI::api_return_codes::hasFailed; 
 		} 
 		static int NSGetModuleName(char* buf, int buflen) { 
 			try {
-				return helpers::wrap_string(buf, buflen, impl_class::getModuleName(), NSCAPI::isSuccess);
+				return helpers::wrap_string(buf, buflen, impl_class::getModuleName(), NSCAPI::api_return_codes::isSuccess);
 			} catch (...) { 
 				NSC_LOG_CRITICAL("Unknown exception in: NSGetModuleName");
 			} 
-			return NSCAPI::hasFailed; 
+			return NSCAPI::api_return_codes::hasFailed; 
 		} 
 		static int NSGetModuleDescription(char* buf, int buflen) { 
 			try { 
-				return helpers::wrap_string(buf, buflen, impl_class::getModuleDescription(), NSCAPI::isSuccess);
+				return helpers::wrap_string(buf, buflen, impl_class::getModuleDescription(), NSCAPI::api_return_codes::isSuccess);
 			} catch (...) { 
 				NSC_LOG_CRITICAL("Unknown exception in: NSGetModuleDescription");
 			} 
-			return NSCAPI::hasFailed; 
+			return NSCAPI::api_return_codes::hasFailed; 
 		} 
 		static int NSGetModuleVersion(int *major, int *minor, int *revision) { 
 			try { 
@@ -125,11 +124,11 @@ namespace nscapi {
 				*major = version.major;
 				*minor = version.minor;
 				*revision = version.revision;
-				return NSCAPI::isSuccess;
+				return NSCAPI::api_return_codes::isSuccess;
 			} catch (...) { 
 				NSC_LOG_CRITICAL("Unknown exception in: NSGetModuleVersion");
 			} 
-			return NSCAPI::hasFailed; 
+			return NSCAPI::api_return_codes::hasFailed; 
 		}
 		static void NSDeleteBuffer(char** buffer) { 
 			try {
@@ -152,20 +151,20 @@ namespace nscapi {
 			} catch (...) {
 				NSC_LOG_CRITICAL("Unknown exception in: NSLoadModuleEx");
 			} 
-			return NSCAPI::hasFailed;
+			return NSCAPI::api_return_codes::hasFailed;
 		} 
 		int NSLoadModuleExNoExcept(unsigned int id, char* alias, int mode) { 
 			instance->set_id(id);
-			return instance->loadModuleEx(alias, mode)?NSCAPI::isSuccess:NSCAPI::hasFailed;
+			return instance->loadModuleEx(alias, mode)?NSCAPI::api_return_codes::isSuccess:NSCAPI::api_return_codes::hasFailed;
 		} 
 		int NSUnloadModule() { 
 			try { 
 				if (instance && instance->unloadModule())
-					return NSCAPI::isSuccess;
+					return NSCAPI::api_return_codes::hasFailed;
 			} catch (...) { 
 				NSC_LOG_CRITICAL("Unknown exception in: NSUnloadModule");
 			} 
-			return NSCAPI::hasFailed;
+			return NSCAPI::api_return_codes::hasFailed;
 		}
 	};
 	template<class impl_class>
@@ -182,11 +181,11 @@ namespace nscapi {
 		NSCAPI::boolReturn NSHasMessageHandler() { 
 			try {
 				if (instance->hasMessageHandler())
-					return NSCAPI::istrue;
+					return NSCAPI::bool_return::istrue;
 			} catch (...) { 
 				NSC_LOG_CRITICAL("Unknown exception in: NSHasMessageHandler");
 			} 
-			return NSCAPI::isfalse; 
+			return NSCAPI::bool_return::isfalse; 
 		}
 	};
 	template<class impl_class>
@@ -205,21 +204,21 @@ namespace nscapi {
 				return retCode;
 			} catch (const std::exception &e) { 
 				NSC_LOG_ERROR_EXR("NSHandleCommand", e);
-				return NSCAPI::returnUNKNOWN;
+				return NSCAPI::cmd_return_codes::hasFailed;
 			} catch (...) { 
 				NSC_LOG_ERROR_EX("NSHandleCommand");
-				return NSCAPI::returnUNKNOWN;
+				return NSCAPI::cmd_return_codes::hasFailed;
 			} 
-			return NSCAPI::returnIgnored; 
+			return NSCAPI::cmd_return_codes::returnIgnored; 
 		} 
 		NSCAPI::boolReturn NSHasCommandHandler() { 
 			try { 
 				if (instance->hasCommandHandler())
-					return NSCAPI::istrue;
+					return NSCAPI::bool_return::istrue;
 			} catch (...) { 
 				NSC_LOG_ERROR_EX("NSHasCommandHandler");
 			} 
-			return NSCAPI::isfalse; 
+			return NSCAPI::bool_return::isfalse; 
 		}
 	};
 
@@ -237,16 +236,16 @@ namespace nscapi {
 			} catch (...) { 
 				NSC_LOG_ERROR_EX("NSRouteMessage");
 			} 
-			return NSCAPI::returnIgnored; 
+			return NSCAPI::cmd_return_codes::returnIgnored; 
 		} 
 		NSCAPI::boolReturn NSHasRoutingHandler() { 
 			try { 
 				if (instance->hasRoutingHandler())
-					return NSCAPI::istrue;
+					return NSCAPI::bool_return::istrue;
 			} catch (...) { 
 				NSC_LOG_ERROR_EX("NSHasRoutingHandler");
 			} 
-			return NSCAPI::isfalse; 
+			return NSCAPI::bool_return::isfalse; 
 		}
 	};
 
@@ -267,16 +266,16 @@ namespace nscapi {
 			} catch (...) { 
 				NSC_LOG_ERROR_EX("NSHandleNotification");
 			} 
-			return NSCAPI::returnIgnored; 
+			return NSCAPI::cmd_return_codes::hasFailed; 
 		} 
 		NSCAPI::boolReturn NSHasNotificationHandler() { 
 			try { 
 				if (instance->hasNotificationHandler())
-					return NSCAPI::istrue;
+					return NSCAPI::bool_return::istrue;
 			} catch (...) { 
 				NSC_LOG_ERROR_EX("NSHasNotificationHandler");
 			} 
-			return NSCAPI::isfalse; 
+			return NSCAPI::bool_return::isfalse; 
 		}
 	};
 
@@ -285,10 +284,10 @@ namespace nscapi {
 		boost::shared_ptr<impl_class> instance;
 		cliexec_wrapper(boost::shared_ptr<impl_class> instance) : instance(instance) {}
 
-		int NSCommandLineExec(char *request_buffer, unsigned int request_buffer_len, char **response_buffer, unsigned int *response_buffer_len) {
+		int NSCommandLineExec(const int target_mode, char *request_buffer, unsigned int request_buffer_len, char **response_buffer, unsigned int *response_buffer_len) {
 			try { 
 				std::string request(request_buffer, request_buffer_len), reply;
-				NSCAPI::nagiosReturn retCode = instance->commandRAWLineExec(request, reply); 
+				NSCAPI::nagiosReturn retCode = instance->commandRAWLineExec(target_mode, request, reply);
 				helpers::wrap_string(reply, response_buffer, response_buffer_len);
 				return retCode;
 			} catch (const std::exception &e) { 
@@ -296,7 +295,59 @@ namespace nscapi {
 			} catch (...) { 
 				NSC_LOG_ERROR_EX("NSCommandLineExec");
 			} 
-			return NSCAPI::hasFailed; 
+			return NSCAPI::cmd_return_codes::hasFailed; 
 		} 
 	};
+
+	template<class impl_class>
+	struct metrics_wrapper {
+		boost::shared_ptr<impl_class> instance;
+		metrics_wrapper(boost::shared_ptr<impl_class> instance) : instance(instance) {}
+
+		int NSFetchMetrics(char **response_buffer, unsigned int *response_buffer_len) {
+			try {
+				std::string reply;
+				NSCAPI::nagiosReturn retCode = instance->fetchMetrics(reply);
+				helpers::wrap_string(reply, response_buffer, response_buffer_len);
+				return retCode;
+			}
+			catch (const std::exception &e) {
+				NSC_LOG_ERROR_EXR("NSFetchMetrics", e);
+			}
+			catch (...) {
+				NSC_LOG_ERROR_EX("NSFetchMetrics");
+			}
+			return NSCAPI::api_return_codes::hasFailed;
+		}
+		int NSSubmitMetrics(const char *buffer, const unsigned int buffer_len) {
+			try {
+				std::string reply(buffer, buffer_len);
+				return instance->submitMetrics(reply);
+			} catch (const std::exception &e) {
+				NSC_LOG_ERROR_EXR("NSFetchMetrics", e);
+			} catch (...) {
+				NSC_LOG_ERROR_EX("NSFetchMetrics");
+			}
+			return NSCAPI::api_return_codes::hasFailed;
+		}
+	};
+
+	template<class impl_class>
+	struct event_wrapper {
+		boost::shared_ptr<impl_class> instance;
+		event_wrapper(boost::shared_ptr<impl_class> instance) : instance(instance) {}
+
+		int NSOnEvent(const char *buffer, const unsigned int buffer_len) {
+			try {
+				std::string message(buffer, buffer_len);
+				return instance->onRAWEvent(message);
+			} catch (const std::exception &e) {
+				NSC_LOG_ERROR_EXR("NSOnEvent", e);
+			} catch (...) {
+				NSC_LOG_ERROR_EX("NSOnEvent");
+			}
+			return NSCAPI::api_return_codes::hasFailed;
+		}
+	};
+
 }

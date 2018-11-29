@@ -1,24 +1,28 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
+
+#include <NSCAPI.h>
+#include <nscapi/nscapi_plugin_wrapper.hpp>
+
+#include <map>
 
 extern "C" int NSModuleHelperInit(unsigned int id, nscapi::core_api::lpNSAPILoader f);
 extern "C" int NSLoadModule();
@@ -34,7 +38,6 @@ extern "C" NSCAPI::nagiosReturn NSHandleCommand(unsigned int plugin_id, const ch
 extern "C" int NSUnloadModule(unsigned int plugin_id);
 
 #include "plugin_instance.hpp"
-
 
 class DotnetPlugins : public plugin_manager_interface {
 private:
@@ -60,7 +63,7 @@ public:
 		return "DotnetPlugin";
 	}
 	static nscapi::module_version getModuleVersion() {
-		nscapi::module_version version = {0, 3, 0 };
+		nscapi::module_version version = { 0, 3, 0 };
 		return version;
 	}
 	static std::string getModuleDescription() {
@@ -76,7 +79,7 @@ public:
 
 	NSCAPI::nagiosReturn handleRAWCommand(const std::string &request, std::string &response);
 	NSCAPI::nagiosReturn handleRAWNotification(const std::string &channel, std::string &request, std::string &response);
-	NSCAPI::nagiosReturn commandRAWLineExec(const std::string &request, std::string &response);
+	NSCAPI::nagiosReturn commandRAWLineExec(const int target_type, const std::string &request, std::string &response);
 	void DotnetPlugins::handleMessageRAW(std::string data);
 
 	bool register_command(std::string command, internal_plugin_instance_ptr plugin);
@@ -92,5 +95,4 @@ public:
 private:
 	void load(std::string key, std::string factory, std::string val);
 	int registry_reg_module(const std::string module);
-
 };

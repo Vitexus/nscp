@@ -121,11 +121,25 @@ class Win32FileTest(BasicTest):
 			result.add_message(ret == status.CRITICAL, 'Check that we get correct status back (CRIT)', 'We did not get a CRIT back as expected: %s'%ret)
 		elif expected > 1:
 			result.add_message(ret == status.WARNING, 'Check that we get correct status back (WARN)', 'We did not get a WARN back as expected: %s'%ret)
-		else:
+		elif expected > 0:
 			result.add_message(ret == status.OK, 'Check that we get correct status back (OK)', 'We did not get a OK back as expected: %s'%ret)
+		else:
+			result.add_message(ret == status.UNKNOWN, 'Check that we get correct status back (UNKNOWN)', 'We did not get a UNKNOWN back as expected: %s'%ret)
+		return result
+
+	def check_no_files(self):
+		self.setup_files()
+		result = TestResult('Checking no files')
+		args = ['path=%s\\aaa.txt'%self.work_path]
+		(ret, msg, perf) = self.core.simple_query('check_files', args)
+		#log("Messge: %s"%msg)
+		#log("Perf: %s"%perf)
+		result.add_message(ret == status.UNKNOWN, 'Check that we get correct status back', 'Return status was wrong: %s'%ret)
+		#count = self.get_count(perf)
+		result.assert_equals(msg, 'No files found', 'Validate return message')
 			
-		return result;
-		
+		return result
+
 	def run_test(self):
 		result = TestResult('Testing W32 file systems')
 
@@ -145,7 +159,7 @@ class Win32FileTest(BasicTest):
 		result.add(self.check_files('size eq 0b', 'Count all folders (recurse 1)', 3, ['max-dir-depth=3']))
 		result.add(self.check_files('size eq 0b', 'Count all folders (recurse 1)', 3, ['max-dir-depth=4']))
 		result.add(self.check_files('size gt 0b', 'Count all files (*.txt)', 9, ['pattern=*.txt']))
-		result.add(self.check_files('size gt 0b', 'Count all files (*.txt)', 0, ['pattern=*.foo']))
+		result.add(self.check_files('size gt 0b', 'Count all files (*.foo)', 0, ['pattern=*.foo']))
 
 		# Check dates
 		result.add(self.check_files('written ge -5m', 'Count all files (*.txt, >-5m)', 7, ['pattern=*.txt']))
@@ -156,6 +170,7 @@ class Win32FileTest(BasicTest):
 		result.add(self.check_files('written gt -9m and written lt -1m', 'Count all files (*.txt, >-10m<-5m)', 2, ['pattern=*.txt']))
 		result.add(self.check_files('written gt 0m', 'Count all files (*.txt, >0m)', 4, ['pattern=*.txt']))
 
+		result.add(self.check_no_files())
 		self.cleanup_files()
 		
 		return result

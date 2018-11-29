@@ -1,18 +1,37 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
-
-#include <string>
-
-#include <error.hpp>
-#include <format.hpp>
-
-#include <boost/date_time.hpp>
-#include <boost/algorithm/string.hpp>
 
 #include <parsers/where.hpp>
 #include <parsers/where/node.hpp>
 #include <parsers/where/engine.hpp>
 #include <parsers/filter/modern_filter.hpp>
 #include <parsers/where/filter_handler_impl.hpp>
+
+#include <error/error.hpp>
+#include <str/format.hpp>
+
+#include <boost/date_time.hpp>
+#include <boost/algorithm/string.hpp>
+
+#include <string>
 
 namespace check_cpu_filter {
 
@@ -78,13 +97,13 @@ namespace check_mem_filter {
 		}
 
 		std::string get_total_human() const {
-			return format::format_byte_units(get_total());
+			return str::format::format_byte_units(get_total());
 		}
 		std::string get_used_human() const {
-			return format::format_byte_units(get_used());
+			return str::format::format_byte_units(get_used());
 		}
 		std::string get_free_human() const {
-			return format::format_byte_units(get_free());
+			return str::format::format_byte_units(get_free());
 		}
 	};
 
@@ -166,10 +185,10 @@ namespace check_uptime_filter {
 			return now-uptime;
 		}
 		std::string get_boot_s() const {
-			return format::format_date(boot);
+			return str::format::format_date(boot);
 		}
 		std::string get_uptime_s() const {
-			return format::itos_as_time(get_uptime()*1000);
+			return str::format::itos_as_time(get_uptime()*1000);
 		}
 	};
 

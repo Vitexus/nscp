@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <map>
 #include <list>
 
@@ -8,7 +27,7 @@
 #include <parsers/where/helpers.hpp>
 
 #include <simple_timer.hpp>
-#include <strEx.h>
+#include <str/utils.hpp>
 #include "filter.hpp"
 
 using namespace parsers::where;
@@ -32,14 +51,14 @@ namespace check_cpu_filter {
 namespace check_mem_filter {
 
 	parsers::where::node_type calculate_free(boost::shared_ptr<filter_obj> object, parsers::where::evaluation_context context, parsers::where::node_type subject) {
-		boost::tuple<long long, std::string> value = parsers::where::helpers::read_arguments(context, subject, "%");
-		long long number = value.get<0>();
-		std::string unit = value.get<1>();
+		parsers::where::helpers::read_arg_type value = parsers::where::helpers::read_arguments(context, subject, "%");
+		long long number = value.get<1>();
+		std::string unit = value.get<2>();
 
 		if (unit == "%") {
 			number = (object->get_total()*(number))/100;
 		} else {
-			number = format::decode_byte_units(number, unit);
+			number = str::format::decode_byte_units(number, unit);
 		}
 		return parsers::where::factory::create_int(number);
 	}
@@ -222,7 +241,7 @@ namespace check_svc_filter {
 namespace check_uptime_filter {
 
 	parsers::where::node_type parse_time(boost::shared_ptr<filter_obj> object, parsers::where::evaluation_context context, parsers::where::node_type subject) {
-		return parsers::where::factory::create_int(strEx::stoui_as_time_sec(subject->get_string_value(context)));
+		return parsers::where::factory::create_int(str::format::stox_as_time_sec<long long>(subject->get_string_value(context), "s"));
 	}
 
 	static const parsers::where::value_type type_custom_uptime = parsers::where::type_custom_int_1;

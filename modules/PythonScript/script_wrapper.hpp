@@ -1,17 +1,36 @@
-#pragma once
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
-#include <boost/python.hpp>
-#include <boost/thread.hpp>
+#pragma once
 
 #include <nscapi/nscapi_settings_proxy.hpp>
 #include <nscapi/nscapi_core_helper.hpp>
 #include <nscapi/nscapi_helper_singleton.hpp>
 #include <nscapi/macros.hpp>
 
+#include <boost/python.hpp>
+#include <boost/thread.hpp>
+#include <boost/foreach.hpp>
 
 namespace script_wrapper {
-	using namespace boost::python;
 
+	namespace py = boost::python;
 
 	namespace thread_support {
 		static bool enabled = true;
@@ -24,7 +43,6 @@ namespace script_wrapper {
 					NSC_LOG_ERROR("Failed to get mutex: thread_locker");
 			}
 		};
-
 	}
 
 	struct thread_locker {
@@ -40,7 +58,6 @@ namespace script_wrapper {
 		}
 	};
 
-
 	struct thread_unlocker {
 		PyThreadState *state;
 		thread_unlocker() {
@@ -52,21 +69,21 @@ namespace script_wrapper {
 				PyEval_RestoreThread(state);
 		}
 	};
-	
+
 	enum status {
-		OK = NSCAPI::returnOK, 
-		WARN = NSCAPI::returnWARN, 
-		CRIT = NSCAPI::returnCRIT, 
-		UNKNOWN = NSCAPI::returnUNKNOWN
+		OK = NSCAPI::query_return_codes::returnOK,
+		WARN = NSCAPI::query_return_codes::returnWARN,
+		CRIT = NSCAPI::query_return_codes::returnCRIT,
+		UNKNOWN = NSCAPI::query_return_codes::returnUNKNOWN
 	};
 
 	status nagios_return_to_py(int code);
 	int py_to_nagios_return(status code);
 
 	void log_exception();
-	void log_msg(object x);
-	void log_debug(object x);
-	void log_error(object x);
+	void log_msg(py::object x);
+	void log_debug(py::object x);
+	void log_error(py::object x);
 	void sleep(unsigned int seconds);
 	//std::string get_alias();
 
@@ -75,9 +92,9 @@ namespace script_wrapper {
 	boost::python::list convert(const std::list<std::wstring> &lst);
 	boost::python::list convert(const std::vector<std::wstring> &lst);
 
-
 	struct functions {
-		typedef std::map<std::string,boost::python::handle<> > function_map_type;
+		typedef std::map<std::string, boost::python::handle<> > function_map_type;
+		typedef std::list<boost::python::handle<> > function_list_type;
 		function_map_type simple_functions;
 		function_map_type normal_functions;
 
@@ -87,6 +104,10 @@ namespace script_wrapper {
 		function_map_type simple_handler;
 		function_map_type normal_handler;
 
+
+		function_list_type submit_metrics;
+		function_list_type fetch_metrics;
+
 		static boost::shared_ptr<functions> instance;
 		static boost::shared_ptr<functions> get() {
 			if (!instance)
@@ -95,6 +116,16 @@ namespace script_wrapper {
 		}
 		static void destroy() {
 			instance.reset();
+		}
+		std::list<std::string> get_commands() const {
+			std::list<std::string> ret;
+			BOOST_FOREACH(const function_map_type::value_type &v, simple_functions) {
+				ret.push_back(v.first);
+			}
+			BOOST_FOREACH(const function_map_type::value_type &v, normal_functions) {
+				ret.push_back(v.first);
+			}
+			return ret;
 		}
 	};
 
@@ -110,9 +141,8 @@ namespace script_wrapper {
 			return *this;
 		}
 		function_wrapper(nscapi::core_wrapper* core, unsigned int plugin_id) : core(core), plugin_id(plugin_id) {}
-		typedef std::map<std::string,PyObject*> function_map_type;
+		typedef std::map<std::string, PyObject*> function_map_type;
 		//typedef boost::python::tuple simple_return;
-
 
 		static boost::shared_ptr<function_wrapper> create(unsigned int plugin_id);
 
@@ -132,14 +162,28 @@ namespace script_wrapper {
 		bool has_cmdline(const std::string command);
 		bool has_simple_cmdline(const std::string command);
 
-
 		int handle_simple_message(const std::string channel, const std::string wsrc, const std::string wcmd, const int code, const std::string &msg, const std::string &perf) const;
 		int handle_message(const std::string channel, const std::string &request, std::string &response) const;
 		bool has_message_handler(const std::string command);
 		bool has_simple_message_handler(const std::string command);
 
+		void on_simple_event(const std::string event, const boost::python::dict &data) const;
+		void on_event(const std::string event, const std::string &request) const;
+		bool has_event_handler(const std::string event);
+		bool has_simple_event_handler(const std::string event);
+
+		void register_submit_metrics(PyObject* callable);
+		void register_fetch_metrics(PyObject* callable);
+		py::tuple register_event(std::string event, PyObject* callable);
+		py::tuple register_event_pb(std::string event, PyObject* callable);
+		void submit_metrics(const std::string &request) const;
+		void fetch_metrics(std::string &request) const;
+
+		bool has_submit_metrics();
+		bool has_metrics_fetcher();
+
 		std::string get_commands();
-		tuple query(std::string request);
+		py::tuple query(std::string request);
 	};
 	struct command_wrapper {
 	private:
@@ -156,13 +200,15 @@ namespace script_wrapper {
 	public:
 		static boost::shared_ptr<command_wrapper> create(unsigned int plugin_id);
 
-		tuple simple_query(std::string command, boost::python::list args);
-		tuple query(std::string command, std::string request);
-		tuple simple_exec(std::string target, std::string command, boost::python::list args);
-		tuple exec(std::string target, std::string request);
-		tuple simple_submit(std::string channel, std::string command, status code, std::string message, std::string perf);
-		tuple submit(std::string channel, std::string request);
+		py::tuple simple_query(std::string command, boost::python::list args);
+		py::tuple query(std::string command, std::string request);
+		py::tuple simple_exec(std::string target, std::string command, boost::python::list args);
+		py::tuple exec(std::string target, std::string request);
+		py::tuple simple_submit(std::string channel, std::string command, status code, std::string message, std::string perf);
+		py::tuple submit(std::string channel, std::string request);
 		bool reload(std::string module);
+		bool load_module(std::string name, std::string alias = "");
+		bool unload_module(std::string name);
 		std::string expand_path(std::string module);
 	};
 
@@ -190,24 +236,19 @@ namespace script_wrapper {
 		void set_bool(std::string path, std::string key, bool value);
 		int get_int(std::string path, std::string key, int def);
 		void set_int(std::string path, std::string key, int value);
-		std::list<std::string> get_section(std::string path);
+		boost::python::list get_section(std::string path);
 		void save();
 		NSCAPI::settings_type get_type(std::string stype);
 		void settings_register_key(std::string path, std::string key, std::string stype, std::string title, std::string description, std::string defaultValue);
 		void settings_register_path(std::string path, std::string title, std::string description);
-		tuple query(std::string request);
+		py::tuple query(std::string request);
 	};
-
 
 	class PyInitializer {
-	public:  PyInitializer()  { Py_Initialize(); }  
+	public:  PyInitializer() { Py_Initialize(); }
 			 ~PyInitializer() { Py_Finalize(); }
-	private:  
-		PyInitializer(const PyInitializer &);  
+	private:
+		PyInitializer(const PyInitializer &);
 		PyInitializer & operator=(const PyInitializer &);
 	};
-
-
-
-
 }

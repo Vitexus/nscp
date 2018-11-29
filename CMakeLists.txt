@@ -61,8 +61,11 @@ IF(NOT CMAKE_INSTALL_PREFIX)
 ENDIF()
 SET(MODULE_TARGET_FOLDER lib/nsclient/modules)
 SET(LIB_TARGET_FOLDER lib)
+SET(SYSTEMD_TARGET_FOLDER /lib/systemd/system)
 SET(SBIN_TARGET_FOLDER sbin)
 SET(BIN_TARGET_FOLDER bin)
+SET(LOG_TARGET_FOLDER /var/log)
+SET(ETC_TARGET_FOLDER /etc)
 
 IF(NOT DEFINED USE_STATIC_RUNTIME)
 	SET(USE_STATIC_RUNTIME FALSE)
@@ -170,26 +173,33 @@ ENDIF(NOT HAVE_REQUIRED_DEPENDENCIES)
 IF(USE_STATIC_RUNTIME)
 ELSE(USE_STATIC_RUNTIME)
 	IF(WIN32)
+		message(STATUS "Copying redist libraries to target")
+		find_redist(REDIST_LIST)
+		foreach(LIB ${REDIST_LIST})
+			get_filename_component(_NAME ${LIB} NAME)
+			message(STATUS " +  ${_NAME}")
+			copy_file(${LIB} ${PROJECT_BINARY_DIR})
+			install(FILES "${LIB}" DESTINATION .)
+		endforeach()
 		SET (LIBS DATE_TIME FILESYSTEM PROGRAM_OPTIONS PYTHON "REGEX" SYSTEM THREAD CHRONO)
 		FOREACH (LIB ${LIBS})
 			IF(Boost_${LIB}_LIBRARY_RELEASE)
-				MESSAGE(STATUS "Boost_${LIB}_LIBRARY_RELEASE=${Boost_${LIB}_LIBRARY_RELEASE}")
 				STRING(REPLACE ".lib" ".dll" Boost_${LIB}_LIBRARY_RELEASE_DLL ${Boost_${LIB}_LIBRARY_RELEASE})
+				get_filename_component(_NAME "${Boost_${LIB}_LIBRARY_RELEASE_DLL}" NAME)
+				message(STATUS " + ${_NAME}")
 				COPY_FILE(${Boost_${LIB}_LIBRARY_RELEASE_DLL} ${PROJECT_BINARY_DIR})
-				if(WIN32)
-					INSTALL(FILES ${Boost_${LIB}_LIBRARY_RELEASE_DLL} DESTINATION .)
-				endif(WIN32)
 				STRING(REPLACE ".lib" ".dll" Boost_${LIB}_LIBRARY_DEBUG_DLL ${Boost_${LIB}_LIBRARY_DEBUG})
 				COPY_FILE(${Boost_${LIB}_LIBRARY_DEBUG_DLL} ${PROJECT_BINARY_DIR})
+				install(FILES ${Boost_${LIB}_LIBRARY_RELEASE_DLL} DESTINATION .)
 			ENDIF()
 		ENDFOREACH()
 		SET (LIBS LIB SSL)
 		FOREACH (LIB ${LIBS})
 			STRING(REPLACE ".lib" ".dll" ${LIB}_EAY_RELEASE_DLL "${${LIB}_EAY_RELEASE}")
+			get_filename_component(_NAME "${${LIB}_EAY_RELEASE_DLL}" NAME)
+			message(STATUS " + ${_NAME}")
 			COPY_FILE("${${LIB}_EAY_RELEASE_DLL}" ${PROJECT_BINARY_DIR})
-			if(WIN32)
-				INSTALL(FILES "${${LIB}_EAY_RELEASE_DLL}" DESTINATION .)
-			endif(WIN32)
+			install(FILES "${${LIB}_EAY_RELEASE_DLL}" DESTINATION .)
 		ENDFOREACH()
 	ENDIF()
 ENDIF(USE_STATIC_RUNTIME)
@@ -273,7 +283,7 @@ endif()
 
 if(MSVC)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
-  message(STATUS "Added parallel build arguments to CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
+  message(STATUS "Added parallel build arguments")
 endif()
 
 IF(NOT SHARED_LIBS)
@@ -348,9 +358,9 @@ IF(WIN32)
 	SET(CONFIG_BOOT_CONF_LOCATION		"\${exe-path}/boot.ini" CACHE STRING "Location of boot ini (the file which specified where to load the config)")
 	SET(CONFIG_DEFAULT_CONF_LOCATION	"old" CACHE STRING "Default configuration store")
 	SET(CONFIG_DEFAULT_CONF_INI_BASE	"ini://\${shared-path}/" CACHE STRING "Base location for ini files")
-	SET(CONFIG_MODULE_FOLDER			"\${shared-path}/modules" CACHE STRING "modules folder")
+	SET(CONFIG_MODULE_FOLDER			"\${exe-path}/modules" CACHE STRING "modules folder")
 	SET(CONFIG_WEB_FOLDER				"\${shared-path}/web" CACHE STRING "web folder")
-	SET(CONFIG_SCRIPTS_FOLDER			"\${shared-path}/scripts" CACHE STRING "script folder")
+	SET(CONFIG_SCRIPTS_FOLDER			"\${exe-path}/scripts" CACHE STRING "script folder")
 	SET(CONFIG_CERT_FOLDER				"\${shared-path}/security" CACHE STRING "securoty (certificates) folder")
 	SET(CONFIG_DEFAULT_CACHE_PATH		"\${shared-path}/cache" CACHE STRING "Path for caching stuff")
 	SET(CONFIG_LOG_FOLDER				"\${shared-path}/log" CACHE STRING "Path for log files")
@@ -376,6 +386,13 @@ CONFIGURE_FILE(
   ${PROJECT_BINARY_DIR}/include/config.h
   @ONLY
 )
+IF(NOT WIN32)
+CONFIGURE_FILE(
+  ${CMAKE_SOURCE_DIR}/files/nscp.spec.in
+  ${PROJECT_BINARY_DIR}/SPECS/nscp.spec
+  @ONLY
+)
+ENDIF()
 CONFIGURE_FILE(
   ${BUILD_PYTHON_FOLDER}/postbuild.py
   ${BUILD_TARGET_EXE_PATH}/postbuild.py
@@ -393,6 +410,23 @@ CONFIGURE_FILE(
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR}/include)
 INCLUDE_DIRECTORIES(${NSCP_LOCAL_INCLUDE_PATH})
 # WHat does this do? INSTALL_FILES(/include FILES ${WCONFIG_H_PATH})
+
+
+IF(WIN32)
+  SET(NSCP_ERROR_CPP
+      ${NSCP_INCLUDEDIR}/error/error_w32.cpp
+  )
+  SET(NSCP_ERROR_HPP
+      ${NSCP_INCLUDEDIR}/error/error_w32.hpp
+      ${NSCP_INCLUDEDIR}/error/error.hpp
+  )
+ELSE()
+  SET(NSCP_ERROR_CPP
+  )
+  SET(NSCP_ERROR_HPP
+      ${NSCP_INCLUDEDIR}/error/error.hpp
+  )
+ENDIF()
 
 #############################################################################
 #
@@ -453,17 +487,6 @@ IF(NETLIB_FOUND)
 	ENDIF()
 ENDIF()
 
-
-MESSAGE(STATUS " - Mongoose")
-SET(OLD_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
-SET(BUILD_SHARED_LIBS OFF)
-SET(ENABLE_SSL ON CACHE BOOL "Override SSL support")
-ADD_SUBDIRECTORY("ext/mongoose-cpp")
-SET_TARGET_PROPERTIES(_mongoose PROPERTIES FOLDER "libraries")
-SET(BUILD_SHARED_LIBS ${OLD_BUILD_SHARED_LIBS})
-MESSAGE(STATUS " - Docs")
-ADD_SUBDIRECTORY("ext/docs")
-
 SET(ALL_LIB_NAMES)
 MESSAGE(STATUS "Adding libraries")
 FILE(GLOB ALL_LIB_PROJECTS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "libs/*/CMakeLists.txt")
@@ -475,6 +498,15 @@ FOREACH(CURRENT_LIB ${ALL_LIB_PROJECTS})
 	SET(ALL_LIB_NAMES ${ALL_LIB_NAMES} ${CURRENT_LIB_NAME})
 ENDFOREACH(CURRENT_LIB ${ALL_LIB_PROJECTS})
 
+SET(ALL_ZIP_MODULES)
+MESSAGE(STATUS "Adding zip-modules")
+FILE(GLOB ALL_ZIP_MODULES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "scripts/modules/*/CMakeLists.txt")
+FOREACH(CURRENT ${ALL_ZIP_MODULES})
+	GET_FILENAME_COMPONENT(CURRENT_PATH ${CURRENT} PATH)
+	GET_FILENAME_COMPONENT(CURRENT_NAME ${CURRENT_PATH} NAME)
+	MESSAGE(STATUS " + Zip-module: ${CURRENT_PATH} (${CURRENT_NAME})")
+	ADD_SUBDIRECTORY("${CURRENT_PATH}")
+ENDFOREACH(CURRENT ${ALL_ZIP_MODULES})
 
 #############################################################################
 #
@@ -484,21 +516,26 @@ ENDFOREACH(CURRENT_LIB ${ALL_LIB_PROJECTS})
 
 SET(NSCP_DEF_PLUGIN_CPP
 	${NSCP_INCLUDEDIR}/nscapi/nscapi_plugin_impl.cpp
+	${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_helper.cpp
 )
 SET(NSCP_DEF_PLUGIN_HPP
 	${NSCP_INCLUDEDIR}/utf8.hpp
-	${NSCP_INCLUDEDIR}/format.hpp
-	${NSCP_INCLUDEDIR}/strEx.h
+	${NSCP_INCLUDEDIR}/str/format.hpp
+	${NSCP_INCLUDEDIR}/str/utils.hpp
 	${NSCP_INCLUDEDIR}/config.h
-	${NSCP_INCLUDEDIR}/utils.h
 	${NSCP_INCLUDEDIR}/NSCAPI.h
 	${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_helper.hpp
-	${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_object.hpp
-	${NSCP_INCLUDEDIR}/nscapi/nscapi_plugin_impl.hpp
+	${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_object.hpp  
+  ${NSCP_INCLUDEDIR}/nscapi/nscapi_common_options.hpp
+  ${NSCP_INCLUDEDIR}/nscapi/nscapi_metrics_helper.hpp
+  ${NSCP_INCLUDEDIR}/nscapi/nscapi_plugin_impl.hpp
+  ${NSCP_INCLUDEDIR}/nscapi/nscapi_plugin_wrapper.hpp
+  ${NSCP_INCLUDEDIR}/nscapi/nscapi_program_options.hpp
 )
 
 SET(NSCP_FILTER_CPP
 	${NSCP_INCLUDEDIR}/parsers/filter/modern_filter.cpp
+	${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_object.cpp
 )
 SET(NSCP_FILTER_HPP
 	${NSCP_INCLUDEDIR}/parsers/filter/modern_filter.hpp
@@ -511,6 +548,16 @@ SET(NSCP_FILTER_LIB
 	perfconfig_parser
 )
 
+
+SET(NSCP_CLIENT_CPP
+	${NSCP_INCLUDEDIR}/client/command_line_parser.cpp
+	${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_object.cpp
+)
+SET(NSCP_CLIENT_HPP
+	${NSCP_INCLUDEDIR}/client/command_line_parser.hpp
+	${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_object.hpp
+)
+
 SET(NSCP_DEF_PLUGIN_LIB
 	${CMAKE_THREAD_LIBS_INIT}
 	${Boost_SYSTEM_LIBRARY}
@@ -518,7 +565,7 @@ SET(NSCP_DEF_PLUGIN_LIB
 	${Boost_PROGRAM_OPTIONS_LIBRARY}
 	${EXTRA_LIBS}
 	${PROTOBUF_LIBRARY}
-    ${ICONV_LIBRARIES}
+  ${ICONV_LIBRARIES}
 	nscp_protobuf
 	plugin_api
 )
@@ -533,22 +580,32 @@ SET(MAIN_NSCP_TARGET "nscp" "nscp_full_config")
 
 ADD_SUBDIRECTORY("service")
 ADD_SUBDIRECTORY("scripts")
+ADD_SUBDIRECTORY("op5/config")
+ADD_SUBDIRECTORY("op5/scripts")
 ADD_SUBDIRECTORY("web")
 ADD_SUBDIRECTORY("files")
 
 LOAD_SECTIONS(ALL_MODULE_NAMES "modules/*/module.cmake" "Modules")
-LOAD_SECTIONS(ALL_TOOL_NAMES "tools/*/module.cmake" "Tools")
 LOAD_SECTIONS(ALL_CLIENT_NAMES "clients/*/module.cmake" "Clients")
 IF(WIN32)
-	LOAD_SECTIONS(ALL_INSTALLERS_NAMES "installers/*/CMakeLists.txt" "Installers")
+	LOAD_SECTIONS(ALL_TOOL_NAMES "tools/*/module.cmake" "Tools")
 ENDIF(WIN32)
-SET_TARGET_PROPERTIES(${MAIN_NSCP_TARGET} ${ALL_CLIENT_NAMES} ${ALL_MODULE_NAMES} ${ALL_TOOL_NAMES} PROPERTIES 
+SET_TARGET_PROPERTIES(nscp ${ALL_CLIENT_NAMES} ${ALL_MODULE_NAMES} ${ALL_TOOL_NAMES} PROPERTIES 
         RUNTIME_OUTPUT_DIRECTORY "${BUILD_TARGET_EXE_PATH}"
 		LIBRARY_OUTPUT_DIRECTORY "${BUILD_TARGET_LIB_PATH}"
         MODULE_OUTPUT_DIRECTORY  "${BUILD_TARGET_LIB_PATH}"
 )
 
 ADD_SUBDIRECTORY("docs")
+
+ADD_CUSTOM_TARGET(nscp_full_config
+	COMMAND ${CMAKE_BINARY_DIR}/nscp settings --settings ini://nsclient-full.ini --add-defaults --load-all --generate
+	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+	DEPENDS nscp ${ALL_MODULE_NAMES} ${ALL_ZIP_MODULE_NAMES})
+
+IF(WIN32)
+	LOAD_SECTIONS(ALL_INSTALLERS_NAMES "installers/*/CMakeLists.txt" "Installers")
+ENDIF(WIN32)
 
 #############################################################################
 #
@@ -563,11 +620,13 @@ add_nscp_lua_test(lua_nrpe test_nrpe)
 add_nscp_py_test(python test_python)
 add_nscp_py_test(log_file test_log_file)
 add_nscp_py_test(external_script test_external_script)
+add_nscp_py_test(scheduler test_scheduler)
 IF(WIN32)
 # Disabled as is is not a unit test per see, since it requires extenal non mocked stimula
 #	add_nscp_py_test(eventlog test_eventlog)
 	add_nscp_py_test(w32_system test_w32_system)
 	add_nscp_py_test(w32_system test_w32_file)
+	add_nscp_py_test(w32_taskScheduler test_w32_schetask)
 ENDIF(WIN32)
 
 #############################################################################
@@ -597,50 +656,11 @@ IF(WIN32)
 	set(CPACK_PACKAGE_FILE_NAME "NSCP-${CPACK_PACKAGE_VERSION}-${VERSION_ARCH}")
 	SET(CPACK_GENERATOR ZIP)
 ELSE()
-	#execute_process(COMMAND lsb_release -sc OUTPUT_VARIABLE RELEASE OUTPUT_STRIP_TRAILING_WHITESPACE)
-	IF(DISTRIBUTION STREQUAL "Fedora" OR DISTRIBUTION STREQUAL "CentOS")
-		#
-		# Need to patch cmake /usr/share/cmake/Modules/CPackRPM.cmake with the following
-		#    COMMAND "${RPMBUILD_EXECUTABLE}" -bb
-		#        --define "_topdir ${CPACK_RPM_DIRECTORY}"
-		#        --buildroot "${CPACK_RPM_DIRECTORY}/${CPACK_PACKAGE_FILE_NAME}${CPACK_RPM_PACKAGE_COMPONENT_PART_PATH}"
-		#        "${CPACK_RPM_BINARY_SPECFILE}"
-		#
-		set(CPACK_RPM_USER_BINARY_SPECFILE "${CMAKE_CURRENT_SOURCE_DIR}/nscp.spec.in")
-	
-		set(CPACK_GENERATOR "RPM")
-		SET(CPACK_RPM_PACKAGE_DEBUG 1)
-		set(CPACK_PACKAGE_RELEASE 1)
-		set(CPACK_RPM_PACKAGE_GROUP "System Environment/Daemons")
-		set(CPACK_RPM_PACKAGE_LICENSE "GPLv2")		
-		set(CPACK_RPM_PACKAGE_URL "http://www.nsclient.org")
-		set(CPACK_PACKAGING_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX})
-		set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST
-			/usr
-			/usr/
-			/usr/bin
-			/usr/lib
-			/usr/sbin
-			/usr/share
-		)
-		set(CPACK_RPM_PACKAGE_REQUIRES "boost-filesystem boost-program-options boost-thread protobuf")
-		set(CPACK_PACKAGE_FILE_NAME "NSCP-${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_RELEASE}.${LINUXDIST}.${CMAKE_SYSTEM_PROCESSOR}")
-		
-		configure_file("${CMAKE_CURRENT_SOURCE_DIR}/build/sh/copy_package.sh.in" "${CMAKE_CURRENT_BINARY_DIR}/copy_package.sh" @ONLY IMMEDIATE)
-		
-	ELSEIF(DISTRIBUTION STREQUAL "Ubuntu")
-		set(CPACK_GENERATOR "DEB")	
-		set(CPACK_DEBIAN_PACKAGE_NAME        ${CPACK_PACKAGE_NAME})
-		#set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE amd64)
-		set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, libboost-filesystem1.54.0, libboost-date-time1.54.0, libboost-program-options1.54.0, libboost-python1.54.0, libboost-regex1.54.0, libboost-system1.54.0, libboost-thread1.54.0, python, libssl1.0.0, python-protobuf, libprotobuf8, libcrypto++9")
-		set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "http://www.nsclient.org")
-		set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Michael Medin")
-		set(CPACK_DEBIAN_PACKAGE_PRIORITY    "optional")
-		set(CPACK_DEBIAN_PACKAGE_SECTION     "net")
-		set(CPACK_PACKAGE_FILE_NAME ${CPACK_PACKAGE_NAME}_${CPACK_PACKAGE_VERSION}-${RELEASE}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE})
-		set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_SOURCE_DIR}/files/deb/postinst;${CMAKE_CURRENT_SOURCE_DIR}/files/deb/prerm;" )
-		#set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_SOURCE_DIR}/files/deb/postinst;${CMAKE_CURRENT_SOURCE_DIR}/files/deb/postrm;" )
-	ENDIF()
+	SET(CPACK_INCLUDE_TOPLEVEL_DIRECTORY 0)
+	set(CPACK_PACKAGE_FILE_NAME "NSCP-${CPACK_PACKAGE_VERSION}-${VERSION_ARCH}")
+	SET(CPACK_GENERATOR ZIP)
+	set(CPACK_SOURCE_GENERATOR "TGZ")
+	set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY TRUE)
 ENDIF()
 
 include(CPack)

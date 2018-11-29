@@ -1,23 +1,22 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <string>
@@ -25,10 +24,11 @@
 #include <boost/thread/mutex.hpp>
 
 #include <sysinfo.h>
+#include <error/error.hpp>
+
 #ifndef _T
 #define _T(x) L ## x
 #endif
-
 
 namespace service_helper_impl {
 	class service_exception {
@@ -46,13 +46,13 @@ namespace service_helper_impl {
 	public:
 
 		// Win32 API defines
-		typedef DWORD (WINAPI *LPHANDLER_FUNCTION_EX) (
+		typedef DWORD(WINAPI *LPHANDLER_FUNCTION_EX) (
 			DWORD dwControl,     // requested control code
 			DWORD dwEventType,   // event type
 			LPVOID lpEventData,  // event data
 			LPVOID lpContext     // user-defined context data
 			);
-		typedef SERVICE_STATUS_HANDLE (WINAPI *REGISTER_SERVICE_CTRL_HANDLER_EX) (
+		typedef SERVICE_STATUS_HANDLE(WINAPI *REGISTER_SERVICE_CTRL_HANDLER_EX) (
 			LPCTSTR lpServiceName,                // name of service
 			LPHANDLER_FUNCTION_EX lpHandlerProc,  // handler function
 			LPVOID lpContext                      // user data
@@ -79,7 +79,6 @@ namespace service_helper_impl {
 		} WTSSESSION_NOTIFICATION, *PWTSSESSION_NOTIFICATION;
 #define WTS_SESSION_LOGON                  0x5
 #define WTS_SESSION_LOGOFF                 0x6
-
 	};
 
 	/**
@@ -99,15 +98,14 @@ namespace service_helper_impl {
 	 * any damage to your computer, causes your pet to fall ill, increases baldness
 	 * or makes your car start emitting strange noises when you start it up.
 	 * This code has no bugs, just undocumented features!
-	 * 
-	 * @todo 
 	 *
-	 * @bug 
+	 * @todo
+	 *
+	 * @bug
 	 *
 	 */
 	template <class TBase>
-	class win32_service : public TBase
-	{
+	class win32_service : public TBase {
 	public:
 	private:
 		boost::mutex			stop_mutex_;
@@ -118,15 +116,14 @@ namespace service_helper_impl {
 		std::wstring			name_;
 		wchar_t					*serviceName_;
 	public:
-		win32_service() : dispatchTable(NULL), serviceName_(NULL), name_(), dwControlsAccepted(SERVICE_ACCEPT_STOP) {
-		}
+		win32_service() : dispatchTable(NULL), serviceName_(NULL), name_(), dwControlsAccepted(SERVICE_ACCEPT_STOP) {}
 		virtual ~win32_service() {
-			delete [] dispatchTable;
-			delete [] serviceName_;
+			delete[] dispatchTable;
+			delete[] serviceName_;
 		}
 
 		void create_dispatch_table(std::wstring name) {
-			serviceName_ = new wchar_t[name.length()+2];
+			serviceName_ = new wchar_t[name.length() + 2];
 			wcsncpy(serviceName_, name.c_str(), name.length());
 			dispatchTable = new SERVICE_TABLE_ENTRY[2];
 			dispatchTable[0].lpServiceName = serviceName_;
@@ -135,7 +132,7 @@ namespace service_helper_impl {
 			dispatchTable[1].lpServiceProc = NULL;
 		}
 
-/** start */
+		/** start */
 		void start_and_wait(std::string name) {
 			name_ = utf8::cvt<std::wstring>(name);
 			print_debug(_T("Starting: ") + name_);
@@ -163,8 +160,7 @@ namespace service_helper_impl {
 		}
 		static DWORD WINAPI service_ctrl_dispatch_ex(DWORD dwCtrlCode, DWORD dwEventType, LPVOID lpEventData, LPVOID lpContext) {
 			try {
-				switch(dwCtrlCode) 
-				{
+				switch (dwCtrlCode) {
 				case SERVICE_CONTROL_STOP:
 					TBase::get_global_instance()->_report_status_to_SCMgr(SERVICE_STOP_PENDING, 0);
 					TBase::get_global_instance()->stop_service();
@@ -188,7 +184,6 @@ namespace service_helper_impl {
 
 				default:
 					break;
-
 				}
 				TBase::get_global_instance()->_report_status_to_SCMgr();
 				return 0;
@@ -218,7 +213,6 @@ namespace service_helper_impl {
 		}
 		static void handle_error(const int line, const char* file, std::string message) {
 			OutputDebugString(utf8::cvt<std::wstring>(message).c_str());
-			nsclient::logging::logger::get_logger()->error("service", file, line, message);
 		}
 
 		bool StartServiceCtrlDispatcher() {
@@ -230,8 +224,7 @@ namespace service_helper_impl {
 			return ret != 0;
 		}
 
-		void _service_main(DWORD dwArgc, LPTSTR *lpszArgv)
-		{
+		void _service_main(DWORD dwArgc, LPTSTR *lpszArgv) {
 			print_debug(_T("service_main launcing..."));
 			sshStatusHandle = service_helper_impl::w32_api_impl::RegisterServiceCtrlHandlerEx_(name_.c_str(), service_helper_impl::win32_service<TBase>::service_ctrl_dispatch_ex, NULL);
 			if (sshStatusHandle == 0) {
@@ -247,14 +240,13 @@ namespace service_helper_impl {
 			if (sshStatusHandle == 0)
 				throw service_exception("Failed to register service: " + error::lookup::last_error());
 
-
 			ssStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
 			ssStatus.dwServiceSpecificExitCode = 0;
 			ssStatus.dwControlsAccepted = dwControlsAccepted;
 
 			// report the status to the service control manager.
-			if (!_report_status_to_SCMgr(SERVICE_START_PENDING,3000)) {
-				_report_status_to_SCMgr(SERVICE_STOPPED,0);
+			if (!_report_status_to_SCMgr(SERVICE_START_PENDING, 3000)) {
+				_report_status_to_SCMgr(SERVICE_STOPPED, 0);
 				throw service_exception("Failed to report service status: " + error::lookup::last_error());
 			}
 			try {
@@ -262,7 +254,7 @@ namespace service_helper_impl {
 			} catch (...) {
 				throw service_exception("Uncaught exception in service... terminating: " + error::lookup::last_error());
 			}
-			_report_status_to_SCMgr(SERVICE_STOPPED,0);
+			_report_status_to_SCMgr(SERVICE_STOPPED, 0);
 		}
 
 		BOOL _report_status_to_SCMgr() {
@@ -272,10 +264,10 @@ namespace service_helper_impl {
 		/**
 		* Sets the current status of the service and reports it to the Service Control Manager
 		*
-		* @param dwCurrentState 
-		* @param dwWin32ExitCode 
-		* @param dwWaitHint 
-		* @return 
+		* @param dwCurrentState
+		* @param dwWin32ExitCode
+		* @param dwWaitHint
+		* @return
 		*
 		* @author mickem
 		*
@@ -295,13 +287,13 @@ namespace service_helper_impl {
 			ssStatus.dwWin32ExitCode = 0;
 			ssStatus.dwWaitHint = dwWaitHint;
 
-			if ( (dwCurrentState == SERVICE_RUNNING ) || (dwCurrentState == SERVICE_STOPPED) )
+			if ((dwCurrentState == SERVICE_RUNNING) || (dwCurrentState == SERVICE_STOPPED))
 				ssStatus.dwCheckPoint = 0;
 			else
 				ssStatus.dwCheckPoint = dwCheckPoint++;
 
 			// Report the status of the service to the service control manager.
-			fResult = SetServiceStatus( sshStatusHandle, &ssStatus);
+			fResult = SetServiceStatus(sshStatusHandle, &ssStatus);
 
 			return fResult;
 		}
@@ -309,8 +301,8 @@ namespace service_helper_impl {
 		/**
 		* Actual code of the service that does the work.
 		*
-		* @param dwArgc 
-		* @param *lpszArgv 
+		* @param dwArgc
+		* @param *lpszArgv
 		*
 		* @author mickem
 		*
@@ -319,7 +311,7 @@ namespace service_helper_impl {
 		*/
 		void _handle_start(DWORD dwArgc, LPTSTR *lpszArgv) {
 			stop_mutex_.lock();
-			if (!_report_status_to_SCMgr(SERVICE_RUNNING,0)) {
+			if (!_report_status_to_SCMgr(SERVICE_RUNNING, 0)) {
 				stop_service();
 				return;
 			}
@@ -328,12 +320,9 @@ namespace service_helper_impl {
 
 			stop_mutex_.lock();
 
-
 			print_debug(_T("Shutting down: ") + name_);
 			TBase::handle_shutdown(utf8::cvt<std::string>(name_));
 		}
-
-
 
 		/**
 		* Stops the service

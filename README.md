@@ -1,12 +1,14 @@
 NSClient++
 ==========
-[![Build Status](https://travis-ci.org/mickem/nscp.png?branch=master)](https://travis-ci.org/mickem/nscp)
+Stable 0.4.4: [![Build Status](https://travis-ci.org/mickem/nscp.png?branch=0.4.4)](https://travis-ci.org/mickem/nscp)
+
+Master: [![Build Status](https://travis-ci.org/mickem/nscp.png?branch=master)](https://travis-ci.org/mickem/nscp)
 
 
 NSClient++ (nscp) aims to be a simple yet powerful and secure monitoring daemon. 
 It was built for Nagios/Icinga, but nothing in the daemon is Nagios/Icinga specific and it can be used in many other scenarios where you want to receive/distribute check metrics.
 
-The deamon has 3 main functions:
+The daemon has 3 main functions:
 
 * Allow a remote machine (monitoring server) to request commands to be run on this machine (the monitored machine) which return the status of the machine.
 * Submit the same results to a remote (monitoring server).
@@ -51,6 +53,6 @@ Supported OS/Platform
 ---------------------
 
 NSClient++ should run on the following operating systems:
- * Windows: From NT4 SP5 up to Windows 2008 and Windows 7
+ * Windows: From NT4 SP5 up to Windows 2012R2 and Windows 8.1
  * Linux: Debian, Centos and Ubuntu (and possibly others as well)
  * Win32, x64 as well as various Linux hardware as well.

@@ -1,16 +1,36 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include <nscapi/functions.hpp>
+#include <nscapi/nscapi_protobuf.hpp>
+#include <str/format.hpp>
+
 #include <vector>
 #include <string>
-#include <nscapi/functions.hpp>
-#include <format.hpp>
 
 #include <gtest/gtest.h>
 
-std::string do_parse(std::string str) {
-	Plugin::QueryResponseMessage::Response r;
+std::string do_parse(std::string str, std::size_t max_length = nscapi::protobuf::functions::no_truncation) {
+	Plugin::QueryResponseMessage::Response::Line r;
 	nscapi::protobuf::functions::parse_performance_data(&r, str);
-	return nscapi::protobuf::functions::build_performance_data(r);
+	return nscapi::protobuf::functions::build_performance_data(r, max_length);
 }
-
 
 TEST(PerfDataTest, fractions) {
 	EXPECT_EQ("'aaa'=1.23374g;0.12345;4.47538;2.23747;5.94849", do_parse("aaa=1.2337399999999999999g;0.123456;4.4753845;2.2374742;5.9484945"));
@@ -75,7 +95,7 @@ TEST(PerfDataTest, float_value_rounding_1) {
 	EXPECT_EQ("'aaa'=1.01g;1.02;1.03;1.04;1.05", do_parse("aaa=1.01g;1.02;1.03;1.04;1.05"));
 }
 TEST(PerfDataTest, float_value_rounding_2) {
-#ifdef WIN32
+#if (_MSC_VER == 1700)
 	EXPECT_EQ("'aaa'=1.0001g;1.02;1.03;1.04;1.05", do_parse("aaa=1.0001g;1.02;1.03;1.04;1.05"));
 #else
 	EXPECT_EQ("'aaa'=1.00009g;1.02;1.03;1.04;1.05", do_parse("aaa=1.0001g;1.02;1.03;1.04;1.05"));
@@ -103,19 +123,29 @@ TEST(PerfDataTest, value_various_reparse) {
 	}
 }
 
+TEST(PerfDataTest, truncation) {
+	std::string s = "'abcdefghijklmnopqrstuv'=1g;0;4;2;5 'abcdefghijklmnopqrstuv'=1g;0;4;2;5";
+	EXPECT_EQ(s.c_str(), do_parse(s, -1));
+	EXPECT_EQ(s.c_str(), do_parse(s, 71));
+	EXPECT_EQ("'abcdefghijklmnopqrstuv'=1g;0;4;2;5", do_parse(s, 70));
+	EXPECT_EQ("'abcdefghijklmnopqrstuv'=1g;0;4;2;5", do_parse(s, 35));
+	EXPECT_EQ("", do_parse(s, 34));
+}
+
+
 TEST(PerfDataTest, unit_conversion_b) {
-	double d = format::convert_to_byte_units(1234567890, "B");
+	double d = str::format::convert_to_byte_units(1234567890, "B");
 	ASSERT_DOUBLE_EQ(1234567890, d);
 }
 TEST(PerfDataTest, unit_conversion_k) {
-	double d = format::convert_to_byte_units(1234567890, "K");
+	double d = str::format::convert_to_byte_units(1234567890, "K");
 	ASSERT_DOUBLE_EQ(1205632.705078125, d);
 }
 TEST(PerfDataTest, unit_conversion_m) {
-	double d = format::convert_to_byte_units(1234567890, "M");
+	double d = str::format::convert_to_byte_units(1234567890, "M");
 	ASSERT_DOUBLE_EQ(1177.3756885528564, d);
 }
 TEST(PerfDataTest, unit_conversion_g) {
-	double d = format::convert_to_byte_units(1234567890, "G");
+	double d = str::format::convert_to_byte_units(1234567890, "G");
 	ASSERT_DOUBLE_EQ(1.1497809458523989, d);
 }

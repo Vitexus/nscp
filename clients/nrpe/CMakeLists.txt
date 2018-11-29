@@ -1,41 +1,50 @@
 cmake_minimum_required(VERSION 2.6)
 
+IF(WIN32)
 SET(TARGET check_nrpe)
+ELSE()
+SET(TARGET check_nscp_nrpe)
+ENDIF()
+
 
 PROJECT(clients)
 
 SET(SRCS ${SRCS}
 	check_nrpe.cpp
-	../../modules/NRPEClient/nrpe_client.cpp
 	${NSCP_INCLUDEDIR}/nrpe/packet.cpp
 	${NSCP_INCLUDEDIR}/socket/socket_helpers.cpp
-	${NSCP_INCLUDEDIR}/client/command_line_parser.cpp
-	${NSCP_INCLUDEDIR}/utils.cpp
-	
-#	${NSCP_INCLUDEDIR}/nscapi/nscapi_protobuf_types.cpp
-#	${NSCP_INCLUDEDIR}/nscapi/nscapi_protobuf_functions.cpp
-#	${NSCP_INCLUDEDIR}/nscapi/nscapi_targets.cpp
-#	${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_helper.cpp
-#	${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.cpp
 
+	${NSCP_INCLUDEDIR}/utils.cpp
+  ${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_helper.cpp
+	${NSCP_CLIENT_CPP}
+	
 	../../resources/nsclient.ico
 )
+
+ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
+IF(OPENSSL_FOUND)
+	ADD_DEFINITIONS(-DUSE_SSL)
+	SET(EXTRA_LIBS ${EXTRA_LIBS} ${OPENSSL_LIBRARIES})
+	INCLUDE_DIRECTORIES(${OPENSSL_INCLUDE_DIR})
+ENDIF(OPENSSL_FOUND)
+
 
 IF(WIN32)
 	SET(SRCS ${SRCS}
 		check_nrpe.hpp
 		../../modules/NRPEClient/nrpe_client.hpp
-		${NSCP_INCLUDEDIR}/utils.h
+		../../modules/NRPEClient/nrpe_handler.hpp
+
 		${NSCP_INCLUDEDIR}/nrpe/packet.hpp
 		${NSCP_INCLUDEDIR}/nrpe/client/nrpe_client_protocol.hpp
 		${NSCP_INCLUDEDIR}/swap_bytes.hpp
 		${NSCP_INCLUDEDIR}/socket/socket_helpers.hpp
 		${NSCP_INCLUDEDIR}/socket/client.hpp
-		${NSCP_INCLUDEDIR}/client/command_line_parser.hpp
+    ${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_helper.hpp
+		${NSCP_INCLUDEDIR}/utils.h
+		${NSCP_CLIENT_HPP}
 	)
 ENDIF(WIN32)
-
-ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
 
 INCLUDE_DIRECTORIES(${BOOST_INCLUDE_DIRS})
 IF(JSON_SPIRIT_FOUND)
@@ -47,23 +56,18 @@ ELSE(JSON_SPIRIT_FOUND)
 ENDIF(JSON_SPIRIT_FOUND)
 LINK_DIRECTORIES(${BOOST_LIB_DIRS})
 
-IF(OPENSSL_FOUND)
-	ADD_DEFINITIONS(-DUSE_SSL)
-	SET(EXTRA_LIBS ${EXTRA_LIBS} ${OPENSSL_LIBRARIES})
-	INCLUDE_DIRECTORIES(${OPENSSL_INCLUDE_DIR})
-ENDIF(OPENSSL_FOUND)
-
 IF(BREAKPAD_FOUND)
-	SET(SRCS ${SRCS} ${NSCP_INCLUDEDIR}/breakpad/exception_handler_win32.cpp)
 	IF(WIN32)
-		SET(SRCS ${SRCS} ${NSCP_INCLUDEDIR}/breakpad/exception_handler_win32.hpp)
+		SET(${_SRC} ${${_SRC}} ${NSCP_INCLUDEDIR}/breakpad/exception_handler_win32.cpp)
+		SET(${_SRC} ${${_SRC}} ${NSCP_INCLUDEDIR}/breakpad/exception_handler_win32.hpp)
 	ENDIF(WIN32)
 	ADD_DEFINITIONS(-DUSE_BREAKPAD)
 	INCLUDE_DIRECTORIES(${BREAKPAD_INCLUDE_DIR})
-	SET(EXTRA_LIBS ${EXTRA_LIBS} ${BREAKPAD_COMMON_LIBRARY} ${BREAKPAD_EXCEPTION_HANDLER_LIBRARY} ${BREAKPAD_CRASH_GENERATION_CLIENT_LIBRARY})
+	SET(EXTRA_LIBS ${EXTRA_LIBS} ${BREAKPAD_COMMON_LIBRARY} ${BREAKPAD_LIBRARY})
 ENDIF(BREAKPAD_FOUND)
 
 NSCP_MAKE_EXE_BIN(${TARGET} "${SRCS}")
+
 IF(WIN32 AND NOT CMAKE_CL_64)
 	OPENSSL_LINK_FIX(${TARGET})
 ENDIF(WIN32 AND NOT CMAKE_CL_64)

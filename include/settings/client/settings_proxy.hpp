@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <settings/settings_core.hpp>
@@ -29,9 +48,15 @@ namespace settings_client {
 			get_core()->register_path(0xffff, path, title, description, advanced, is_sample);
 		}
 
-		virtual void register_key(std::string path, std::string key, int type, std::string title, std::string description, std::string defValue, bool advanced, bool is_sample) {
-			get_core()->register_key(0xffff, path, key, static_cast<settings::settings_core::key_type>(type), title, description, defValue, advanced, is_sample);
+		virtual void register_subkey(std::string path, std::string title, std::string description, bool advanced, bool is_sample) {
+			get_core()->register_subkey(0xffff, path, title, description, advanced, is_sample);
 		}
+
+		virtual void register_key(std::string path, std::string key, int type, std::string title, std::string description, nscapi::settings::settings_value defValue, bool advanced, bool is_sample) {
+			get_core()->register_key(0xffff, path, key, static_cast<settings::settings_core::key_type>(type), title, description, defValue.get_string(), advanced, is_sample);
+		}
+		virtual void register_tpl(std::string path, std::string title, std::string icon, std::string description, std::string fields) {}
+
 
 		virtual std::string get_string(std::string path, std::string key, std::string def) {
 			return get_impl()->get_string(path, key, def);
@@ -62,17 +87,25 @@ namespace settings_client {
 			return get_handler()->expand_path(key);
 		}
 
+		virtual void remove_key(std::string path, std::string key) {
+			return get_impl()->remove_key(path, key);
+		}
+		virtual void remove_path(std::string path) {
+			return get_impl()->remove_path(path);
+		}
+
+
 		virtual void err(const char* file, int line, std::string message) {
-			nsclient::logging::logger::get_logger()->error("settings",file, line, message);
+			get_core()->get_logger()->error("settings",file, line, message);
 		}
 		virtual void warn(const char* file, int line, std::string message) {
-			nsclient::logging::logger::get_logger()->warning("settings",file, line, message);
+			get_core()->get_logger()->warning("settings",file, line, message);
 		}
 		virtual void info(const char* file, int line, std::string message)  {
-			nsclient::logging::logger::get_logger()->info("settings",file, line, message);
+			get_core()->get_logger()->info("settings",file, line, message);
 		}
 		virtual void debug(const char* file, int line, std::string message)  {
-			nsclient::logging::logger::get_logger()->debug("settings",file, line, message);
+			get_core()->get_logger()->debug("settings",file, line, message);
 		}
 	};
 }

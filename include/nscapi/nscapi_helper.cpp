@@ -1,27 +1,25 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
-
-#include <nscp_string.hpp>
+/*
+ * Copyright 2004-2016 The NSClient++ Authors - https://nsclient.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <nscapi/nscapi_helper.hpp>
+
+#include <str/xtos.hpp>
+#include <str/utils.hpp>
+
+#include <boost/foreach.hpp>
 
 #define REPORT_ERROR	0x01
 #define REPORT_WARNING	0x02
@@ -30,9 +28,9 @@
 
 unsigned int nscapi::report::parse(std::string str) {
 	unsigned int report = 0;
-	BOOST_FOREACH(const std::string &key, strEx::s::splitEx(str, std::string(","))) {
+	BOOST_FOREACH(const std::string &key, str::utils::split_lst(str, std::string(","))) {
 		if (key == "all") {
-			report |= REPORT_ERROR|REPORT_OK|REPORT_UNKNOWN|REPORT_WARNING;
+			report |= REPORT_ERROR | REPORT_OK | REPORT_UNKNOWN | REPORT_WARNING;
 		} else if (key == "error" || key == "err" || key == "critical" || key == "crit") {
 			report |= REPORT_ERROR;
 		} else if (key == "warning" || key == "warn") {
@@ -47,12 +45,33 @@ unsigned int nscapi::report::parse(std::string str) {
 }
 bool nscapi::report::matches(unsigned int report, NSCAPI::nagiosReturn code) {
 	return (
-		(code == NSCAPI::returnOK && ((report&REPORT_OK)==REPORT_OK) ) ||
-		(code == NSCAPI::returnCRIT && ((report&REPORT_ERROR)==REPORT_ERROR) ) ||
-		(code == NSCAPI::returnWARN && ((report&REPORT_WARNING)==REPORT_WARNING) ) ||
-		(code == NSCAPI::returnUNKNOWN && ((report&REPORT_UNKNOWN)==REPORT_UNKNOWN) ) ||
-		( (code != NSCAPI::returnOK) && (code != NSCAPI::returnCRIT) && (code != NSCAPI::returnWARN) && (code != NSCAPI::returnUNKNOWN) )
+		(code == NSCAPI::query_return_codes::returnOK && ((report&REPORT_OK) == REPORT_OK)) ||
+		(code == NSCAPI::query_return_codes::returnCRIT && ((report&REPORT_ERROR) == REPORT_ERROR)) ||
+		(code == NSCAPI::query_return_codes::returnWARN && ((report&REPORT_WARNING) == REPORT_WARNING)) ||
+		(code == NSCAPI::query_return_codes::returnUNKNOWN && ((report&REPORT_UNKNOWN) == REPORT_UNKNOWN)) ||
+		((code != NSCAPI::query_return_codes::returnOK) && (code != NSCAPI::query_return_codes::returnCRIT) && (code != NSCAPI::query_return_codes::returnWARN) && (code != NSCAPI::query_return_codes::returnUNKNOWN))
 		);
+}
+
+std::string nscapi::report::to_string(unsigned int report) {
+	std::string ret;
+	if ((report&REPORT_OK) == REPORT_OK) {
+		ret += "ok";
+	}
+	if ((report&REPORT_ERROR) == REPORT_ERROR) {
+		if (!ret.empty()) ret += ",";
+		ret += "crit";
+	}
+	if ((report&REPORT_WARNING) == REPORT_WARNING) {
+		if (!ret.empty()) ret += ",";
+		ret += "warn,";
+	}
+	if ((report&REPORT_UNKNOWN) == REPORT_UNKNOWN) {
+		if (!ret.empty()) ret += ",";
+		ret += "unknown,";
+	}
+	if (ret.empty()) ret = "<none>";
+	return ret;
 }
 
 NSCAPI::log_level::level nscapi::logging::parse(std::string str) {
@@ -110,7 +129,7 @@ std::string nscapi::logging::to_string(NSCAPI::log_level::level level) {
 * @param defaultReturnCode The default return code
 * @return NSCAPI::success unless the buffer is to short then it will be NSCAPI::invalidBufferLen
 */
-int nscapi::plugin_helper::wrapReturnString(char *buffer, unsigned int bufLen, std::string str, int defaultReturnCode ) {
+int nscapi::plugin_helper::wrapReturnString(char *buffer, unsigned int bufLen, std::string str, int defaultReturnCode) {
 	// @todo deprecate this
 	if (str.length() >= bufLen) {
 		return NSCAPI::isInvalidBufferLen;
@@ -120,10 +139,10 @@ int nscapi::plugin_helper::wrapReturnString(char *buffer, unsigned int bufLen, s
 }
 
 bool nscapi::plugin_helper::isNagiosReturnCode(NSCAPI::nagiosReturn code) {
-	return ( (code == NSCAPI::returnOK) || (code == NSCAPI::returnWARN) || (code == NSCAPI::returnCRIT) || (code == NSCAPI::returnUNKNOWN) );
+	return ((code == NSCAPI::query_return_codes::returnOK) || (code == NSCAPI::query_return_codes::returnWARN) || (code == NSCAPI::query_return_codes::returnCRIT) || (code == NSCAPI::query_return_codes::returnUNKNOWN));
 }
 bool nscapi::plugin_helper::isMyNagiosReturn(NSCAPI::nagiosReturn code) {
-	return code == NSCAPI::returnCRIT || code == NSCAPI::returnOK || code == NSCAPI::returnWARN || code == NSCAPI::returnUNKNOWN  || code == NSCAPI::returnInvalidBufferLen || code == NSCAPI::returnIgnored;
+	return code == NSCAPI::query_return_codes::returnCRIT || code == NSCAPI::query_return_codes::returnOK || code == NSCAPI::query_return_codes::returnWARN || code == NSCAPI::query_return_codes::returnUNKNOWN;
 }
 NSCAPI::nagiosReturn nscapi::plugin_helper::int2nagios(int code) {
 	return code;
@@ -132,11 +151,11 @@ int nscapi::plugin_helper::nagios2int(NSCAPI::nagiosReturn code) {
 	return code;
 }
 void nscapi::plugin_helper::escalteReturnCodeToCRIT(NSCAPI::nagiosReturn &currentReturnCode) {
-	currentReturnCode = NSCAPI::returnCRIT;
+	currentReturnCode = NSCAPI::query_return_codes::returnCRIT;
 }
 void nscapi::plugin_helper::escalteReturnCodeToWARN(NSCAPI::nagiosReturn &currentReturnCode) {
-	if (currentReturnCode != NSCAPI::returnCRIT)
-		currentReturnCode = NSCAPI::returnWARN;
+	if (currentReturnCode != NSCAPI::query_return_codes::returnCRIT)
+		currentReturnCode = NSCAPI::query_return_codes::returnWARN;
 }
 
 /**
@@ -145,16 +164,16 @@ void nscapi::plugin_helper::escalteReturnCodeToWARN(NSCAPI::nagiosReturn &curren
 * @return
 */
 std::string nscapi::plugin_helper::translateReturn(NSCAPI::nagiosReturn returnCode) {
-	if (returnCode == NSCAPI::returnOK)
+	if (returnCode == NSCAPI::query_return_codes::returnOK)
 		return "OK";
-	else if (returnCode == NSCAPI::returnCRIT)
+	else if (returnCode == NSCAPI::query_return_codes::returnCRIT)
 		return "CRITICAL";
-	else if (returnCode == NSCAPI::returnWARN)
+	else if (returnCode == NSCAPI::query_return_codes::returnWARN)
 		return "WARNING";
-	else if (returnCode == NSCAPI::returnUNKNOWN)
+	else if (returnCode == NSCAPI::query_return_codes::returnUNKNOWN)
 		return "UNKNOWN";
 	else
-		return "BAD_CODE: " + strEx::s::xtos(returnCode);
+		return "BAD_CODE: " + str::xtos(returnCode);
 }
 /**
 * Translate a string into the corresponding return code
@@ -163,29 +182,29 @@ std::string nscapi::plugin_helper::translateReturn(NSCAPI::nagiosReturn returnCo
 */
 NSCAPI::nagiosReturn nscapi::plugin_helper::translateReturn(std::string str) {
 	if ((str == "OK") || (str == "ok"))
-		return NSCAPI::returnOK;
+		return NSCAPI::query_return_codes::returnOK;
 	else if ((str == "CRITICAL") || (str == "critical"))
-		return NSCAPI::returnCRIT;
+		return NSCAPI::query_return_codes::returnCRIT;
 	else if ((str == "WARNING") || (str == "warning"))
-		return NSCAPI::returnWARN;
+		return NSCAPI::query_return_codes::returnWARN;
 	else
-		return NSCAPI::returnUNKNOWN;
+		return NSCAPI::query_return_codes::returnUNKNOWN;
 }
 /**
 * Returns the biggest of the two states
-* STATE_UNKNOWN < STATE_OK < STATE_WARNING < STATE_CRITICAL
+* STATE_OK < STATE_WARNING < STATE_CRITICAL < STATE_UNKNOWN
 * @param a
 * @param b
 * @return
 */
 NSCAPI::nagiosReturn nscapi::plugin_helper::maxState(NSCAPI::nagiosReturn a, NSCAPI::nagiosReturn b) {
-	if (a == NSCAPI::returnCRIT || b == NSCAPI::returnCRIT)
-		return NSCAPI::returnCRIT;
-	else if (a == NSCAPI::returnWARN || b == NSCAPI::returnWARN)
-		return NSCAPI::returnWARN;
-	else if (a == NSCAPI::returnOK || b == NSCAPI::returnOK)
-		return NSCAPI::returnOK;
-	else if (a == NSCAPI::returnUNKNOWN || b == NSCAPI::returnUNKNOWN)
-		return NSCAPI::returnUNKNOWN;
-	return NSCAPI::returnUNKNOWN;
+	if (a == NSCAPI::query_return_codes::returnUNKNOWN || b == NSCAPI::query_return_codes::returnUNKNOWN)
+		return NSCAPI::query_return_codes::returnUNKNOWN;
+	else if (a == NSCAPI::query_return_codes::returnCRIT || b == NSCAPI::query_return_codes::returnCRIT)
+		return NSCAPI::query_return_codes::returnCRIT;
+	else if (a == NSCAPI::query_return_codes::returnWARN || b == NSCAPI::query_return_codes::returnWARN)
+		return NSCAPI::query_return_codes::returnWARN;
+	else if (a == NSCAPI::query_return_codes::returnOK || b == NSCAPI::query_return_codes::returnOK)
+		return NSCAPI::query_return_codes::returnOK;
+	return NSCAPI::query_return_codes::returnUNKNOWN;
 }

@@ -1,46 +1,48 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
-#include <string>
-#include <map>
-#include <set>
-#include <algorithm>
+#include <nsclient/logger/logger.hpp>
+#include <settings/settings_value.hpp>
+
+#include <utf8.hpp>
 
 #include <boost/thread/thread.hpp>
 #include <boost/thread/locks.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/optional.hpp>
 
-#include <strEx.h>
-#include <utf8.hpp>
+#include <string>
+#include <map>
+#include <set>
+#include <algorithm>
 
 #define BUFF_LEN 4096
 
 namespace settings {
-
 	inline std::string key_to_string(std::string path, std::string key) {
 		return path + "." + key;
 	}
 	class settings_exception : public std::exception {
+		const char* file_;
+		int line_;
 		std::string error_;
 	public:
 		//////////////////////////////////////////////////////////////////////////
@@ -48,7 +50,7 @@ namespace settings {
 		/// @param error the error message
 		///
 		/// @author mickem
-		settings_exception(std::string error) : error_(error) {}
+		settings_exception(const char* file, const int line, std::string error) : file_(file), line_(line), error_(error) {}
 		~settings_exception() throw() {}
 
 		//////////////////////////////////////////////////////////////////////////
@@ -60,6 +62,8 @@ namespace settings {
 			return error_.c_str();
 		}
 		std::string reason() const throw() { return utf8::utf8_from_native(what()); }
+		const char* file() const { return file_; }
+		int line() const { return line_;  }
 	};
 
 	class settings_interface;
@@ -75,22 +79,21 @@ namespace settings {
 			key_integer = 200,
 			key_bool = 300
 		} key_type;
-		typedef std::pair<std::string,std::string> key_path_type;
+		typedef std::pair<std::string, std::string> key_path_type;
 		struct key_description {
 			std::string title;
 			std::string description;
 			key_type type;
-			std::string defValue;
+			nscapi::settings::settings_value defValue;
 			bool advanced;
 			bool is_sample;
 			std::set<unsigned int> plugins;
-			key_description(unsigned int plugin_id, std::string title_, std::string description_, settings_core::key_type type_, std::string defValue_, bool advanced_, bool is_sample_) 
-				: title(title_), description(description_), type(type_), defValue(defValue_), advanced(advanced_), is_sample(is_sample_) 
-			{
-					append_plugin(plugin_id); 
+			key_description(unsigned int plugin_id, std::string title_, std::string description_, settings_core::key_type type_, nscapi::settings::settings_value defValue_, bool advanced_, bool is_sample_)
+				: title(title_), description(description_), type(type_), defValue(defValue_), advanced(advanced_), is_sample(is_sample_) {
+				append_plugin(plugin_id);
 			}
 			key_description(unsigned int plugin_id) : type(settings_core::key_string), advanced(false), is_sample(false) { append_plugin(plugin_id); }
-			key_description() : type(settings_core::key_string), advanced(false), is_sample(false) { }
+			key_description() : type(settings_core::key_string), advanced(false), is_sample(false) {}
 			key_description& operator=(const key_description &other) {
 				title = other.title;
 				description = other.description;
@@ -108,16 +111,35 @@ namespace settings {
 				plugins.insert(plugin_id);
 			}
 		};
+
+		struct subkey_description {
+			bool is_subkey;
+			std::string title;
+			std::string description;
+			bool advanced;
+			bool is_sample;
+			subkey_description(std::string title_, std::string description_, bool advanced_, bool is_sample_) : is_subkey(true), title(title_), description(description_), advanced(advanced_), is_sample(is_sample_) {
+			}
+			subkey_description() : is_subkey(false), advanced(false), is_sample(false) {}
+			void update(std::string title_, std::string description_, bool advanced_, bool is_sample_) {
+				is_subkey = true;
+				title = title_;
+				description = description_;
+				advanced = advanced_;
+				is_sample = is_sample_;
+			}
+		};
 		struct path_description {
 			std::string title;
 			std::string description;
 			bool advanced;
 			bool is_sample;
-			typedef std::map<std::string,key_description> keys_type;
+			subkey_description subkey;
+			typedef std::map<std::string, key_description> keys_type;
 			keys_type keys;
 			std::set<unsigned int> plugins;
-			path_description(unsigned int plugin_id, std::string title_, std::string description_, bool advanced_, bool is_sample_) : title(title_), description(description_), advanced(advanced_), is_sample(is_sample_) { 
-				append_plugin(plugin_id); 
+			path_description(unsigned int plugin_id, std::string title_, std::string description_, bool advanced_, bool is_sample_) : title(title_), description(description_), advanced(advanced_), is_sample(is_sample_) {
+				append_plugin(plugin_id);
 			}
 			path_description(unsigned int plugin_id) : advanced(false), is_sample(false) {
 				append_plugin(plugin_id);
@@ -133,6 +155,23 @@ namespace settings {
 			void append_plugin(unsigned int plugin_id) {
 				plugins.insert(plugin_id);
 			}
+		};
+
+		struct tpl_description {
+
+			unsigned int plugin_id;
+			std::string path;
+			std::string title;
+			std::string data;
+
+			tpl_description() : plugin_id(0){}
+			tpl_description(unsigned int plugin_id, std::string path, std::string title, std::string data)
+				: plugin_id(plugin_id)
+				, path(path)
+				, title(title)
+				, data(data)
+			{}
+
 		};
 
 		struct mapped_key {
@@ -152,7 +191,9 @@ namespace settings {
 		/// @param advanced advanced options will only be included if they are changed
 		///
 		/// @author mickem
-		virtual void register_path(unsigned int plugin_id, std::string path, std::string title, std::string description, bool advanced, bool is_sample) = 0;
+		virtual void register_path(unsigned int plugin_id, std::string path, std::string title, std::string description, bool advanced, bool is_sample, bool update_existing = true) = 0;
+
+		virtual void register_subkey(unsigned int plugin_id, std::string path, std::string title, std::string description, bool advanced, bool is_sample, bool update_existing = true) = 0;
 
 		//////////////////////////////////////////////////////////////////////////
 		/// Register a key with the settings module.
@@ -167,7 +208,10 @@ namespace settings {
 		/// @param advanced advanced options will only be included if they are changed
 		///
 		/// @author mickem
-		virtual void register_key(unsigned int plugin_id, std::string path, std::string key, key_type type, std::string title, std::string description, std::string defValue, bool advanced, bool is_sample) = 0;
+		virtual void register_key(unsigned int plugin_id, std::string path, std::string key, key_type type, std::string title, std::string description, nscapi::settings::settings_value defValue, bool advanced, bool is_sample, bool update_existing = true) = 0;
+
+
+		virtual void register_tpl(unsigned int plugin_id, std::string path, std::string title, std::string data) = 0;
 		//////////////////////////////////////////////////////////////////////////
 		/// Get info about a registered key.
 		/// Used when writing settings files.
@@ -180,6 +224,8 @@ namespace settings {
 		virtual key_description get_registred_key(std::string path, std::string key) = 0;
 
 		virtual settings_core::path_description get_registred_path(const std::string &path) = 0;
+
+		virtual std::list<settings_core::tpl_description> get_registred_tpls() = 0;
 
 		//////////////////////////////////////////////////////////////////////////
 		/// Get all registered sections
@@ -205,7 +251,7 @@ namespace settings {
 		/// @author mickem
 		virtual instance_ptr get() = 0;
 		virtual instance_ptr get_no_wait() = 0;
-		
+
 		//////////////////////////////////////////////////////////////////////////
 		/// Get a settings interface
 		///
@@ -215,12 +261,8 @@ namespace settings {
 		/// @author mickem
 		//virtual settings_interface* get(settings_core::settings_type type) = 0;
 		// Conversion Functions
-		virtual void migrate(instance_ptr from, instance_ptr to) = 0;
-		virtual void migrate_to(instance_ptr to) = 0;
-		virtual void migrate_from(instance_ptr from) = 0;
-		virtual void migrate(std::string from, std::string to) = 0;
-		virtual void migrate_to(std::string to) = 0;
-		virtual void migrate_from(std::string from) = 0;
+		virtual void migrate_to(std::string alias, std::string to) = 0;
+		virtual void migrate_from(std::string alias, std::string from) = 0;
 
 		virtual void set_primary(std::string context) = 0;
 
@@ -237,10 +279,6 @@ namespace settings {
 		virtual void update_defaults() = 0;
 		virtual void remove_defaults() = 0;
 
-
-
-
-		
 		//////////////////////////////////////////////////////////////////////////
 		/// Boot the settings subsystem from the given file (boot.ini).
 		///
@@ -253,19 +291,7 @@ namespace settings {
 
 		virtual void house_keeping() = 0;
 
-
 		virtual std::string find_file(std::string file, std::string fallback) = 0;
-
-		//////////////////////////////////////////////////////////////////////////
-		/// Get a string form the boot file.
-		///
-		/// @param section section to read a value from.
-		/// @param key the key to read.
-		/// @param def a default value.
-		/// @return the value of the key or the default value.
-		///
-		/// @author mickem
-		virtual std::string get_boot_string(std::string section, std::string key, std::string def) = 0;
 
 		//////////////////////////////////////////////////////////////////////////
 		/// Create an instance of a given type.
@@ -275,7 +301,7 @@ namespace settings {
 		/// @return a new instance of given type.
 		///
 		/// @author mickem
-		virtual instance_raw_ptr create_instance(std::string context) = 0;
+		virtual instance_raw_ptr create_instance(std::string alias, std::string context) = 0;
 
 		//////////////////////////////////////////////////////////////////////////
 		/// Set the basepath for the settings subsystem.
@@ -297,6 +323,8 @@ namespace settings {
 		virtual void set_reload(bool flag = true) = 0;
 		virtual bool needs_reload() = 0;
 
+		virtual nsclient::logging::logger_instance get_logger() const = 0;
+
 	};
 
 	class settings_interface {
@@ -307,14 +335,6 @@ namespace settings {
 		typedef boost::optional<bool> op_bool;
 
 		virtual void ensure_exists() = 0;
-
-		//////////////////////////////////////////////////////////////////////////
-		/// Set the core module to use
-		///
-		/// @param core The core to use
-		///
-		/// @author mickem
-		virtual void set_core(settings_core *core) = 0;
 
 		//////////////////////////////////////////////////////////////////////////
 		/// Empty all cached settings values and force a reload.
@@ -344,7 +364,7 @@ namespace settings {
 		virtual op_string get_string(std::string path, std::string key) = 0;
 		//////////////////////////////////////////////////////////////////////////
 		/// Get a string value if it does not exist the default value will be returned
-		/// 
+		///
 		/// @param path the path to look up
 		/// @param key the key to lookup
 		/// @param def the default value to use when no value is found
@@ -373,7 +393,7 @@ namespace settings {
 		virtual op_int get_int(std::string path, std::string key) = 0;
 		//////////////////////////////////////////////////////////////////////////
 		/// Get an integer value if it does not exist the default value will be returned
-		/// 
+		///
 		/// @param path the path to look up
 		/// @param key the key to lookup
 		/// @param def the default value to use when no value is found
@@ -402,7 +422,7 @@ namespace settings {
 		virtual op_bool get_bool(std::string path, std::string key) = 0;
 		//////////////////////////////////////////////////////////////////////////
 		/// Get a boolean value if it does not exist the default value will be returned
-		/// 
+		///
 		/// @param path the path to look up
 		/// @param key the key to lookup
 		/// @param def the default value to use when no value is found
@@ -443,7 +463,7 @@ namespace settings {
 		virtual string_list get_keys(std::string path) = 0;
 		//////////////////////////////////////////////////////////////////////////
 		/// Does the section exists?
-		/// 
+		///
 		/// @param path The path of the section
 		/// @return true/false
 		///
@@ -451,7 +471,7 @@ namespace settings {
 		virtual bool has_section(std::string path) = 0;
 		//////////////////////////////////////////////////////////////////////////
 		/// Does the key exists?
-		/// 
+		///
 		/// @param path The path of the section
 		/// @param key The key to check
 		/// @return true/false
@@ -469,14 +489,6 @@ namespace settings {
 		///
 		/// @author mickem
 		virtual std::string get_context() = 0;
-		//////////////////////////////////////////////////////////////////////////
-		/// Set the context.
-		/// The context is an identifier for the settings store for INI/XML it is the filename.
-		///
-		/// @param context the new context
-		///
-		/// @author mickem
-		virtual void set_context(std::string context) = 0;
 
 		// Save/Load Functions
 		//////////////////////////////////////////////////////////////////////////
@@ -491,20 +503,12 @@ namespace settings {
 		///
 		/// @author mickem
 		virtual void save_to(instance_ptr other) = 0;
-		virtual void save_to(std::string other) = 0;
+		virtual void save_to(std::string alias, std::string other) = 0;
 		//////////////////////////////////////////////////////////////////////////
 		/// Save the settings store
 		///
 		/// @author mickem
 		virtual void save() = 0;
-		//////////////////////////////////////////////////////////////////////////
-		/// Load from another settings store
-		///
-		/// @param other the other settings store to load from
-		///
-		/// @author mickem
-		virtual void load_from(instance_ptr other) = 0;
-		virtual void load_from(std::string other) = 0;
 		//////////////////////////////////////////////////////////////////////////
 		/// Load settings from the context.
 		///
@@ -524,12 +528,11 @@ namespace settings {
 
 		static bool string_to_bool(std::string str) {
 			std::transform(str.begin(), str.end(), str.begin(), ::tolower);
-			return str == "true"||str == "1";
+			return str == "true" || str == "1";
 		}
 
 		virtual std::list<boost::shared_ptr<settings_interface> > get_children() = 0;
 
 		virtual void house_keeping() = 0;
 	};
-
 }

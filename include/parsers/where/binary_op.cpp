@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <sstream>
 
 #include <parsers/where/binary_op.hpp>
@@ -21,11 +40,8 @@ namespace parsers {
 			return left->bind(errors) && right->bind(errors);
 		}
 
-		long long binary_op::get_int_value(evaluation_context errors) const {
-			return evaluate(errors)->get_int_value(errors);
-		}
-		std::string binary_op::get_string_value(evaluation_context errors) const {
-			return evaluate(errors)->get_string_value(errors);
+		value_container binary_op::get_value(evaluation_context errors, value_type type) const {
+			return evaluate(errors)->get_value(errors, type);
 		}
 		std::list<node_type> binary_op::get_list_value(evaluation_context errors) const {
 			return std::list<node_type>();
@@ -49,7 +65,11 @@ namespace parsers {
 			ss << "(" << helpers::type_to_string(get_type()) + "){" << left->to_string() << " " << helpers::operator_to_string(op) << " " << right->to_string() << "}";
 			return ss.str();
 		}
-
+		std::string binary_op::to_string(evaluation_context errors) const {
+			std::stringstream ss;
+			ss << left->to_string(errors) << " " << helpers::operator_to_string(op) << " " << right->to_string(errors);
+			return ss.str();
+		}
 
 		bool binary_op::find_performance_data(evaluation_context context, performance_collector &collector) {
 			if (op == op_nin || op == op_in)
@@ -63,8 +83,7 @@ namespace parsers {
 				collector.add_perf(sub_collector_left);
 				collector.add_perf(sub_collector_right);
 				return true;
-			}
-			else if (sub_collector_left.has_candidates() && sub_collector_right.has_candidates()) {
+			} else if (sub_collector_left.has_candidates() && sub_collector_right.has_candidates()) {
 				if (helpers::is_upper(op))
 					return collector.add_bounds_candidates(sub_collector_left, sub_collector_right);
 				else if (helpers::is_lower(op))
@@ -81,7 +100,5 @@ namespace parsers {
 		bool binary_op::static_evaluate(evaluation_context errors) const {
 			return left->static_evaluate(errors) && right->static_evaluate(errors);
 		}
-
 	}
 }
-

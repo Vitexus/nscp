@@ -1,30 +1,56 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
-#include <map>
-#include <string>
-
-#include <boost/foreach.hpp>
-#include <boost/optional.hpp>
-#include <boost/shared_ptr.hpp>
+#include "filter.hpp"
 
 #include <nscapi/nscapi_settings_proxy.hpp>
 #include <nscapi/nscapi_settings_object.hpp>
 #include <nscapi/nscapi_settings_filter.hpp>
 
-#include "filter.hpp"
+#include <str/utils.hpp>
+
+#include <boost/foreach.hpp>
+#include <boost/optional.hpp>
+#include <boost/shared_ptr.hpp>
+
+#include <map>
+#include <string>
 
 namespace eventlog_filter {
+	struct filter_config_object : public nscapi::settings_objects::object_instance_interface {
+		typedef nscapi::settings_objects::object_instance_interface parent;
 
-	struct filter_config_object {
+		filter_config_object(std::string alias, std::string path)
+			: parent(alias, path)
+			, filter("${file}: ${count} (${list})", "${level}: ${message}", "NSCA")
+			, dwLang(0)
+			, truncate_(0) {}
 
-		filter_config_object() : dwLang(0) {}
-	
-		nscapi::settings_objects::template_object tpl;
 		nscapi::settings_filters::filter_object filter;
 		DWORD dwLang;
+		int truncate_;
 		std::list<std::string> files;
 
 		std::string to_string() const;
+		void read(boost::shared_ptr<nscapi::settings_proxy> proxy, bool oneliner, bool is_sample);
 
 		static unsigned short get_language(std::string lang);
 
@@ -32,7 +58,7 @@ namespace eventlog_filter {
 			if (file_string.empty())
 				return;
 			files.clear();
-			BOOST_FOREACH(const std::string &s, strEx::s::splitEx(file_string, std::string(","))) {
+			BOOST_FOREACH(const std::string &s, str::utils::split_lst(file_string, std::string(","))) {
 				files.push_back(s);
 			}
 		}
@@ -43,6 +69,12 @@ namespace eventlog_filter {
 			files.push_back(file_string);
 		}
 
+		void set_truncate(int truncate) {
+			truncate_ = truncate;
+		}
+		int get_truncate() {
+			return truncate_;
+		}
 		void set_language(std::string lang) {
 			WORD wLang = get_language(lang);
 			if (wLang == LANG_NEUTRAL)
@@ -53,13 +85,5 @@ namespace eventlog_filter {
 	};
 	typedef boost::optional<filter_config_object> optional_filter_config_object;
 
-	struct command_reader {
-		typedef filter_config_object object_type;
-		static void post_process_object(object_type &) {}
-		static void command_reader::init_default(object_type& object);
-		static void read_object(boost::shared_ptr<nscapi::settings_proxy> proxy, object_type &object, bool oneliner, bool is_sample);
-		static void apply_parent(object_type &object, object_type &parent);
-	};
-	typedef nscapi::settings_objects::object_handler<filter_config_object, command_reader> filter_config_handler;
+	typedef nscapi::settings_objects::object_handler<filter_config_object> filter_config_handler;
 }
-

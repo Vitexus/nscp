@@ -1,19 +1,43 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
-
-#include <string>
-#include <map>
-
-#include <boost/filesystem/path.hpp>
-#include <boost/filesystem/operations.hpp>
 
 #include <settings/settings_core.hpp>
 #include <settings/settings_interface_impl.hpp>
 
-#include <error.hpp>
+#include <error/error.hpp>
 
-//#define SI_CONVERT_ICU
-//#define SI_CONVERT_GENERIC
+#include <str/xtos.hpp>
+#include <str/utils.hpp>
+
+#include <file_helpers.hpp>
+
 #include <simpleini/simpleini.h>
+
+
+#include <boost/filesystem/path.hpp>
+#include <boost/filesystem/operations.hpp>
+
+#include <string>
+#include <map>
+
 
 namespace settings {
 	class INISettings : public settings::settings_interface_impl {
@@ -23,18 +47,8 @@ namespace settings {
 		std::string filename_;
 
 	public:
-		INISettings(settings::settings_core *core, std::string context) : settings::settings_interface_impl(core, context), ini(false, false, false), is_loaded_(false) {
+		INISettings(settings::settings_core *core, std::string alias, std::string context) : settings::settings_interface_impl(core, alias, context), ini(false, false, false), is_loaded_(false) {
 			load_data();
-		}
-		//////////////////////////////////////////////////////////////////////////
-		/// Create a new settings interface of "this kind"
-		///
-		/// @param context the context to use
-		/// @return the newly created settings interface
-		///
-		/// @author mickem
-		virtual settings_interface_impl* create_new_context(std::string context) {
-			return new INISettings(get_core(), context);
 		}
 		//////////////////////////////////////////////////////////////////////////
 		/// Get a string value if it does not exist exception will be thrown
@@ -61,10 +75,14 @@ namespace settings {
 		/// @author mickem
 		virtual op_int get_real_int(settings_core::key_path_type key) {
 			op_string str = get_real_string(key);
-			if (str)
-				return strEx::s::stox<int>(*str);
+			if (str) {
+				try {
+					return str::stox<int>(*str);
+				} catch (const std::exception &e) {
+					return op_int();
+				}
+			}
 			return op_int();
-
 		}
 		//////////////////////////////////////////////////////////////////////////
 		/// Get a boolean value if it does not exist exception will be thrown
@@ -96,6 +114,25 @@ namespace settings {
 			return ini.GetSectionSize(utf8::cvt<std::wstring>(path).c_str()) > 0;
 		}
 
+		std::string render_comment(const settings_core::key_description &desc) {
+			std::string comment = "; ";
+			if (!desc.title.empty())
+				comment += desc.title + " - ";
+			if (!desc.description.empty())
+				comment += desc.description;
+			str::utils::replace(comment, "\n", " ");
+			return comment;
+		}
+
+		std::string render_comment(const settings_core::path_description &desc) {
+			std::string comment = "; ";
+			if (!desc.title.empty())
+				comment += desc.title + " - ";
+			if (!desc.description.empty())
+				comment += desc.description;
+			str::utils::replace(comment, "\n", " ");
+			return comment;
+		}
 
 		//////////////////////////////////////////////////////////////////////////
 		/// Write a value to the resulting context.
@@ -105,35 +142,31 @@ namespace settings {
 		///
 		/// @author mickem
 		virtual void set_real_value(settings_core::key_path_type key, conainer value) {
+			if (!value.is_dirty())
+				return;
 			try {
 				const settings_core::key_description desc = get_core()->get_registred_key(key.first, key.second);
-				std::string comment = "; ";
-				if (!desc.title.empty())
-					comment += desc.title + " - ";
-				if (!desc.description.empty())
-					comment += desc.description;
-				strEx::replace(comment, "\n", " ");
-				
+				std::string comment = render_comment(desc);
 				ini.Delete(utf8::cvt<std::wstring>(key.first).c_str(), utf8::cvt<std::wstring>(key.second).c_str());
 				ini.SetValue(utf8::cvt<std::wstring>(key.first).c_str(), utf8::cvt<std::wstring>(key.second).c_str(), utf8::cvt<std::wstring>(value.get_string()).c_str(), utf8::cvt<std::wstring>(comment).c_str());
 			} catch (settings_exception e) {
 				ini.SetValue(utf8::cvt<std::wstring>(key.first).c_str(), utf8::cvt<std::wstring>(key.second).c_str(), utf8::cvt<std::wstring>(value.get_string()).c_str(), L"; Undocumented key");
 			} catch (...) {
-				nsclient::logging::logger::get_logger()->error("settings",__FILE__, __LINE__, "Unknown failure when writing key: " + make_skey(key.first, key.second));
+				get_logger()->error("settings", __FILE__, __LINE__, "Unknown failure when writing key: " + make_skey(key.first, key.second));
 			}
 		}
 
 		virtual void set_real_path(std::string path) {
 			try {
 				const settings_core::path_description desc = get_core()->get_registred_path(path);
-				if (!desc.description.empty()) {
-					std::string comment = "; " + desc.description;
+				std::string comment = render_comment(desc);
+				if (!comment.empty()) {
 					ini.SetValue(utf8::cvt<std::wstring>(path).c_str(), NULL, NULL, utf8::cvt<std::wstring>(comment).c_str());
 				}
 			} catch (settings_exception e) {
 				ini.SetValue(utf8::cvt<std::wstring>(path).c_str(), NULL, NULL, L"; Undocumented section");
 			} catch (...) {
-				nsclient::logging::logger::get_logger()->error("settings",__FILE__, __LINE__, "Unknown failure when writing section: " + path);
+				get_logger()->error("settings", __FILE__, __LINE__, "Unknown failure when writing section: " + path);
 			}
 		}
 
@@ -143,7 +176,6 @@ namespace settings {
 		virtual void remove_real_path(std::string path) {
 			ini.Delete(utf8::cvt<std::wstring>(path).c_str(), NULL, true);
 		}
-
 
 		//////////////////////////////////////////////////////////////////////////
 		/// Get all (sub) sections (given a path).
@@ -164,19 +196,23 @@ namespace settings {
 					if (key.length() > 1) {
 						std::string::size_type pos = key.find('/', 1);
 						if (pos != std::string::npos)
-							key = key.substr(0,pos);
+							key = key.substr(0, pos);
 					}
 					list.push_back(key);
 				}
 			} else {
 				BOOST_FOREACH(const CSimpleIni::Entry &e, lst) {
 					std::string key = utf8::cvt<std::string>(e.pItem);
-					if (key.length() > path_len+1 && key.substr(0,path_len) == path) {
-						std::string::size_type pos = key.find('/', path_len+1);
-						if (pos == std::string::npos)
-							key = key.substr(path_len+1);
+					if (key.length() > path_len + 1 && key.substr(0, path_len) == path) {
+						std::string::size_type pos = key.find('/', path_len + 1);
+						if (pos == std::string::npos && path_len > 1)
+							key = key.substr(path_len + 1);
+						else if (pos == std::string::npos)
+							key = key.substr(path_len);
+						else if (path_len > 1)
+							key = key.substr(path_len + 1, pos - path_len - 1);
 						else
-							key = key.substr(path_len+1, pos-path_len-1);
+							key = key.substr(path_len, pos - path_len);
 						list.push_back(key);
 					}
 				}
@@ -205,6 +241,8 @@ namespace settings {
 		/// @author mickem
 		virtual void save() {
 			settings_interface_impl::save();
+
+
 			SI_Error rc = ini.SaveFile(get_file_name().string().c_str());
 			if (rc < 0)
 				throw_SI_error(rc, "Failed to save file");
@@ -235,6 +273,8 @@ namespace settings {
 
 			return ret;
 		}
+
+
 		virtual void real_clear_cache() {
 			is_loaded_ = false;
 			load_data();
@@ -244,11 +284,10 @@ namespace settings {
 			if (is_loaded_)
 				return;
 			if (boost::filesystem::is_directory(get_file_name())) {
-
 				boost::filesystem::directory_iterator it(get_file_name()), eod;
 
 				BOOST_FOREACH(boost::filesystem::path const &p, std::make_pair(it, eod)) {
-					add_child_unsafe("ini:///" + p.string());
+					add_child_unsafe(file_helpers::meta::get_filename(p), "ini:///" + p.string());
 				}
 			}
 			if (!file_exists()) {
@@ -257,7 +296,7 @@ namespace settings {
 			}
 			std::string f = utf8::cvt<std::string>(get_file_name().string());
 			ini.SetUnicode();
-			nsclient::logging::logger::get_logger()->debug("settings",__FILE__, __LINE__, "Loading: " + get_file_name().string());
+			get_logger()->debug("settings", __FILE__, __LINE__, "Loading: " + get_file_name().string());
 			SI_Error rc = ini.LoadFile(f.c_str());
 			if (rc < 0)
 				throw_SI_error(rc, "Failed to load file");
@@ -266,11 +305,12 @@ namespace settings {
 			CSimpleIni::TNamesDepend lst;
 			ini.GetAllKeys(L"/includes", lst);
 			for (CSimpleIni::TNamesDepend::const_iterator cit = lst.begin(); cit != lst.end(); ++cit) {
+				std::string alias = utf8::cvt<std::string>((*cit).pItem);
 				std::string child = utf8::cvt<std::string>(ini.GetValue(L"/includes", (*cit).pItem));
-				get_core()->register_key(999, "/includes", utf8::cvt<std::string>((*cit).pItem), settings::settings_core::key_string, 
+				get_core()->register_key(999, "/includes", utf8::cvt<std::string>((*cit).pItem), settings::settings_core::key_string,
 					"INCLUDED FILE", "Included configuration", "", true, false);
 				if (!child.empty())
-					add_child_unsafe(child);
+					add_child_unsafe(alias, child);
 			}
 			is_loaded_ = true;
 		}
@@ -282,7 +322,7 @@ namespace settings {
 				error_str = "General failure";
 			if (err == SI_FILE)
 				error_str = "I/O error: " + error::lookup::last_error();
-			throw settings_exception(msg + " '" + get_context() + "': " + error_str);
+			throw settings_exception(__FILE__, __LINE__, msg + " '" + get_context() + "': " + error_str);
 		}
 		boost::filesystem::path get_file_name() {
 			if (filename_.empty()) {
@@ -303,7 +343,7 @@ namespace settings {
 							if (boost::filesystem::exists(tmp)) {
 								filename_ = tmp;
 							} else {
-								nsclient::logging::logger::get_logger()->debug("settings", __FILE__, __LINE__, "Configuration file not found: " + filename_);
+								get_logger()->debug("settings", __FILE__, __LINE__, "Configuration file not found: " + filename_);
 							}
 						}
 					}
@@ -317,12 +357,12 @@ namespace settings {
 		virtual std::string get_info() {
 			return "INI settings: (" + context_ + ", " + get_file_name().string() + ")";
 		}
-		public:
+	public:
 		static bool context_exists(settings::settings_core *core, std::string key) {
 			net::url url = net::parse(key);
 			std::string file = url.host + url.path;
 			std::string tmp = core->expand_path(file);
-			if (tmp.size()>1 && tmp[0] == '/') {
+			if (tmp.size() > 1 && tmp[0] == '/') {
 				if (boost::filesystem::is_regular(tmp) || boost::filesystem::is_directory(tmp))
 					return true;
 				tmp = tmp.substr(1);
@@ -333,7 +373,5 @@ namespace settings {
 			save();
 		}
 		virtual std::string get_type() { return "ini"; }
-
-
 	};
 }

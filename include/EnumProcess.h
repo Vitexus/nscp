@@ -1,34 +1,32 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
-//#include <psapi.h>
+#include <boost/shared_ptr.hpp>
+
 #include <list>
 #include <string>
-//#include <error.hpp>
 
 #define DEFAULT_BUFFER_SIZE 4096
 
 namespace process_helper {
-
 	struct int_var {
 		long long value;
 		int_var() : value(0) {}
@@ -52,7 +50,7 @@ namespace process_helper {
 			if (total == 0) {
 				value = 0;
 			} else {
-				value = 100*(value-previous)/total;
+				value = 100 * (value - previous) / total;
 			}
 		}
 	};
@@ -98,6 +96,7 @@ namespace process_helper {
 		INT_GETTER(pid);
 
 		bool started;
+		bool_var is_new;
 		bool_var hung;
 		bool_var wow64;
 		bool_var has_error;
@@ -136,7 +135,9 @@ namespace process_helper {
 		bool get_stopped() const {
 			return !started;
 		}
-
+		bool get_is_new() const {
+			return is_new;
+		}
 
 		// Handles
 		int_var handleCount;
@@ -214,11 +215,11 @@ namespace process_helper {
 		static long long parse_state(const std::string &s) {
 			if (s == "started")
 				return state_started;
-			if (s=="stopped")
+			if (s == "stopped")
 				return state_stopped;
-			if (s=="hung")
+			if (s == "hung")
 				return state_hung;
-			if (s=="unreadable")
+			if (s == "unreadable")
 				return state_unreadable;
 			return state_unknown;
 		}
@@ -260,7 +261,6 @@ namespace process_helper {
 			return *this;
 		}
 
-
 		process_info& operator -= (const process_info &other) {
 			// Handles
 			handleCount -= other.handleCount;
@@ -300,17 +300,21 @@ namespace process_helper {
 
 		void make_cpu_delta(unsigned long long kernel, unsigned long long user, unsigned long long total) {
 			if (kernel > 0)
-				kernel_time = kernel_time_raw*100/kernel;
+				kernel_time = kernel_time_raw * 100 / kernel;
 			if (user > 0)
-				user_time = user_time_raw*100/user;
+				user_time = user_time_raw * 100 / user;
 			if (total > 0)
-				total_time = (kernel_time_raw+user_time_raw)*100/total;
+				total_time = (kernel_time_raw + user_time_raw) * 100 / total;
+		}
+		static boost::shared_ptr<process_helper::process_info> get_total();
+
+		std::string to_string() {
+			return exe.get();
 		}
 
 	};
 
-	class error_reporter {
-	public:
+	struct error_reporter {
 		virtual void report_error(std::string error) = 0;
 		virtual void report_warning(std::string error) = 0;
 		virtual void report_debug(std::string error) = 0;
@@ -319,4 +323,6 @@ namespace process_helper {
 	typedef std::list<process_info> process_list;
 	process_list enumerate_processes(bool ignore_unreadable = false, bool find_16bit = false, bool deep_scan = true, error_reporter *error_interface = NULL, unsigned int buffer_size = DEFAULT_BUFFER_SIZE);
 	process_list enumerate_processes_delta(bool ignore_unreadable, error_reporter *error_interface);
+
+	void enable_token_privilege(LPTSTR privilege, bool enable);
 }

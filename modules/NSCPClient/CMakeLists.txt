@@ -8,11 +8,11 @@ CREATE_MODULE(SRCS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
 SET(SRCS ${SRCS}
 	"${TARGET}.cpp"
-	${NSCP_INCLUDEDIR}/nscp/packet.cpp
+
 	${NSCP_INCLUDEDIR}/socket/socket_helpers.cpp
-	${NSCP_INCLUDEDIR}/client/command_line_parser.cpp
 
 	${NSCP_DEF_PLUGIN_CPP}
+	${NSCP_CLIENT_CPP}
 )
 
 ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
@@ -25,14 +25,14 @@ ENDIF(OPENSSL_FOUND)
 IF(WIN32)
 	SET(SRCS ${SRCS}
 		"${TARGET}.h"
-		${NSCP_INCLUDEDIR}/nscp/packet.hpp
-		${NSCP_INCLUDEDIR}/nscp/client/nscp_client_protocol.hpp
-		${NSCP_INCLUDEDIR}/swap_bytes.hpp
+		nscp_client.hpp
+		nscp_handler.hpp
+
 		${NSCP_INCLUDEDIR}/socket/socket_helpers.hpp
 		${NSCP_INCLUDEDIR}/socket/client.hpp
-		${NSCP_INCLUDEDIR}/client/command_line_parser.hpp
 
 		${NSCP_DEF_PLUGIN_HPP}
+		${NSCP_CLIENT_HPP}
 	)
 ENDIF(WIN32)
 
@@ -46,5 +46,4 @@ target_link_libraries(${TARGET}
 	${EXTRA_LIBS}
 )
 INCLUDE(${BUILD_CMAKE_FOLDER}/module.cmake)
-SOURCE_GROUP("Client" REGULAR_EXPRESSION .*include/nscp/.*)
 SOURCE_GROUP("Socket" REGULAR_EXPRESSION .*include/socket/.*)

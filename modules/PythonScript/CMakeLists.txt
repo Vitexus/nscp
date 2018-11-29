@@ -6,9 +6,20 @@ PROJECT(${TARGET})
 
 CREATE_MODULE(SRCS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
+IF(JSON_SPIRIT_FOUND)
+	INCLUDE_DIRECTORIES(${JSON_SPIRIT_INCLUDE_DIR})
+	ADD_DEFINITIONS(-DHAVE_JSON_SPIRIT)
+	ADD_DEFINITIONS(-DJSON_SPIRIT_STATIC_LINKED)
+	SET(JSON_LIB json_spirit)
+ELSE(JSON_SPIRIT_FOUND)
+	SET(JSON_LIB)
+ENDIF(JSON_SPIRIT_FOUND)
 SET(SRCS ${SRCS}
 	"${TARGET}.cpp"
+	python_script.cpp
 	script_wrapper.cpp
+	extscr_cli.cpp
+	script_provider.cpp
 	${NSCP_DEF_PLUGIN_CPP}
 )
 
@@ -18,6 +29,10 @@ IF(WIN32)
 	SET(SRCS ${SRCS}
 		script_wrapper.hpp
 		"${TARGET}.h"
+		extscr_cli.h
+		script_interface.hpp
+		python_script.hpp
+		script_provider.hpp
 
 		${NSCP_DEF_PLUGIN_HPP}
 	)
@@ -33,6 +48,7 @@ target_link_libraries(${TARGET}
 	${Boost_PYTHON_LIBRARY}
 	${NSCP_DEF_PLUGIN_LIB}
 	${PYTHON_LIBRARIES}
+	${JSON_LIB}
 )
 
 INCLUDE(${BUILD_CMAKE_FOLDER}/module.cmake)

@@ -1,36 +1,34 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "CheckMKServer.h"
-#include <strEx.h>
-#include <time.h>
 #include "handler_impl.hpp"
 
 #include <nscapi/nscapi_settings_helper.hpp>
 #include <socket/socket_settings_helper.hpp>
 
+#include <str/xtos.hpp>
+#include <time.h>
+
 namespace sh = nscapi::settings_helper;
 
-
-CheckMKServer::CheckMKServer() {
-}
+CheckMKServer::CheckMKServer() {}
 CheckMKServer::~CheckMKServer() {}
 
 bool CheckMKServer::loadModuleEx(std::string alias, NSCAPI::moduleLoadMode mode) {
@@ -47,15 +45,15 @@ bool CheckMKServer::loadModuleEx(std::string alias, NSCAPI::moduleLoadMode mode)
 	settings.alias().add_path_to_settings()
 		("CHECK MK SERVER SECTION", "Section for check_mk (CheckMKServer.dll) protocol options.")
 
-		("scripts", sh::fun_values_path(boost::bind(&CheckMKServer::add_script, this, _1, _2)), 
-		"REMOTE TARGET DEFINITIONS", "",
-		"TARGET", "For more configuration options add a dedicated section")
+		("scripts", sh::fun_values_path(boost::bind(&CheckMKServer::add_script, this, _1, _2)),
+			"REMOTE TARGET DEFINITIONS", "",
+			"TARGET", "For more configuration options add a dedicated section")
 
 		;
 
 	settings.alias().add_key_to_settings()
 		("port", sh::string_key(&info_.port_, "6556"),
-		"PORT NUMBER", "Port to use for check_mk.")
+			"PORT NUMBER", "Port to use for check_mk.")
 
 		;
 
@@ -85,7 +83,6 @@ bool CheckMKServer::loadModuleEx(std::string alias, NSCAPI::moduleLoadMode mode)
 	boost::asio::io_service io_service_;
 
 	scripts_->load_all();
-
 
 	if (mode == NSCAPI::normalStart) {
 		server_.reset(new check_mk::server::server(info_, handler_));

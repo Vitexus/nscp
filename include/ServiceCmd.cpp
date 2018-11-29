@@ -1,33 +1,39 @@
-//////////////////////////////////////////////////////////////////////////
-// Service Helpers.
-// 
-// Functions to stop/start/install and uninstall a service.
-//
-// Copyright (c) 2004 MySolutions NORDIC (http://www.medin.nu)
-//
-// Date: 2004-03-13
-// Author: Michael Medin (mickem@medin.nu)
-//
-// This software is provided "AS IS", without a warranty of any kind.
-// You are free to use/modify this code but leave this header intact.
-//
-//////////////////////////////////////////////////////////////////////////
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include "ServiceCmd.h"
+
+#include <utf8.hpp>
+#include <error/error.hpp>
 
 #include <windows.h>
 #include <tchar.h>
-#include "ServiceCmd.h"
-#include <strEx.h>
-#include <tchar.h>
+
 #include <iostream>
-#include <error.hpp>
 
 namespace serviceControll {
 	/**
 	 * Installs the service
 	 *
-	 * @param szName 
-	 * @param szDisplayName 
-	 * @param szDependencies 
+	 * @param szName
+	 * @param szDisplayName
+	 * @param szDependencies
 	 *
 	 * @author mickem
 	 *
@@ -40,14 +46,14 @@ namespace serviceControll {
 
 		if (exe.empty()) {
 			TCHAR szPath[512];
-			if ( GetModuleFileName( NULL, szPath, 512 ) == 0 )
+			if (GetModuleFileName(NULL, szPath, 512) == 0)
 				throw SCException("Could not get module");
 			exe = szPath;
 		}
 
 		std::wstring bin = _T("\"") + exe + _T("\"");
 		if (!args.empty())
-			bin += _T(" ") + args;
+			bin += L" " + args;
 		schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
 		if (!schSCManager)
 			throw SCException("OpenSCManager failed:" + error::lookup::last_error());
@@ -69,7 +75,7 @@ namespace serviceControll {
 		if (!schService) {
 			DWORD err = GetLastError();
 			CloseServiceHandle(schSCManager);
-			if (err==ERROR_SERVICE_EXISTS) {
+			if (err == ERROR_SERVICE_EXISTS) {
 				throw SCException("Service already installed!");
 			}
 			throw SCException("Unable to install service." + error::lookup::last_error(err));
@@ -84,7 +90,7 @@ namespace serviceControll {
 		SC_HANDLE   schSCManager;
 		TCHAR szPath[512];
 
-		if ( GetModuleFileName( NULL, szPath, 512 ) == 0 )
+		if (GetModuleFileName(NULL, szPath, 512) == 0)
 			throw SCException("Could not get module");
 
 		schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
@@ -96,7 +102,7 @@ namespace serviceControll {
 			CloseServiceHandle(schSCManager);
 			throw SCException("Unable to open service: " + error::lookup::last_error(err));
 		}
-		BOOL result = ChangeServiceConfig(schService, dwServiceType, SERVICE_NO_CHANGE, SERVICE_NO_CHANGE , NULL, NULL, NULL, 
+		BOOL result = ChangeServiceConfig(schService, dwServiceType, SERVICE_NO_CHANGE, SERVICE_NO_CHANGE, NULL, NULL, NULL,
 			NULL, NULL, NULL, NULL);
 		CloseServiceHandle(schService);
 		CloseServiceHandle(schSCManager);
@@ -105,7 +111,7 @@ namespace serviceControll {
 	}
 
 	DWORD GetServiceType(LPCTSTR szName) {
-		LPQUERY_SERVICE_CONFIG lpqscBuf = (LPQUERY_SERVICE_CONFIG) LocalAlloc(LPTR, 4096); 
+		LPQUERY_SERVICE_CONFIG lpqscBuf = (LPQUERY_SERVICE_CONFIG)LocalAlloc(LPTR, 4096);
 		if (lpqscBuf == NULL) {
 			throw SCException("Could not allocate memory");
 		}
@@ -113,7 +119,7 @@ namespace serviceControll {
 		SC_HANDLE schSCManager;
 		TCHAR szPath[512];
 
-		if ( GetModuleFileName( NULL, szPath, 512 ) == 0 )
+		if (GetModuleFileName(NULL, szPath, 512) == 0)
 			throw SCException("Could not get module");
 
 		schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
@@ -126,9 +132,8 @@ namespace serviceControll {
 			throw SCException("Unable to open service: " + error::lookup::last_error(err));
 		}
 
-
 		DWORD dwBytesNeeded = 0;
-		BOOL success = QueryServiceConfig(schService, lpqscBuf,  4096, &dwBytesNeeded);
+		BOOL success = QueryServiceConfig(schService, lpqscBuf, 4096, &dwBytesNeeded);
 		CloseServiceHandle(schService);
 		CloseServiceHandle(schSCManager);
 		if (success != TRUE)
@@ -141,7 +146,7 @@ namespace serviceControll {
 	/**
 	 * Stars the service.
 	 *
-	 * @param name The name of the service to start 
+	 * @param name The name of the service to start
 	 *
 	 * @author mickem
 	 *
@@ -153,23 +158,23 @@ namespace serviceControll {
 		SC_HANDLE   schSCManager;
 		SERVICE_STATUS ssStatus;
 
-		schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS );
-		if (!schSCManager) 
+		schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+		if (!schSCManager)
 			throw SCException("OpenSCManager failed: " + error::lookup::last_error());
 		schService = OpenService(schSCManager, name.c_str(), SERVICE_ALL_ACCESS);
 		if (schService) {
 			// try to stop the service
-			if ( StartService(schService,0,NULL) ) {
+			if (StartService(schService, 0, NULL)) {
 				std::cout << "Starting " << utf8::cvt<std::string>(name);
-				Sleep( 1000 );
-				while( QueryServiceStatus( schService, &ssStatus ) ) {
-					if ( ssStatus.dwCurrentState == SERVICE_START_PENDING ) {
+				Sleep(1000);
+				while (QueryServiceStatus(schService, &ssStatus)) {
+					if (ssStatus.dwCurrentState == SERVICE_START_PENDING) {
 						std::cout << ".";
-						Sleep( 1000 );
+						Sleep(1000);
 					} else
 						break;
 				}
-				if ( ssStatus.dwCurrentState != SERVICE_RUNNING ) {
+				if (ssStatus.dwCurrentState != SERVICE_RUNNING) {
 					CloseServiceHandle(schService);
 					CloseServiceHandle(schSCManager);
 					throw SCException("Service '" + utf8::cvt<std::string>(name) + "' failed to start.");
@@ -187,7 +192,7 @@ namespace serviceControll {
 		SC_HANDLE   schService;
 		SC_HANDLE   schSCManager;
 		schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-		if (!schSCManager) 
+		if (!schSCManager)
 			throw SCException("OpenSCManager failed: " + error::lookup::last_error());
 		schService = OpenService(schSCManager, name.c_str(), SERVICE_ALL_ACCESS);
 		if (schService) {
@@ -204,23 +209,23 @@ namespace serviceControll {
 		SC_HANDLE   schService;
 		SC_HANDLE   schSCManager;
 		schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-		if (!schSCManager) 
+		if (!schSCManager)
 			throw SCException("OpenSCManager failed: " + error::lookup::last_error());
-		schService = OpenService(schSCManager, svc_name.c_str(),  SERVICE_QUERY_CONFIG);
+		schService = OpenService(schSCManager, svc_name.c_str(), SERVICE_QUERY_CONFIG);
 		if (!schService) {
 			CloseServiceHandle(schSCManager);
 			throw SCException("Failed to open service: " + utf8::cvt<std::string>(svc_name) + " because " + error::lookup::last_error());
 		}
-		DWORD dwBytesNeeded=0;
+		DWORD dwBytesNeeded = 0;
 		DWORD lErr;
-		if (QueryServiceConfig(schService,NULL,0, &dwBytesNeeded) || ((lErr = GetLastError()) != ERROR_INSUFFICIENT_BUFFER)) {
+		if (QueryServiceConfig(schService, NULL, 0, &dwBytesNeeded) || ((lErr = GetLastError()) != ERROR_INSUFFICIENT_BUFFER)) {
 			CloseServiceHandle(schService);
 			CloseServiceHandle(schSCManager);
 			throw SCException("Failed to query service information: " + utf8::cvt<std::string>(svc_name) + " because " + error::lookup::last_error(lErr));
 		}
 
-		LPQUERY_SERVICE_CONFIG lpqscBuf = (LPQUERY_SERVICE_CONFIG)LocalAlloc(LPTR, dwBytesNeeded+10); 
-		BOOL bRet = (lpqscBuf!=NULL) && (QueryServiceConfig(schService,lpqscBuf,dwBytesNeeded, &dwBytesNeeded)==TRUE);
+		LPQUERY_SERVICE_CONFIG lpqscBuf = (LPQUERY_SERVICE_CONFIG)LocalAlloc(LPTR, dwBytesNeeded + 10);
+		BOOL bRet = (lpqscBuf != NULL) && (QueryServiceConfig(schService, lpqscBuf, dwBytesNeeded, &dwBytesNeeded) == TRUE);
 		if (!bRet)
 			lErr = GetLastError();
 		else {
@@ -240,15 +245,15 @@ namespace serviceControll {
 		SERVICE_STATUS ssStatus;
 		bool ret = false;
 
-		schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS );
-		if (!schSCManager) 
+		schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+		if (!schSCManager)
 			throw SCException("OpenSCManager failed: " + error::lookup::last_error());
 		schService = OpenService(schSCManager, name.c_str(), SERVICE_ALL_ACCESS);
 		if (schService) {
-			if ( QueryServiceStatus( schService, &ssStatus ) ) {
-				if ( ssStatus.dwCurrentState == SERVICE_RUNNING ) {
+			if (QueryServiceStatus(schService, &ssStatus)) {
+				if (ssStatus.dwCurrentState == SERVICE_RUNNING) {
 					ret = true;
-				} else if ( ssStatus.dwCurrentState == SERVICE_START_PENDING ) {
+				} else if (ssStatus.dwCurrentState == SERVICE_START_PENDING) {
 					ret = true;
 				}
 			}
@@ -264,7 +269,7 @@ namespace serviceControll {
 	/**
 	 * Stops and removes the service
 	 *
-	 * @param name The name of the service to uninstall 
+	 * @param name The name of the service to uninstall
 	 *
 	 * @author mickem
 	 *
@@ -281,7 +286,7 @@ namespace serviceControll {
 			throw SCException("OpenSCManager failed: " + error::lookup::last_error());
 		schService = OpenService(schSCManager, name.c_str(), SERVICE_ALL_ACCESS);
 		if (schService) {
-			if(!DeleteService(schService)) {
+			if (!DeleteService(schService)) {
 				std::string err = "DeleteService failed: " + error::lookup::last_error();
 				CloseServiceHandle(schService);
 				CloseServiceHandle(schSCManager);
@@ -299,7 +304,7 @@ namespace serviceControll {
 	/**
 	 * Stops the service
 	 *
-	 * @param name The name of the serive to stop 
+	 * @param name The name of the serive to stop
 	 *
 	 * @author MickeM
 	 *
@@ -317,18 +322,18 @@ namespace serviceControll {
 		schService = OpenService(schSCManager, name.c_str(), SERVICE_ALL_ACCESS);
 		if (schService) {
 			// try to stop the service
-			if ( ControlService( schService, SERVICE_CONTROL_STOP, &ssStatus ) ) {
+			if (ControlService(schService, SERVICE_CONTROL_STOP, &ssStatus)) {
 				std::cout << "Stopping service.";
-				Sleep( 1000 );
-				while( QueryServiceStatus( schService, &ssStatus ) ) {
-					if ( ssStatus.dwCurrentState == SERVICE_STOP_PENDING ) {
+				Sleep(1000);
+				while (QueryServiceStatus(schService, &ssStatus)) {
+					if (ssStatus.dwCurrentState == SERVICE_STOP_PENDING) {
 						std::cout << ".";
-						Sleep( 1000 );
+						Sleep(1000);
 					} else
 						break;
 				}
 				std::cout << std::endl;
-				if ( ssStatus.dwCurrentState != SERVICE_STOPPED ) {
+				if (ssStatus.dwCurrentState != SERVICE_STOPPED) {
 					CloseServiceHandle(schService);
 					CloseServiceHandle(schSCManager);
 					throw SCException("Service failed to stop.");
@@ -354,7 +359,7 @@ namespace serviceControll {
 		schService = OpenService(schSCManager, name.c_str(), SERVICE_ALL_ACCESS);
 		if (schService) {
 			// try to stop the service
-			ControlService( schService, SERVICE_CONTROL_STOP, &ssStatus );
+			ControlService(schService, SERVICE_CONTROL_STOP, &ssStatus);
 			CloseServiceHandle(schService);
 		} else {
 			CloseServiceHandle(schSCManager);
@@ -363,12 +368,11 @@ namespace serviceControll {
 		CloseServiceHandle(schSCManager);
 	}
 
-
-	typedef BOOL (WINAPI*PFChangeServiceConfig2)(SC_HANDLE hService,DWORD dwInfoLevel,LPVOID lpInfo);
+	typedef BOOL(WINAPI*PFChangeServiceConfig2)(SC_HANDLE hService, DWORD dwInfoLevel, LPVOID lpInfo);
 
 	void SetDescription(std::wstring name, std::wstring desc) {
 		PFChangeServiceConfig2 FChangeServiceConfig2;
-		HMODULE ADVAPI= ::LoadLibrary(_T("Advapi32"));
+		HMODULE ADVAPI = ::LoadLibrary(_T("Advapi32"));
 		if (!ADVAPI) {
 			throw SCException("Couldn't set extended service info (ignore this on NT4).");
 		}
@@ -392,11 +396,11 @@ namespace serviceControll {
 			throw SCException("OpenService failed.");
 		}
 
-		TCHAR* d = new TCHAR[desc.length()+2];
-		wcsncpy(d, desc.c_str(), desc.length()+1);
+		TCHAR* d = new TCHAR[desc.length() + 2];
+		wcsncpy(d, desc.c_str(), desc.length() + 1);
 		descr.lpDescription = d;
 		BOOL bResult = FChangeServiceConfig2(schService, SERVICE_CONFIG_DESCRIPTION, &descr);
-		delete [] d;
+		delete[] d;
 		FreeLibrary(ADVAPI);
 		CloseServiceHandle(schService);
 		CloseServiceHandle(schSCManager);

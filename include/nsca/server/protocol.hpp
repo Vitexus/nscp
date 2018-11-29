@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <boost/asio.hpp>
@@ -15,9 +34,8 @@
 namespace nsca {
 	using boost::asio::ip::tcp;
 
-
 	static const int socket_bufer_size = 8096;
-//	static const bool debug_trace = true;
+	//	static const bool debug_trace = true;
 	struct read_protocol : public boost::noncopyable {
 		static const bool debug_trace = false;
 
@@ -36,7 +54,7 @@ namespace nsca {
 		handler_type handler_;
 		nsca::server::parser parser_;
 		state current_state_;
-		
+
 		std::string data_;
 		nscp::encryption::engine encryption_instance_;
 
@@ -44,12 +62,11 @@ namespace nsca {
 			return boost::shared_ptr<read_protocol>(new read_protocol(info, handler));
 		}
 
-		read_protocol(socket_helpers::connection_info info, handler_type handler) 
+		read_protocol(socket_helpers::connection_info info, handler_type handler)
 			: info_(info)
 			, handler_(handler)
 			, parser_(handler->get_payload_length())
-			, current_state_(none)
-		{}
+			, current_state_(none) {}
 
 		inline void set_state(state new_state) {
 			current_state_ = new_state;
@@ -141,5 +158,4 @@ namespace nsca {
 	namespace server {
 		typedef socket_helpers::server::server<read_protocol, socket_bufer_size> server;
 	}
-
 } // namespace nsca

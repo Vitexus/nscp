@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <boost/asio.hpp>
@@ -15,7 +34,6 @@
 #include "parser.hpp"
 
 namespace check_nt {
-
 	static const int socket_bufer_size = 8096;
 	static const bool debug_trace = true;
 	struct read_protocol : public boost::noncopyable {
@@ -39,15 +57,13 @@ namespace check_nt {
 		std::vector<char> data_;
 		check_nt::server::parser parser_;
 
-
 		static boost::shared_ptr<read_protocol> create(socket_helpers::connection_info info, check_nt::server::handler *handler) {
 			return boost::shared_ptr<read_protocol>(new read_protocol(info, handler));
 		}
-		read_protocol(socket_helpers::connection_info info, check_nt::server::handler *handler) 
+		read_protocol(socket_helpers::connection_info info, check_nt::server::handler *handler)
 			: info_(info)
 			, handler_(handler)
-			, current_state_(none)
-		{}
+			, current_state_(none) {}
 
 		inline void set_state(state new_state) {
 			current_state_ = new_state;
@@ -55,8 +71,9 @@ namespace check_nt {
 
 		bool on_accept(boost::asio::ip::tcp::socket& socket, int) {
 			std::list<std::string> errors;
-			std::string s = socket.remote_endpoint().address().to_string();
-			if (info_.allowed_hosts.is_allowed(socket.remote_endpoint().address(), errors)) {
+			boost::asio::ip::address a = socket.remote_endpoint().address();
+			std::string s = a.to_string();
+			if (info_.allowed_hosts.is_allowed(a, errors)) {
 				log_debug(__FILE__, __LINE__, "Accepting connection from: " + s);
 				return true;
 			} else {

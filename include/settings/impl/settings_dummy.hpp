@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <string>
@@ -10,24 +29,14 @@
 #include <settings/settings_interface_impl.hpp>
 //#define SI_CONVERT_ICU
 #include <simpleini/simpleini.h>
-#include <error.hpp>
+#include <error/error.hpp>
 
 namespace settings {
 	class settings_dummy : public settings::settings_interface_impl {
 	private:
 
 	public:
-		settings_dummy(settings::settings_core *core, std::string context) : settings::settings_interface_impl(core, context) {}
-		//////////////////////////////////////////////////////////////////////////
-		/// Create a new settings interface of "this kind"
-		///
-		/// @param context the context to use
-		/// @return the newly created settings interface
-		///
-		/// @author mickem
-		virtual settings_interface_impl* create_new_context(std::string context) {
-			return new settings_dummy(get_core(), context);
-		}
+		settings_dummy(settings::settings_core *core, std::string alias, std::string context) : settings::settings_interface_impl(core, alias, context) {}
 		//////////////////////////////////////////////////////////////////////////
 		/// Get a string value if it does not exist exception will be thrown
 		///
@@ -82,15 +91,11 @@ namespace settings {
 		/// @param value The value to write
 		///
 		/// @author mickem
-		virtual void set_real_value(settings_core::key_path_type key, conainer value) {
-		}
+		virtual void set_real_value(settings_core::key_path_type key, conainer value) {}
 
-		virtual void set_real_path(std::string path) {
-		}
-		virtual void remove_real_value(settings_core::key_path_type key) {
-		}
-		virtual void remove_real_path(std::string path) {
-		}
+		virtual void set_real_path(std::string path) {}
+		virtual void remove_real_value(settings_core::key_path_type key) {}
+		virtual void remove_real_path(std::string path) {}
 
 		//////////////////////////////////////////////////////////////////////////
 		/// Get all (sub) sections (given a path).
@@ -101,8 +106,7 @@ namespace settings {
 		/// @return a list of sections
 		///
 		/// @author mickem
-		virtual void get_real_sections(std::string, string_list &) {
-		}
+		virtual void get_real_sections(std::string, string_list &) {}
 		//////////////////////////////////////////////////////////////////////////
 		/// Get all keys given a path/section.
 		/// If the path is empty all root sections will be returned
@@ -112,8 +116,7 @@ namespace settings {
 		/// @return a list of sections
 		///
 		/// @author mickem
-		virtual void get_real_keys(std::string, string_list &) {
-		}
+		virtual void get_real_keys(std::string, string_list &) {}
 		//////////////////////////////////////////////////////////////////////////
 		/// Save the settings store
 		///
@@ -130,12 +133,11 @@ namespace settings {
 		}
 		virtual std::string get_type() { return "dummy"; }
 
-		public:
-			virtual void real_clear_cache() {}
-			static bool context_exists(settings::settings_core*, std::string) {
-				return true;
-			}
-			void ensure_exists() {
-			}
+	public:
+		virtual void real_clear_cache() {}
+		static bool context_exists(settings::settings_core*, std::string) {
+			return true;
+		}
+		void ensure_exists() {}
 	};
 }

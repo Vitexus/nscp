@@ -21,7 +21,13 @@ IF(WIN32)
 		"${TARGET}.def"
 		installer_helper.hpp
 		${NSCP_INCLUDEDIR}/ServiceCmd.h
+    ${NSCP_ERROR_CPP}
+    ${NSCP_ERROR_HPP}
 		
+		
+		# Logger
+		${NSCP_INCLUDEDIR}/nsclient/logger/log_level.cpp
+		${NSCP_INCLUDEDIR}/nsclient/logger/base_logger_impl.cpp
 	)
 
 	

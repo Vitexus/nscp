@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <boost/noncopyable.hpp>
@@ -63,7 +82,6 @@ namespace lua {
 		}
 		void remove_userdata(std::string id);
 
-
 		//////////////////////////////////////////////////////////////////////////
 		/// pop_xxx
 		bool pop_boolean();
@@ -77,11 +95,9 @@ namespace lua {
 		NSCAPI::nagiosReturn pop_code();
 		std::list<std::string> pop_array();
 
-
 		//////////////////////////////////////////////////////////////////////////
 		// Converters
 		NSCAPI::nagiosReturn string_to_code(std::string str);
-
 
 		////////////////////////////////////////////////////////////////////////////
 		// Misc
@@ -113,11 +129,9 @@ namespace lua {
 			return type(pos) == LUA_TTABLE;
 		}
 
-
 		//////////////////////////////////////////////////////////////////////////
 		// push_xxx
 		void push_code(NSCAPI::nagiosReturn code);
-		void push_exit(NSCAPI::nagiosReturn code);
 		void push_string(std::string s);
 		void push_boolean(bool b);
 		void push_int(int b);
@@ -128,7 +142,7 @@ namespace lua {
 		bool empty();
 		void log_stack();
 		int error(std::string s);
-		typedef std::pair<std::string,int> stack_trace;
+		typedef std::pair<std::string, int> stack_trace;
 		stack_trace get_stack_trace(int level = 1);
 		std::string dump_stack();
 

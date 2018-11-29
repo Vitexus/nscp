@@ -1,10 +1,30 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
+
+#include <types.hpp>
 
 #include <boost/static_assert.hpp>
 #include <boost/type_traits/is_arithmetic.hpp>
 
 namespace swap_bytes {
-
 	// this function swap the bytes of values given it's size as a template
 	// parameter (could sizeof be used?).
 	template <class T, unsigned int size>
@@ -43,6 +63,14 @@ namespace swap_bytes {
 	template<typename T>
 	inline T hton(T value) {
 		return EndianSwapBytes<HOST_ENDIAN_ORDER, BIG_ENDIAN_ORDER, T >(value);
+	}
+	template<class T>
+	inline T ltoh(T value) {
+		return EndianSwapBytes<LITTLE_ENDIAN_ORDER, HOST_ENDIAN_ORDER, T >(value);
+	}
+	template<typename T>
+	inline T htol(T value) {
+		return EndianSwapBytes<HOST_ENDIAN_ORDER, LITTLE_ENDIAN_ORDER, T >(value);
 	}
 #ifdef WIN32
 #pragma warning( pop )

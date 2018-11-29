@@ -48,7 +48,9 @@
 #include <breakpad/breakpad_config.hpp>
 #include <breakpad/exception_handler_win32.hpp>
 #include <client/windows/handler/exception_handler.h>
-
+#ifdef WIN32
+#include <ServiceCmd.h>
+#endif
 #include <boost/foreach.hpp>
 
 // Some simple string typedefs
@@ -60,17 +62,14 @@ namespace std {
 	typedef wstring string16;
 }
 
-
 ExceptionManager* ExceptionManager::instance_ = NULL;
 
-
 ExceptionManager::ExceptionManager(bool catch_entire_process)
-: catch_entire_process_(catch_entire_process),
-exception_handler_(NULL) {
+	: catch_entire_process_(catch_entire_process),
+	exception_handler_(NULL) {
 	assert(!instance_);
 	instance_ = this;
 }
-
 
 ExceptionManager::~ExceptionManager() {
 	if (exception_handler_)
@@ -79,13 +78,11 @@ ExceptionManager::~ExceptionManager() {
 	instance_ = NULL;
 }
 
-
 static HMODULE GetModuleHandleFromAddress(void *address) {
 	MEMORY_BASIC_INFORMATION mbi;
 	VirtualQuery(address, &mbi, sizeof(mbi));
 	return static_cast<HMODULE>(mbi.AllocationBase);
 }
-
 
 // Gets the handle to the currently executing module.
 static HMODULE GetCurrentModuleHandle() {
@@ -93,11 +90,9 @@ static HMODULE GetCurrentModuleHandle() {
 	return GetModuleHandleFromAddress(GetCurrentModuleHandle);
 }
 
-
 // static bool IsAddressInCurrentModule(void *address) {
 // 	return GetCurrentModuleHandle() == GetModuleHandleFromAddress(address);
 // }
-
 
 // Called back when an exception occurs - we can decide here if we
 // want to handle this crash...
@@ -118,13 +113,12 @@ static bool FilterCallback(void *context, EXCEPTION_POINTERS *exinfo, MDRawAsser
 	//return IsAddressInCurrentModule(exinfo->ExceptionRecord->ExceptionAddress);
 }
 
-
 std::string modulePath() {
 	unsigned int buf_len = 4096;
-	TCHAR* buffer = new TCHAR[buf_len+1];
+	TCHAR* buffer = new TCHAR[buf_len + 1];
 	GetModuleFileName(NULL, buffer, buf_len);
 	std::string path = utf8::cvt<std::string>(buffer);
-	delete [] buffer;
+	delete[] buffer;
 	std::string::size_type pos = path.rfind('\\');
 	return path.substr(0, pos);
 }
@@ -149,9 +143,9 @@ std::string build_commandline(std::vector<std::string> &commands) {
 void run_proc(std::string command_line) {
 	report_info("Running: " + command_line);
 	// execute the process
-	STARTUPINFO startup_info = {0};
+	STARTUPINFO startup_info = { 0 };
 	startup_info.cb = sizeof(startup_info);
-	PROCESS_INFORMATION process_info = {0};
+	PROCESS_INFORMATION process_info = { 0 };
 	CreateProcessW(NULL, const_cast<char16 *>(utf8::cvt<std::wstring>(command_line).c_str()), NULL, NULL, FALSE, 0, NULL, NULL, &startup_info, &process_info);
 	CloseHandle(process_info.hProcess);
 	CloseHandle(process_info.hThread);
@@ -190,7 +184,7 @@ static bool MinidumpCallback(const wchar_t *minidump_folder, const wchar_t *mini
 		report_error("Path to long");
 		return false;
 	}
-	
+
 	if (!boost::filesystem::is_regular(path)) {
 		report_error("Failed to find reporter.exe");
 		return false;
@@ -205,13 +199,23 @@ static bool MinidumpCallback(const wchar_t *minidump_folder, const wchar_t *mini
 			run_command(this_ptr, path, "send", minidump_path, this_ptr->target());
 	}
 
+#ifdef WIN32
 	if (this_ptr->is_restart()) {
 		std::vector<std::string> commands;
+		try {
+			if (!serviceControll::isStarted(utf8::cvt<std::wstring>(this_ptr->service()))) {
+				report_error("Service not started, not restarting...");
+				return true;
+			}
+		} catch (...) {
+			report_error("Failed to check service state");
+		}
 		commands.push_back(path);
 		commands.push_back("restart");
 		commands.push_back(this_ptr->service());
 		run_proc(build_commandline(commands));
 	}
+#endif
 	return true;
 }
 

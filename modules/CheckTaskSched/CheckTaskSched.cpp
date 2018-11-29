@@ -1,36 +1,30 @@
-/**************************************************************************
-*   Copyright (C) 2004-2007 by Michael Medin <michael@medin.name>         *
-*                                                                         *
-*   This code is part of NSClient++ - http://trac.nakednuns.org/nscp      *
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-*   This program is distributed in the hope that it will be useful,       *
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-*   GNU General Public License for more details.                          *
-*                                                                         *
-*   You should have received a copy of the GNU General Public License     *
-*   along with this program; if not, write to the                         *
-*   Free Software Foundation, Inc.,                                       *
-*   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
-***************************************************************************/
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
-#include <boost/program_options.hpp>
 
 #include "CheckTaskSched.h"
-#include <strEx.h>
-#include <time.h>
-#include <map>
-#include <vector>
 
-#include <strEx.h>
+
 #include "TaskSched.h"
-
 #include "filter.hpp"
+
+#include <str/utils.hpp>
 
 #include <parsers/filter/cli_helper.hpp>
 
@@ -39,6 +33,10 @@
 #include <nscapi/nscapi_settings_helper.hpp>
 #include <nscapi/nscapi_helper_singleton.hpp>
 
+#include <boost/program_options.hpp>
+
+#include <map>
+#include <vector>
 
 namespace sh = nscapi::settings_helper;
 namespace po = boost::program_options;
@@ -52,8 +50,8 @@ bool CheckTaskSched::unloadModule() {
 
 void log_args(const Plugin::QueryRequestMessage::Request &request) {
 	std::stringstream ss;
-	for (int i=0;i<request.arguments_size();i++) {
-		if (i>0)
+	for (int i = 0; i < request.arguments_size(); i++) {
+		if (i > 0)
 			ss << " ";
 		ss << request.arguments(i);
 	}
@@ -84,7 +82,7 @@ void CheckTaskSched::CheckTaskSched_(Plugin::QueryRequestMessage::Request &reque
 
 	boost::program_options::variables_map vm;
 	std::vector<std::string> extra;
-	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response, true, extra)) 
+	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response, true, extra))
 		return;
 	std::string warn, crit;
 
@@ -110,22 +108,21 @@ void CheckTaskSched::CheckTaskSched_(Plugin::QueryRequestMessage::Request &reque
 	if (!filter.empty())
 		request.add_arguments("filter=" + filter);
 	if (!topSyntax.empty()) {
-		boost::replace_all(topSyntax, "%status%", "${status}");
+		boost::replace_all(topSyntax, "%status%", "${task_status}");
 		request.add_arguments("top-syntax=" + topSyntax);
 	}
 	if (!syntax.empty()) {
 		boost::replace_all(syntax, "%title%", "${title}");
-		boost::replace_all(syntax, "%status%", "${status}");
+		boost::replace_all(syntax, "%status%", "${task_status}");
 		boost::replace_all(syntax, "%exit_code%", "${exit_code}");
 		boost::replace_all(syntax, "%most_recent_run_time%", "${most_recent_run_time}");
-		
+
 		request.add_arguments("detail-syntax=" + syntax);
 	}
 
 	log_args(request);
 	check_tasksched(request, response);
 }
-
 
 void CheckTaskSched::check_tasksched(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
 	typedef tasksched_filter::filter filter_type;
@@ -135,18 +132,20 @@ void CheckTaskSched::check_tasksched(const Plugin::QueryRequestMessage::Request 
 	std::vector<std::string> file_list;
 	std::string files_string;
 	std::string computer, user, domain, password, folder;
-	bool recursive;
+	bool recursive = true, old = false, hidden = false;
 
 	filter_type filter;
 	filter_helper.add_options("exit_code != 0", "exit_code < 0", "enabled = 1", filter.get_filter_syntax(), "warning");
-	filter_helper.add_syntax("${problem_list}", filter.get_format_syntax(), "${folder}/${title}: ${exit_code} != 0", "${title}", "%(status): No tasks found", "%(status): All tasks are ok");
+	filter_helper.add_syntax("${status}: ${problem_list}", "${folder}/${title}: ${exit_code} != 0", "${title}", "%(status): No tasks found", "%(status): All tasks are ok");
 	filter_helper.get_desc().add_options()
+		("force-old", po::bool_switch(&old), "The name of the computer that you want to connect to.")
 		("computer", po::value<std::string>(&computer), "The name of the computer that you want to connect to.")
 		("user", po::value<std::string>(&user), "The user name that is used during the connection to the computer.")
 		("domain", po::value<std::string>(&domain), "The domain of the user specified in the user parameter.")
 		("password", po::value<std::string>(&password), "The password that is used to connect to the computer. If the user name and password are not specified, then the current token is used.")
 		("folder", po::value<std::string>(&folder), "The folder in which the tasks to check reside.")
-		("recursive", po::value<bool>(&recursive), "Recurse subfolder (defaults to true).")
+		("recursive", po::value<bool>(&recursive), "Recurse sub folder (defaults to true).")
+		("hidden", po::value<bool>(&hidden), "Look for hidden tasks.")
 		;
 
 	if (!filter_helper.parse_options())
@@ -157,14 +156,9 @@ void CheckTaskSched::check_tasksched(const Plugin::QueryRequestMessage::Request 
 
 	try {
 		TaskSched query;
-		query.findAll(filter, computer, user, domain, password, folder, recursive);
-		modern_filter::perf_writer writer(response);
-		filter_helper.post_process(filter, &writer);
-	} catch (const nscp_exception &e) {
+		query.findAll(filter, computer, user, domain, password, folder, recursive, hidden, old);
+		filter_helper.post_process(filter);
+	} catch (const nsclient::nsclient_exception &e) {
 		return nscapi::protobuf::functions::set_response_bad(*response, "Failed to fetch tasks: " + e.reason());
 	}
-}
-
-int CheckTaskSched::commandLineExec(const std::string &, const std::list<std::string> &, std::string &) {
-	return 0;
 }

@@ -1,61 +1,58 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.10)
 
-SET(TARGET ElasticClient)
-	
-PROJECT(${TARGET})
+set(TARGET ElasticClient)
+
+project(${TARGET})
 
 CREATE_MODULE(SRCS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
-SET(SRCS ${SRCS}
-	"${TARGET}.cpp"
-	${NSCP_INCLUDEDIR}/nsclient/logger/logger_helper.cpp
-
-	${NSCP_DEF_PLUGIN_CPP}
-	${NSCP_CLIENT_CPP}
+set(SRCS
+    ${SRCS}
+    "${TARGET}.cpp"
+    ${NSCP_INCLUDEDIR}/nsclient/logger/logger_helper.cpp
+    ${NSCP_DEF_PLUGIN_CPP}
+    ${NSCP_CLIENT_CPP}
+    ${NSCP_INCLUDEDIR}/json/use_json.cpp
+    ${NSCP_INCLUDEDIR}/net/socket/socket_helpers.cpp
+    ${NSCP_INCLUDEDIR}/bytes/base64.c
 )
 
-ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
+add_definitions(${NSCP_GLOBAL_DEFINES})
+if(OPENSSL_FOUND)
+    add_definitions(-DUSE_SSL)
+    set(EXTRA_LIBS
+        ${EXTRA_LIBS}
+        ${OPENSSL_LIBRARIES}
+    )
+    if(WIN32)
+        set(EXTRA_LIBS
+            ${EXTRA_LIBS}
+            CRYPT32
+        )
+    endif(WIN32)
+    include_directories(${OPENSSL_INCLUDE_DIR})
+endif(OPENSSL_FOUND)
 
-IF(WIN32)
-	SET(SRCS ${SRCS}
-		"${TARGET}.h"
-		${NSCP_INCLUDEDIR}/nsclient/logger/logger_helper.hpp
-
-		${NSCP_DEF_PLUGIN_HPP}
-		${NSCP_CLIENT_HPP}
-	)
-ENDIF(WIN32)
-
-IF(JSON_SPIRIT_FOUND)
-	INCLUDE_DIRECTORIES(${JSON_SPIRIT_INCLUDE_DIR})
-	ADD_DEFINITIONS(-DHAVE_JSON_SPIRIT)
-	ADD_DEFINITIONS(-DJSON_SPIRIT_STATIC_LINKED)
-	SET(JSON_LIB json_spirit)
-ELSE(JSON_SPIRIT_FOUND)
-	SET(JSON_LIB)
-ENDIF(JSON_SPIRIT_FOUND)
-
-add_definitions(-DMG_ENABLE_HTTP_WEBSOCKET=0)
-add_definitions(-DMG_ENABLE_BROADCAST=1)
-add_definitions(-DMG_ENABLE_THREADS)
-ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
-IF(OPENSSL_FOUND)
-	INCLUDE_DIRECTORIES(${OPENSSL_INCLUDE_DIR})
-	add_definitions(-DMG_ENABLE_SSL=1)
-	add_definitions(-DMG_DISABLE_PFS=1)
-	add_definitions(-DUSE_SSL)
-	SET(EXTRA_LIBS ${EXTRA_LIBS} ${OPENSSL_LIBRARIES})
-ENDIF(OPENSSL_FOUND)
-INCLUDE_DIRECTORIES(../../libs/mongoose-cpp)
+if(WIN32)
+    set(SRCS
+        ${SRCS}
+        "${TARGET}.h"
+        ${NSCP_INCLUDEDIR}/nsclient/logger/logger_helper.hpp
+        ${NSCP_DEF_PLUGIN_HPP}
+        ${NSCP_CLIENT_HPP}
+    )
+endif(WIN32)
 
 add_library(${TARGET} MODULE ${SRCS})
+NSCP_DEBUG_SYMBOLS(${TARGET})
+OPENSSL_LINK_FIX(${TARGET})
 
-target_link_libraries(${TARGET}
-	${Boost_FILESYSTEM_LIBRARY}
-	${Boost_PROGRAM_OPTIONS_LIBRARY}
-	${Boost_DATE_TIME_LIBRARY}
-	${NSCP_DEF_PLUGIN_LIB}
-	${JSON_LIB}
-	nscp_mongoose
+target_link_libraries(
+    ${TARGET}
+    ${Boost_FILESYSTEM_LIBRARY}
+    ${Boost_PROGRAM_OPTIONS_LIBRARY}
+    ${Boost_DATE_TIME_LIBRARY}
+    ${NSCP_DEF_PLUGIN_LIB}
+    ${EXTRA_LIBS}
 )
-INCLUDE(${BUILD_CMAKE_FOLDER}/module.cmake)
+include(${BUILD_CMAKE_FOLDER}/module.cmake)

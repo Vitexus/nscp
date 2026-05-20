@@ -1,177 +1,321 @@
 
 #include "session_manager_interface.hpp"
 
-#include "error_handler.hpp"
-
 #include <Helpers.h>
 
-#include <str/utils.hpp>
-
-#include <boost/asio.hpp>
 #include <boost/algorithm/string.hpp>
-
+#include <boost/asio.hpp>
+#include <nscapi/macros.hpp>
+#include <nscapi/nscapi_plugin_wrapper.hpp>
+#include <str/utils.hpp>
 #include <string>
 
-session_manager_interface::session_manager_interface()
-	: log_data(new error_handler())
-{}
+#include "error_handler.hpp"
 
-std::string decode_key(std::string encoded) {
-	return Mongoose::Helpers::decode_b64(encoded);
+#define NOT_ALLOWED "403 You're not allowed"
+
+inline bool is_basic_auth(const std::string &auth) { return boost::algorithm::starts_with(auth, "Basic "); }
+inline bool is_bearer_auth(const std::string &auth) { return boost::algorithm::starts_with(auth, "Bearer "); }
+inline bool has_auth_header(Mongoose::Request &request) { return request.hasVariable(HTTP_HDR_AUTH) || request.hasVariable(HTTP_HDR_AUTH_LC); }
+
+// Locate a session token in the request. Tries the secure header variants
+// first, then — only for clients whose User-Agent matches the configured
+// allowlist — falls back to the legacy `?TOKEN=` / `?__TOKEN=` query
+// parameters. The fallback was removed entirely in commit 340b8db1 because
+// query-string credentials leak into browser history / proxy logs / Referer
+// headers; we re-introduce it gated on User-Agent so Icinga's bundled
+// check_nscp_api keeps working without re-exposing the vector to web
+// browsers and arbitrary scrapers.
+inline std::string find_token(Mongoose::Request &request, const session_manager_interface &session) {
+  auto header_token = request.readHeader("TOKEN");
+  if (!header_token.empty()) {
+    return header_token;
+  }
+  std::string x_token = request.readHeader("X-Auth-Token");
+  if (!x_token.empty()) {
+    return x_token;
+  }
+  const std::string query_token = !request.get("TOKEN").empty() ? request.get("TOKEN") : request.get("__TOKEN");
+  if (query_token.empty()) {
+    return "";
+  }
+  const std::string user_agent = request.readHeader("User-Agent");
+  if (session.client_allows_legacy_query_auth(user_agent)) {
+    NSC_DEBUG_MSG("Accepting legacy query-string token from " + request.getRemoteIp() + " (User-Agent: " + user_agent +
+                  ") — this client is on the legacy query-auth allowlist.");
+    return query_token;
+  }
+  NSC_LOG_ERROR("Rejected request from " + request.getRemoteIp() +
+                " that supplied the session token as a URL query parameter (?TOKEN= / ?__TOKEN=). "
+                "This fallback is disabled because URL parameters leak into browser history, "
+                "proxy logs and Referer headers. Send the token in the TOKEN, X-Auth-Token or "
+                "Authorization: Bearer header instead, or add this client's User-Agent to "
+                "[/settings/WEB/server] 'legacy query auth user agents' if you cannot upgrade it.");
+  return "";
+}
+inline std::string get_auth_header(Mongoose::Request &request) {
+  std::string auth = request.readHeader(HTTP_HDR_AUTH);
+  if (!auth.empty()) {
+    return auth;
+  }
+  return request.readHeader(HTTP_HDR_AUTH_LC);
 }
 
-bool session_manager_interface::is_loggedin(std::string grant, Mongoose::Request &request, Mongoose::StreamResponse &response) {
-	std::list<std::string> errors;
-	if (!allowed_hosts.is_allowed(boost::asio::ip::address::from_string(request.getRemoteIp()), errors)) {
-// 		BOOST_FOREACH(const std::string &e, errors) {
-// 			NSC_LOG_ERROR(e);
-// 		}
-		//NSC_LOG_ERROR("Rejected connection from: " + request.getRemoteIp());
-		response.setCode(HTTP_FORBIDDEN);
-		response.append("403 You're not allowed");
-		return false;
-	}
-	if (request.hasVariable(HTTP_HDR_AUTH)) {
-		std::string auth = request.readHeader(HTTP_HDR_AUTH);
-		if (boost::algorithm::starts_with(auth, "Basic ")) {
-			str::utils::token token = str::utils::split2(decode_key(auth.substr(6)), ":");
-			if (!validate_user(token.first, token.second)) {
-				response.setCode(HTTP_FORBIDDEN);
-				response.append("403 You're not allowed");
-				return false;
-			}
-			setup_token(token.first, response);
-			return can(grant, request, response);
-		} else {
-			response.setCode(HTTP_BAD_REQUEST);
-			response.append("Invalid authentication scheme");
-			return false;
-		}
-	}
-	if (request.hasVariable("Password")) {
-		std::string pwd = request.readHeader("Password");
-		std::string fake_user = "admin";
-		if (!validate_user(fake_user, pwd)) {
-			response.setCode(HTTP_FORBIDDEN);
-			response.append("403 You're not allowed");
-			return false;
-		}
-		setup_token(fake_user, response);
-		return can(grant, request, response);
-	}
-	if (request.hasVariable("password")) {
-		std::string pwd = request.readHeader("password");
-		std::string fake_user = "admin";
-		if (!validate_user(fake_user, pwd)) {
-			response.setCode(HTTP_FORBIDDEN);
-			response.append("403 You're not allowed");
-			return false;
-		}
-		setup_token(fake_user, response);
-		return can(grant, request, response);
-	}
-
-
-	std::string token = request.readHeader("TOKEN");
-	if (token.empty())
-		token = request.get("__TOKEN", "");
-	if (!token.empty()) {
-		if (!tokens.validate(token)) {
-			response.setCode(HTTP_FORBIDDEN);
-			response.append("403 You're not allowed");
-			return false;
-		}
-		return can(grant, request, response);
-	}
-	response.setCode(HTTP_FORBIDDEN);
-	response.append("403 Please login first");
-	return false;
+session_manager_interface::session_manager_interface() : log_data(std::make_unique<error_handler>()) {
+  // Safety net for callers that don't go through settings registration
+  // (tests, embedded uses). Production always overwrites this via
+  // set_legacy_query_auth_user_agents() when the WEB settings are loaded;
+  // having the same default here keeps both paths in lockstep.
+  set_legacy_query_auth_user_agents(kDefaultLegacyQueryAuthUserAgents);
 }
 
+void session_manager_interface::set_legacy_query_auth_user_agents(const std::string &csv) {
+  legacy_query_auth_user_agents_.clear();
+  for (const std::string &raw : str::utils::split_lst(csv, std::string(","))) {
+    std::string pat = boost::algorithm::trim_copy(raw);
+    if (!pat.empty()) legacy_query_auth_user_agents_.push_back(std::move(pat));
+  }
+}
+
+bool session_manager_interface::client_allows_legacy_query_auth(const std::string &user_agent) const {
+  if (user_agent.empty() || legacy_query_auth_user_agents_.empty()) return false;
+  const std::string ua_lower = boost::algorithm::to_lower_copy(user_agent);
+  for (const std::string &pat : legacy_query_auth_user_agents_) {
+    if (pat.empty()) continue;
+    const std::string pat_lower = boost::algorithm::to_lower_copy(pat);
+    if (ua_lower.find(pat_lower) != std::string::npos) return true;
+  }
+  return false;
+}
+
+std::string decode_key(const std::string &encoded) { return Mongoose::Helpers::decode_b64(encoded); }
+
+bool session_manager_interface::process_auth_header(const std::string &grant, Mongoose::Request &request, Mongoose::StreamResponse &response) {
+  const std::string remote_ip = request.getRemoteIp();
+  if (rate_limiter.is_blocked(remote_ip)) {
+    NSC_LOG_ERROR("Rate-limited authentication attempt from " + remote_ip);
+    response.setCodeForbidden(NOT_ALLOWED);
+    return false;
+  }
+  const std::string auth = get_auth_header(request);
+  // Cap the auth header at 8 KiB. Real Basic / Bearer headers are well
+  // under 1 KiB; anything larger is a DoS amplifier (b64-decode allocates
+  // proportional memory). Capping early avoids spending the decode cost on
+  // garbage input.
+  static constexpr std::size_t kMaxAuthHeaderBytes = 8 * 1024;
+  if (auth.size() > kMaxAuthHeaderBytes) {
+    rate_limiter.record_failure(remote_ip);
+    NSC_LOG_ERROR("Oversized Authorization header from " + remote_ip + " (" + std::to_string(auth.size()) + " bytes)");
+    response.setCodeForbidden(NOT_ALLOWED);
+    return false;
+  }
+  if (is_basic_auth(auth)) {
+    const str::utils::token user_and_password = str::utils::split2(decode_key(auth.substr(6)), ":");
+    if (!users.validate_user(user_and_password.first, user_and_password.second)) {
+      // Single, generic error string. Username is not echoed back and is not
+      // logged at error level - that gave attackers a clean username-existence
+      // and password-correctness oracle. The rate limiter prevents brute-force.
+      rate_limiter.record_failure(remote_ip);
+      NSC_LOG_ERROR("Authentication failed for " + remote_ip);
+      response.setCodeForbidden(NOT_ALLOWED);
+      return false;
+    }
+    rate_limiter.record_success(remote_ip);
+    store_user_in_response(user_and_password.first, response);
+    return can(grant, response);
+  }
+  if (is_bearer_auth(auth)) {
+    const std::string token = auth.substr(7);
+    if (!tokens.is_valid(token)) {
+      rate_limiter.record_failure(remote_ip);
+      NSC_LOG_ERROR("Authentication failed for " + remote_ip);
+      response.setCodeForbidden(NOT_ALLOWED);
+      return false;
+    }
+    rate_limiter.record_success(remote_ip);
+    store_token_in_response(token, response);
+    return can(grant, response);
+  }
+  NSC_LOG_ERROR("Unknown authentication scheme for " + remote_ip);
+  response.setCodeForbidden(NOT_ALLOWED);
+  return false;
+}
+
+bool session_manager_interface::process_password_header(const std::string &grant, Mongoose::Request &request, Mongoose::StreamResponse &response,
+                                                       const std::string &password) {
+  const std::string remote_ip = request.getRemoteIp();
+  if (rate_limiter.is_blocked(remote_ip)) {
+    NSC_LOG_ERROR("Rate-limited authentication attempt from " + remote_ip);
+    response.setCodeForbidden(NOT_ALLOWED);
+    return false;
+  }
+  // Same 8 KiB cap as the Authorization header to keep this from being a
+  // cheap DoS amplifier.
+  static constexpr std::size_t kMaxPasswordHeaderBytes = 8 * 1024;
+  if (password.size() > kMaxPasswordHeaderBytes) {
+    rate_limiter.record_failure(remote_ip);
+    NSC_LOG_ERROR("Oversized password header from " + remote_ip + " (" + std::to_string(password.size()) + " bytes)");
+    response.setCodeForbidden(NOT_ALLOWED);
+    return false;
+  }
+  // The `password` header carries no username; check_nscp_api was
+  // designed against the single admin role NSClient exposes. Match that
+  // convention so the plugin "just works" with default configurations.
+  static const std::string kImplicitUser = "admin";
+  if (!users.validate_user(kImplicitUser, password)) {
+    rate_limiter.record_failure(remote_ip);
+    NSC_LOG_ERROR("Authentication failed for " + remote_ip);
+    response.setCodeForbidden(NOT_ALLOWED);
+    return false;
+  }
+  rate_limiter.record_success(remote_ip);
+  store_user_in_response(kImplicitUser, response);
+  return can(grant, response);
+}
+
+bool session_manager_interface::is_logged_in(const std::string &grant, Mongoose::Request &request, Mongoose::StreamResponse &response) {
+  std::list<std::string> errors;
+  if (!allowed_hosts.is_allowed(boost::asio::ip::address::from_string(request.getRemoteIp()), errors)) {
+    const std::string error = str::utils::joinEx(errors, ", ");
+    NSC_LOG_ERROR("Rejected connection from: " + request.getRemoteIp() + " due to " + error);
+    response.setCodeForbidden(NOT_ALLOWED);
+    return false;
+  }
+  if (has_auth_header(request)) {
+    return process_auth_header(grant, request, response);
+  }
+  // Legacy `password` HTTP header used by Icinga's check_nscp_api (and any
+  // other plugin that follows the same convention). The header carries just
+  // the password; the user is implied to be "admin" because that's the
+  // single role the plugin was designed against. Same security properties
+  // as Basic auth — it's a credential in a header that travels under TLS —
+  // so we apply the same rate-limiting and constant-time comparison the
+  // Basic auth path uses.
+  const std::string password_header = request.readHeader("password");
+  if (!password_header.empty()) {
+    return process_password_header(grant, request, response, password_header);
+  }
+  const std::string token = find_token(request, *this);
+  if (token.empty()) {
+    NSC_LOG_ERROR("Rejected connection from: " + request.getRemoteIp() + " due to MISSING TOKEN");
+    response.setCodeForbidden(NOT_ALLOWED);
+    return false;
+  }
+  if (!tokens.is_valid(token)) {
+    NSC_LOG_ERROR("Rejected connection from: " + request.getRemoteIp() + " due to invalid token");
+    response.setCodeForbidden(NOT_ALLOWED);
+    return false;
+  }
+  store_token_in_response(token, response);
+  if (!can(grant, response)) {
+    NSC_LOG_ERROR("Rejected connection from: " + request.getRemoteIp() + " due to insufficient permissions");
+    response.setCodeForbidden(NOT_ALLOWED);
+    return false;
+  }
+  return true;
+}
 
 std::list<std::string> session_manager_interface::boot() {
-	std::list<std::string> errors;
-	allowed_hosts.refresh(errors);
-	return errors;
+  std::list<std::string> errors;
+  allowed_hosts.refresh(errors);
+  return errors;
 }
 
-bool session_manager_interface::validate_user(const std::string user, const std::string &password) {
-	if (password.empty()) {
-		return false;
-	}
-	if (users.find(user) == users.end()) {
-		return false;
-	}
-	return users[user] == password;
+void session_manager_interface::store_user_in_response(const std::string &user, Mongoose::StreamResponse &response) {
+  response.setCookie("token", tokens.generate_for(user));
+  response.setCookie("uid", user);
 }
 
-void session_manager_interface::setup_token(std::string &user, Mongoose::StreamResponse & response) {
-	response.setCookie("token", tokens.generate(user));
-	response.setCookie("uid", user);
+void session_manager_interface::store_token_in_response(const std::string &token, Mongoose::StreamResponse &response) const {
+  response.setCookie("token", token);
+  response.setCookie("uid", tokens.get_user(token));
 }
 
-bool session_manager_interface::can(std::string grant, Mongoose::Request & request, Mongoose::StreamResponse & response) {
-	std::string uid = response.getCookie("uid");
-	if (uid.empty()) {
-		response.setCode(HTTP_FORBIDDEN);
-		response.append("403 You're not allowed");
-		return false;
-	}
-	if (!tokens.can(uid, grant)) {
-		response.setCode(HTTP_FORBIDDEN);
-		response.append("403 You're not allowed");
-		return false;
-	}
-	return true;
+void session_manager_interface::get_user_from_response(const Mongoose::StreamResponse &response, std::string &user, std::string &key) {
+  user = response.getCookie("uid");
+  key = response.getCookie("token");
 }
 
-void session_manager_interface::add_user(std::string user, std::string role, std::string password) {
-	tokens.add_user(user, role);
-	users[user] = password;
+bool session_manager_interface::can(const std::string &grant, Mongoose::StreamResponse &response) {
+  const std::string uid = response.getCookie("uid");
+  if (uid.empty()) {
+    // Only consult the "anonymous" grants if anonymous access is explicitly
+    // enabled. Without this guard, an operator who configured an
+    // `anonymous` role for any reason (often by mistake or for
+    // experimentation) would expose every endpoint listed in that role to
+    // unauthenticated callers.
+    if (allow_anonymous_ && tokens.can("anonymous", grant)) {
+      return true;
+    }
+    response.setCodeForbidden(NOT_ALLOWED);
+    return false;
+  }
+  if (!tokens.can(uid, grant)) {
+    response.setCodeForbidden(NOT_ALLOWED);
+    return false;
+  }
+  return true;
 }
 
-void session_manager_interface::add_grant(std::string role, std::string grant) {
-	tokens.add_grant(role, grant);
+void session_manager_interface::add_user(const std::string &user, const std::string &role, const std::string &password) {
+  // Re-adding (or rotating credentials for) an existing user must invalidate
+  // any tokens previously issued to them - otherwise a stolen token survives a
+  // password change.
+  tokens.revoke_tokens_for_user(user);
+  tokens.add_user(user, role);
+  users.add_user(user, password);
 }
 
-std::string session_manager_interface::get_metrics() {
-	return metrics_store.get();
-}
-void session_manager_interface::set_metrics(std::string metrics) {
-	metrics_store.set(metrics);
+bool session_manager_interface::validate_user(const std::string &user, const std::string &password) { return users.validate_user(user, password); }
+
+bool session_manager_interface::has_user(const std::string &user) const { return users.has_user(user); }
+
+void session_manager_interface::add_grant(const std::string &role, const std::string &grant) {
+  // Refuse to register an `anonymous` role unless explicitly allowed. This
+  // is the partner check to `can()`: even if an operator writes
+  //   [/settings/WEB/server/roles] anonymous = something
+  // by mistake, the role is silently ignored and a clear log line tells
+  // them to flip `allow anonymous access = true` if it was deliberate.
+  if (role == "anonymous" && !allow_anonymous_) {
+    NSC_LOG_ERROR("Refusing to register 'anonymous' role: anonymous access is disabled. Set [/settings/WEB/server] 'allow anonymous access = true' to enable.");
+    return;
+  }
+  tokens.add_grant(role, grant);
 }
 
-void session_manager_interface::add_log_message(bool is_error, error_handler_interface::log_entry entry) {
-	log_data->add_message(is_error, entry);
+std::string session_manager_interface::get_metrics() { return metrics_store.get(); }
+std::string session_manager_interface::get_metrics_v2() { return metrics_store.get_list(); }
+std::string session_manager_interface::get_open_metrics() {
+  std::string metrics;
+  for (const std::string &m : metrics_store.get_openmetrics()) {
+    metrics += m + "\n";
+  }
+  return metrics;
 }
-error_handler_interface* session_manager_interface::get_log_data() {
-	return log_data;
-}
-void session_manager_interface::reset_log() {
-	log_data->reset();
-}
-
-
-void session_manager_interface::set_allowed_hosts(std::string host) {
-	allowed_hosts.set_source(host);
-}
-void session_manager_interface::set_allowed_hosts_cache(bool value) {
-	allowed_hosts.cached = value;
+void session_manager_interface::set_metrics(const std::string &metrics, const std::string &metrics_list, std::list<std::string> open_metrics) {
+  metrics_store.set(metrics);
+  metrics_store.set_list(metrics_list);
+  metrics_store.set_openmetrics(open_metrics);
 }
 
-bool session_manager_interface::is_allowed(std::string ip) {
-	std::list<std::string> errors;
-	return allowed_hosts.is_allowed(boost::asio::ip::address::from_string(ip), errors);
+void session_manager_interface::add_log_message(const bool is_error, const error_handler_interface::log_entry &entry) const {
+  log_data->add_message(is_error, entry);
+}
+error_handler_interface *session_manager_interface::get_log_data() const { return log_data.get(); }
+void session_manager_interface::reset_log() const { log_data->reset(); }
+
+void session_manager_interface::set_allowed_hosts(const std::string &host) { allowed_hosts.set_source(host); }
+void session_manager_interface::set_allowed_hosts_cache(const bool value) { allowed_hosts.cached = value; }
+
+bool session_manager_interface::is_allowed(const std::string &ip) {
+  std::list<std::string> errors;
+  return allowed_hosts.is_allowed(boost::asio::ip::address::from_string(ip), errors);
 }
 
-bool session_manager_interface::validate_token(std::string token) {
-	return tokens.validate(token);
-}
+bool session_manager_interface::validate_token(const std::string &token) { return tokens.is_valid(token); }
 
-void session_manager_interface::revoke_token(std::string token) {
-	tokens.revoke(token);
-}
+void session_manager_interface::revoke_token(const std::string &token) { tokens.revoke(token); }
 
-std::string session_manager_interface::generate_token(std::string user) {
-	return tokens.generate(user);
-}
+void session_manager_interface::revoke_tokens_for_user(const std::string &user) { tokens.revoke_tokens_for_user(user); }
+
+std::string session_manager_interface::generate_token(const std::string &user) { return tokens.generate_for(user); }

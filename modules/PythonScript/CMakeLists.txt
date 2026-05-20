@@ -1,54 +1,102 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.10)
 
-SET(TARGET PythonScript)
-	
-PROJECT(${TARGET})
+set(TARGET PythonScript)
+
+project(${TARGET})
 
 CREATE_MODULE(SRCS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
-IF(JSON_SPIRIT_FOUND)
-	INCLUDE_DIRECTORIES(${JSON_SPIRIT_INCLUDE_DIR})
-	ADD_DEFINITIONS(-DHAVE_JSON_SPIRIT)
-	ADD_DEFINITIONS(-DJSON_SPIRIT_STATIC_LINKED)
-	SET(JSON_LIB json_spirit)
-ELSE(JSON_SPIRIT_FOUND)
-	SET(JSON_LIB)
-ENDIF(JSON_SPIRIT_FOUND)
-SET(SRCS ${SRCS}
-	"${TARGET}.cpp"
-	python_script.cpp
-	script_wrapper.cpp
-	extscr_cli.cpp
-	script_provider.cpp
-	${NSCP_DEF_PLUGIN_CPP}
+set(SRCS
+    ${SRCS}
+    "${TARGET}.cpp"
+    python_script.cpp
+    script_wrapper.cpp
+    extscr_cli.cpp
+    script_provider.cpp
+    ${NSCP_INCLUDEDIR}/json/use_json.cpp
+    ${NSCP_DEF_PLUGIN_CPP}
 )
 
-ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES} -DBOOST_PYTHON_STATIC_LIB)
+add_definitions(
+    ${NSCP_GLOBAL_DEFINES}
+    -DBOOST_PYTHON_STATIC_LIB
+)
 
-IF(WIN32)
-	SET(SRCS ${SRCS}
-		script_wrapper.hpp
-		"${TARGET}.h"
-		extscr_cli.h
-		script_interface.hpp
-		python_script.hpp
-		script_provider.hpp
-
-		${NSCP_DEF_PLUGIN_HPP}
-	)
-ENDIF(WIN32)
-INCLUDE_DIRECTORIES(${PYTHON_INCLUDE_DIRS})
+if(WIN32)
+    set(SRCS
+        ${SRCS}
+        script_wrapper.hpp
+        "${TARGET}.h"
+        extscr_cli.h
+        script_interface.hpp
+        python_script.hpp
+        script_provider.hpp
+        ${NSCP_DEF_PLUGIN_HPP}
+    )
+else()
+    if(NSCP_BOOST_PYTHON_VERSION STREQUAL "python313")
+        add_definitions(
+            ${NSCP_GLOBAL_DEFINES}
+            -DDEFAULT_PYTHON_LIB="libpython3.13.so"
+        )
+    elseif(NSCP_BOOST_PYTHON_VERSION STREQUAL "python312")
+        add_definitions(
+            ${NSCP_GLOBAL_DEFINES}
+            -DDEFAULT_PYTHON_LIB="libpython3.12.so"
+        )
+    elseif(NSCP_BOOST_PYTHON_VERSION STREQUAL "python311")
+        add_definitions(
+            ${NSCP_GLOBAL_DEFINES}
+            -DDEFAULT_PYTHON_LIB="libpython3.11.so"
+        )
+    elseif(NSCP_BOOST_PYTHON_VERSION STREQUAL "python310")
+        add_definitions(
+            ${NSCP_GLOBAL_DEFINES}
+            -DDEFAULT_PYTHON_LIB="libpython3.10.so"
+        )
+    elseif(NSCP_BOOST_PYTHON_VERSION STREQUAL "python39")
+        add_definitions(
+            ${NSCP_GLOBAL_DEFINES}
+            -DDEFAULT_PYTHON_LIB="libpython3.9.so"
+        )
+    else()
+        message(
+            FATAL_ERROR
+            "Unknown python version: ${NSCP_BOOST_PYTHON_VERSION}"
+        )
+    endif()
+endif()
+include_directories(${Python3_INCLUDE_DIRS})
 
 add_library(${TARGET} MODULE ${SRCS})
+NSCP_DEBUG_SYMBOLS(${TARGET})
 
-target_link_libraries(${TARGET}
-	${Boost_FILESYSTEM_LIBRARY}
-	${Boost_PROGRAM_OPTIONS_LIBRARY}
-	${Boost_THREAD_LIBRARY}
-	${Boost_PYTHON_LIBRARY}
-	${NSCP_DEF_PLUGIN_LIB}
-	${PYTHON_LIBRARIES}
-	${JSON_LIB}
+string(TOUPPER ${NSCP_BOOST_PYTHON_VERSION} BOOST_PYTHON_VERSION_UPPER)
+set(BOOST_PYTHON_LIBRARY ${Boost_${BOOST_PYTHON_VERSION_UPPER}_LIBRARY})
+
+target_link_libraries(
+    ${TARGET}
+    ${Boost_FILESYSTEM_LIBRARY}
+    ${Boost_PROGRAM_OPTIONS_LIBRARY}
+    ${Boost_THREAD_LIBRARY}
+    ${BOOST_PYTHON_LIBRARY}
+    ${NSCP_DEF_PLUGIN_LIB}
+    ${Python3_LIBRARIES}
 )
 
-INCLUDE(${BUILD_CMAKE_FOLDER}/module.cmake)
+include(${BUILD_CMAKE_FOLDER}/module.cmake)
+
+# Test for the parse-strip-restamp helper used by command_wrapper::query.
+# The helper only depends on protobuf - no Python, no Boost.Python - so
+# the test target is independent of the module build.
+NSCP_CREATE_TEST(
+    PythonScript_test
+    SOURCES
+        script_identity_test.cpp
+        script_identity.hpp
+    LIBRARIES
+        GTest::gtest_main
+        ${NSCP_DEF_PLUGIN_LIB}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)

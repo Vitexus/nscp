@@ -19,50 +19,56 @@
 
 #pragma once
 
-#include <map>
-#include <string>
-
-#include <boost/cstdint.hpp>
-#include <boost/optional.hpp>
 #include <boost/date_time.hpp>
-
-#include <NSCAPI.h>
-
-#include <nscapi/nscapi_settings_proxy.hpp>
-#include <nscapi/nscapi_settings_object.hpp>
-#include <nscapi/nscapi_settings_filter.hpp>
-
-#include "filter.hpp"
+#include <boost/optional.hpp>
+#include <list>
+#include <nscapi/settings/filter.hpp>
+#include <nscapi/settings/object.hpp>
+#include <string>
 
 namespace filters {
 
-	struct file_container {
-		std::string file;
-		boost::uintmax_t size;
-	};
+struct file_container {
+  std::string file;
+  boost::uintmax_t size;
+};
 
+namespace cpu {
+struct filter_config_object : public nscapi::settings_objects::object_instance_interface {
+  typedef object_instance_interface parent;
 
-	struct filter_config_object : public nscapi::settings_objects::object_instance_interface {
+  nscapi::settings_filters::filter_object filter;
+  std::list<std::string> data;
 
-		typedef nscapi::settings_objects::object_instance_interface parent;
+  filter_config_object(std::string alias, std::string path) : parent(alias, path), filter("${list}", "${core}>${load}%", "NSCA") {}
 
-		nscapi::settings_filters::filter_object filter;
-		std::string check;
-		std::list<std::string> data;
+  void read(nscapi::settings_helper::settings_impl_interface_ptr proxy, bool oneliner, bool is_sample);
 
-		filter_config_object(std::string alias, std::string path) 
-			: parent(alias, path) 
-			, filter("TODO", "TODO", "NSCA")
-		{}
+  std::string to_string() const;
+  void set_data(std::string file_string);
+  void set_datas(std::string file_string);
+};
+typedef boost::optional<filter_config_object> optional_filter_config_object;
+typedef nscapi::settings_objects::object_handler<filter_config_object> filter_config_handler;
+}  // namespace cpu
 
-		void read(boost::shared_ptr<nscapi::settings_proxy> proxy, bool oneliner, bool is_sample);
+namespace mem {
+struct filter_config_object : public nscapi::settings_objects::object_instance_interface {
+  typedef object_instance_interface parent;
 
-		std::string to_string() const;
-		void set_datas(std::string file_string);
-		void set_data(std::string file_string);
-	};
-	typedef boost::optional<filter_config_object> optional_filter_config_object;
+  nscapi::settings_filters::filter_object filter;
+  std::list<std::string> data;
 
-	typedef nscapi::settings_objects::object_handler<filter_config_object> filter_config_handler;
-}
+  filter_config_object(std::string alias, std::string path) : parent(alias, path), filter("${list}", "${type} > ${used}", "NSCA") {}
 
+  void read(nscapi::settings_helper::settings_impl_interface_ptr proxy, bool oneliner, bool is_sample);
+
+  std::string to_string() const;
+  void set_data(std::string file_string);
+  void set_datas(std::string file_string);
+};
+typedef boost::optional<filter_config_object> optional_filter_config_object;
+typedef nscapi::settings_objects::object_handler<filter_config_object> filter_config_handler;
+}  // namespace mem
+
+}  // namespace filters

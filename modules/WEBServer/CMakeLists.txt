@@ -1,87 +1,146 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.10)
 
-SET(TARGET WEBServer)
-	
-PROJECT(${TARGET})
+set(TARGET WEBServer)
+
+project(${TARGET})
 
 CREATE_MODULE(SRCS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
-IF(JSON_SPIRIT_FOUND)
-	INCLUDE_DIRECTORIES(${JSON_SPIRIT_INCLUDE_DIR})
-	ADD_DEFINITIONS(-DHAVE_JSON_SPIRIT)
-	ADD_DEFINITIONS(-DJSON_SPIRIT_STATIC_LINKED)
-	SET(JSON_LIB json_spirit)
-ELSE(JSON_SPIRIT_FOUND)
-	SET(JSON_LIB)
-ENDIF(JSON_SPIRIT_FOUND)
-
-SET(SRCS ${SRCS}
-	"${TARGET}.cpp"
-  
-  static_controller.cpp
-  token_store.cpp
-  grant_store.cpp
-  session_manager_interface.cpp
-  metrics_handler.cpp
-  error_handler.cpp
-
-  modules_controller.cpp
-  query_controller.cpp
-  scripts_controller.cpp
-  legacy_command_controller.cpp
-  legacy_controller.cpp
-  api_controller.cpp
-  log_controller.cpp
-  info_controller.cpp
-  settings_controller.cpp
-
-	${NSCP_INCLUDEDIR}/socket/socket_helpers.cpp
-	${NSCP_INCLUDEDIR}/client/simple_client.cpp
-  
-  
-
-	${NSCP_INCLUDEDIR}/metrics/metrics_store_map.cpp
-
-	${NSCP_DEF_PLUGIN_CPP}
+set(SRCS
+    ${SRCS}
+    "${TARGET}.cpp"
+    static_controller.cpp
+    token_store.cpp
+    user_manager.cpp
+    password_hash.cpp
+    name_safety.cpp
+    grant_store.cpp
+    session_manager_interface.cpp
+    metrics_handler.cpp
+    error_handler.cpp
+    event_store.cpp
+    modules_controller.cpp
+    query_controller.cpp
+    alias_controller.cpp
+    scripts_controller.cpp
+    legacy_controller.cpp
+    legacy_command_controller.cpp
+    api_controller.cpp
+    log_controller.cpp
+    info_controller.cpp
+    settings_controller.cpp
+    login_controller.cpp
+    metrics_controller.cpp
+    openmetrics_controller.cpp
+    metadata_controller.cpp
+    events_controller.cpp
+    ${NSCP_INCLUDEDIR}/net/socket/socket_helpers.cpp
+    ${NSCP_INCLUDEDIR}/net/socket/allowed_hosts.cpp
+    ${NSCP_INCLUDEDIR}/client/simple_client.cpp
+    ${NSCP_INCLUDEDIR}/metrics/metrics_store_map.cpp
+    ${NSCP_DEF_PLUGIN_CPP}
+    ${NSCP_INCLUDEDIR}/json/use_json.cpp
 )
 
 add_definitions(-DMG_ENABLE_HTTP_WEBSOCKET=0)
 add_definitions(-DMG_ENABLE_BROADCAST=1)
 add_definitions(-DMG_ENABLE_THREADS)
-ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
-IF(OPENSSL_FOUND)
-	INCLUDE_DIRECTORIES(${OPENSSL_INCLUDE_DIR})
-	add_definitions(-DMG_ENABLE_SSL=1)
-	add_definitions(-DMG_DISABLE_PFS=1)
-	add_definitions(-DUSE_SSL)
-	SET(EXTRA_LIBS ${EXTRA_LIBS} ${OPENSSL_LIBRARIES})
-ENDIF(OPENSSL_FOUND)
-INCLUDE_DIRECTORIES(../../libs/mongoose-cpp)
+add_definitions(${NSCP_GLOBAL_DEFINES})
+if(OPENSSL_FOUND)
+    include_directories(${OPENSSL_INCLUDE_DIR})
+    add_definitions(-DMG_ENABLE_OPENSSL=1)
+    add_definitions(-DMG_DISABLE_PFS=1)
+    add_definitions(-DUSE_SSL)
+    set(EXTRA_LIBS
+        ${EXTRA_LIBS}
+        ${OPENSSL_LIBRARIES}
+    )
+    if(WIN32)
+        set(EXTRA_LIBS
+            ${EXTRA_LIBS}
+            CRYPT32
+        )
+    endif(WIN32)
+endif(OPENSSL_FOUND)
+include_directories(../../libs/mongoose-cpp)
 
-IF(WIN32)
-	SET(SRCS ${SRCS}
-		"${TARGET}.h"
-		${NSCP_INCLUDEDIR}/client/simple_client.hpp
-		${NSCP_INCLUDEDIR}/metrics/metrics_store_map.hpp
-		${NSCP_INCLUDEDIR}/socket/socket_helpers.hpp
-
-		info_controller.hpp
-		settings_controller.cpp
-
-		${NSCP_DEF_PLUGIN_HPP}
-	)
-ENDIF(WIN32)
+if(WIN32)
+    set(SRCS
+        ${SRCS}
+        "${TARGET}.h"
+        ${NSCP_INCLUDEDIR}/client/simple_client.hpp
+        ${NSCP_INCLUDEDIR}/metrics/metrics_store_map.hpp
+        ${NSCP_INCLUDEDIR}/net/socket/socket_helpers.hpp
+        ${NSCP_INCLUDEDIR}/net/socket/allowed_hosts.cpp
+        info_controller.hpp
+        settings_controller.hpp
+        metrics_controller.hpp
+        openmetrics_controller.hpp
+        metadata_controller.hpp
+        ${NSCP_DEF_PLUGIN_HPP}
+    )
+endif(WIN32)
 
 add_library(${TARGET} MODULE ${SRCS})
+NSCP_DEBUG_SYMBOLS(${TARGET})
 OPENSSL_LINK_FIX(${TARGET})
 
-target_link_libraries(${TARGET}
-	${Boost_FILESYSTEM_LIBRARY}
-	${Boost_DATE_TIME_LIBRARY}
-	${Boost_REGEX_LIBRARY}
-	${NSCP_DEF_PLUGIN_LIB}
-	${EXTRA_LIBS}
-	${JSON_LIB}
-	nscp_mongoose
+target_link_libraries(
+    ${TARGET}
+    ${Boost_FILESYSTEM_LIBRARY}
+    ${Boost_DATE_TIME_LIBRARY}
+    ${Boost_REGEX_LIBRARY}
+    ${NSCP_DEF_PLUGIN_LIB}
+    ${EXTRA_LIBS}
+    nscp_mongoose
 )
-INCLUDE(${BUILD_CMAKE_FOLDER}/module.cmake)
+include(${BUILD_CMAKE_FOLDER}/module.cmake)
+
+NSCP_CREATE_TEST(
+    ${TARGET}_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+        token_store_test.cpp
+        token_store.cpp
+        grant_store_test.cpp
+        grant_store.cpp
+        session_manager_interface_test.cpp
+        session_manager_interface.cpp
+        user_manager.cpp
+        user_manager_test.cpp
+        password_hash.cpp
+        password_hash_test.cpp
+        name_safety.cpp
+        name_safety_test.cpp
+        auth_rate_limiter_test.cpp
+        error_handler.cpp
+        metrics_handler.cpp
+        ${NSCP_INCLUDEDIR}/net/socket/allowed_hosts.cpp
+        # NSC_LOG_ERROR / NSC_DEBUG_MSG in session_manager_interface.cpp
+        # resolve through nscapi::plugin_singleton -> core_wrapper::log /
+        # should_log. The wrapper itself is defined in nscapi_core_wrapper.cpp;
+        # nscapi_helper.cpp provides logging::matches() that should_log()
+        # delegates to; the helper_singleton instance is declared by the
+        # test entry point.
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper_singleton.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_core_wrapper.cpp
+    LIBRARIES
+        GTest::gtest
+        GTest::gtest_main
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_DATE_TIME_LIBRARY}
+        ${Boost_REGEX_LIBRARY}
+        ${EXTRA_LIBS}
+        nscp_mongoose
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+# The nscapi headers above declare their public API with NSCAPI_EXPORT, which
+# expands to __declspec(dllimport) when consumers include them. We compile
+# the matching cpp files directly into this test binary (so the symbols are
+# locally defined, not imported), which produces C4273 / LNK4217 dll-linkage
+# mismatch noise on MSVC. plugin_api_NOLIB neuters the macro to "" so both
+# sides agree: no dllexport, no dllimport, just a plain symbol. See
+# include/nscapi/dll_defines.hpp for the macro definition.
+target_compile_definitions(${TARGET}_test PRIVATE plugin_api_NOLIB)

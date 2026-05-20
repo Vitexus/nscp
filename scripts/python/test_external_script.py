@@ -1,13 +1,9 @@
 from NSCP import Settings, Registry, Core, log, status, log_error, sleep
-import sys, difflib
+import difflib
 import os
 
-from test_helper import BasicTest, TestResult, Callable, setup_singleton, install_testcases, init_testcases, shutdown_testcases
+from test_helper import BasicTest, TestResult, install_testcases, init_testcases, shutdown_testcases
 import plugin_pb2
-from types import *
-import socket
-import uuid
-import unicodedata
 
 import threading
 sync = threading.RLock()
@@ -47,10 +43,17 @@ class ExternalScriptTest(BasicTest):
 		result = TestResult('%s (%s)'%(script, args))
 		(ret, msg, perf) = self.core.simple_query(script, args)
 		if cleanup and os.name != 'nt':
+			# The double quotes around `"$ARGn$"` in the operator template are
+			# consumed by the template tokeniser (boost::escaped_list_separator)
+			# before argv is built, so they never reach the script. Strip them
+			# from the expected message to match.
 			message = message.replace('"', '')
-			message = message.replace('$ARG1$', '$')
-			message = message.replace('$ARG2$', '$')
-			message = message.replace('$ARG3$', '$')
+			# In 0.12 and earlier, unsubstituted `$ARGn$` tokens were forwarded
+			# through /bin/sh -c, where `$ARG2`/`$ARG3` were undefined variables
+			# that bash expanded to empty - the trailing `$` then survived alone.
+			# 0.13 added argv-isolation (commit ae37357), so /bin/sh is no longer
+			# involved and `$ARGn$` reaches the script verbatim. The Linux
+			# expected output therefore needs no `$ARGn$` -> `$` rewrite anymore.
 
 		message = message.replace('\r', '\n')
 		message = message.replace('\n\n', '\n')
@@ -65,7 +68,7 @@ class ExternalScriptTest(BasicTest):
 				log_error(l)
 		return result
 
-	def run_test(self):
+	def run_test(self, cases = None):
 		ret = TestResult('External scripts test suite')
 		result = TestResult('Arguments NOT allowed')
 		result.add(self.do_one_test('tes_script_ok', message='OK: Everything is going to be fine'))
@@ -118,13 +121,18 @@ class ExternalScriptTest(BasicTest):
 			if os.name == 'nt':
 				subresult.add(self.do_one_test(script, status.OK, 'Test arguments are: (OK "$$$ \\ \\" "$$$ \\ \\")', ['OK', '$$$ \\ \\', '$$$ \\ \\'], False))
 			else:
-				subresult.add(self.do_one_test(script, status.OK, 'Test arguments are: (OK $ \\ " $  ")', ['OK', '$ \\ \\', '$ \\ \\'], False))
+				# Each user arg `$ \ \` is a single argv element under
+				# argv-isolation (0.13+); the script's `echo "$1 $2 $3"`
+				# prints them space-separated with no shell mangling.
+				# Pre-0.13 output went through bash and looked like
+				# `(OK $ \ " $  ")` due to quote/escape gymnastics.
+				subresult.add(self.do_one_test(script, status.OK, 'Test arguments are: (OK $ \\ \\ $ \\ \\)', ['OK', '$ \\ \\', '$ \\ \\'], False))
 			result.add(subresult)
 		
 		ret.add(result)
 		return ret
 		
-	def install(self, arguments):
+	def install(self):
 		self.conf.set_string('/modules', 'test_external_scripts', 'CheckExternalScripts')
 		self.conf.set_string('/modules', 'pytest', 'PythonScript')
 		
@@ -179,7 +187,7 @@ class ExternalScriptTest(BasicTest):
 	def help(self):
 		None
 
-	def init(self, plugin_id, prefix):
+	def init(self, plugin_id):
 		self.reg = Registry.get(plugin_id)
 		self.core = Core.get(plugin_id)
 		self.conf = Settings.get(plugin_id)
@@ -190,9 +198,7 @@ class ExternalScriptTest(BasicTest):
 	def require_boot(self):
 		return True
 
-setup_singleton(ExternalScriptTest)
-
-all_tests = [ExternalScriptTest]
+all_tests = [ExternalScriptTest()]
 
 def __main__(args):
 	install_testcases(all_tests)

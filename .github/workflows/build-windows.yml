@@ -1,0 +1,340 @@
+name: Build Windows Server
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      architecture:
+        type: string
+        description: 'Architecture to build'
+        required: true
+        default: 'x64'
+      version:
+        type: string
+        description: 'Version to build'
+        required: true
+    secrets:
+      AZURE_TENANT_ID:
+        description: 'Azure tenant ID'
+        required: true
+      AZURE_CLIENT_ID:
+        description: 'Azure client ID'
+        required: true
+      AZURE_CLIENT_SECRET:
+        description: 'Azure client secret'
+        required: true
+
+env:
+  PYTHON_VERSION: 3.11
+  OPENSSL_VERSION: 3.5.4
+  PROTOBUF_VERSION: 21.12
+  BOOST_VERSION: 1.86.0
+  CRYPTOPP_VERSION: 8.9.0
+  LUA_VERSION: 5.4.8
+  TINY_XML_2_VERSION: 10.1.0
+  GOOGLE_TEST_VERSION: 1.12.1
+  MONGOOSE_VERSION: "7.20"
+  MINIZ_VERSION: "3.1.1"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      platform: ${{ steps.setup.outputs.platform }}
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - id: setup
+      run: |
+        switch ("${{ inputs.architecture }}") {
+          "x64" {
+            echo "msvc_arch=x64" >> $env:GITHUB_OUTPUT
+            echo "platform=x64" >> $env:GITHUB_OUTPUT
+            echo "toolset=v141" >> $env:GITHUB_OUTPUT
+            echo "vs_toolset=14.1" >> $env:GITHUB_OUTPUT
+            echo "python_arch=x64" >> $env:GITHUB_OUTPUT
+          }
+          "x86" {
+            echo "msvc_arch=amd64_x86" >> $env:GITHUB_OUTPUT
+            echo "platform=Win32" >> $env:GITHUB_OUTPUT
+            echo "toolset=v141" >> $env:GITHUB_OUTPUT
+            echo "vs_toolset=14.1" >> $env:GITHUB_OUTPUT
+            echo "python_arch=x86" >> $env:GITHUB_OUTPUT
+          }
+          "arm64" {
+            # Cross-compile ARM64 from the x64 host runner. v141 does not
+            # support ARM64, so use the default v143 toolset.
+            echo "msvc_arch=amd64_arm64" >> $env:GITHUB_OUTPUT
+            echo "platform=ARM64" >> $env:GITHUB_OUTPUT
+            echo "toolset=v143" >> $env:GITHUB_OUTPUT
+            echo "vs_toolset=14.4" >> $env:GITHUB_OUTPUT
+            # setup-python doesn't ship an arm64 Python on x64 hosts; use
+            # the host x64 interpreter for build-time scripts.
+            echo "python_arch=x64" >> $env:GITHUB_OUTPUT
+          }
+          default {
+            Write-Error "Unsupported architecture '${{ inputs.architecture }}'"
+            exit 1
+          }
+        }
+      shell: pwsh
+
+    - id: python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ ENV.PYTHON_VERSION }}
+        architecture: ${{ steps.setup.outputs.python_arch }}
+        cache-dependency-path: 'build/python/requirements.txt'
+        cache: 'pip'
+
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 20
+        cache: 'npm'
+        cache-dependency-path: web/package-lock.json
+    - id: build-web
+      working-directory: web
+      run: |
+        npm install
+        npm run build
+
+    - name: Install components
+      uses: ./.github/actions/update-msvc
+
+    - uses: ilammy/msvc-dev-cmd@v1
+      name: Setup msvc environment
+      with:
+        toolset: ${{ steps.setup.outputs.vs_toolset }}
+        arch: ${{ steps.setup.outputs.msvc_arch }}
+
+    - name: make dirs
+      run: |
+        mkdir tmp
+        mkdir tmp\nscp
+        mkdir tmp\installer_lib
+      shell: cmd
+
+    - uses: shogo82148/actions-setup-perl@v1
+      with:
+        perl-version: 'latest'
+        distribution: strawberry
+
+    - name: setup python dependencies
+      run: |
+        & "$env:Python_ROOT_DIR\Scripts\pip" install -r build/python/requirements.txt
+
+    - id: google-test
+      uses: ./.github/actions/google-test
+      with:
+        version: ${{ env.GOOGLE_TEST_VERSION }}
+        architecture: ${{ inputs.architecture }}
+        runtime: 'dynamic'
+        toolset: ${{ steps.setup.outputs.toolset }}
+        target_folder: './tmp/nscp'
+
+    - id: openssl
+      uses: ./.github/actions/openssl
+      with:
+        version: ${{ ENV.OPENSSL_VERSION }}
+        architecture: ${{ inputs.architecture }}
+        runtime: 'dynamic'
+
+    - id: protobuf
+      uses: ./.github/actions/protobuf
+      with:
+        version: ${{ ENV.PROTOBUF_VERSION }}
+        architecture: ${{ inputs.architecture }}
+        runtime: 'dynamic'
+        toolset: ${{ steps.setup.outputs.toolset }}
+
+    - id: cryptopp
+      uses: ./.github/actions/cryptopp
+      with:
+        version: ${{ ENV.CRYPTOPP_VERSION }}
+        architecture: ${{ inputs.architecture }}
+        toolset: ${{ steps.setup.outputs.toolset }}
+        runtime: 'dynamic'
+
+    - id: lua
+      uses: ./.github/actions/lua
+      with:
+        version: ${{ ENV.LUA_VERSION }}
+
+    - id: tinyxml2
+      uses: ./.github/actions/tinyxml2
+      with:
+        version: ${{ ENV.TINY_XML_2_VERSION }}
+
+    - id: mongoose
+      uses: ./.github/actions/mongoose
+      with:
+        version: ${{ ENV.MONGOOSE_VERSION }}
+
+    - id: miniz
+      uses: ./.github/actions/miniz
+      with:
+        version: ${{ ENV.MINIZ_VERSION }}
+
+    - name: Build Boost (static)
+      id: static_boost
+      uses: mickem/build-boost@v1
+      with:
+        version: ${{ ENV.BOOST_VERSION }}
+        libraries: system filesystem
+        platform: ${{ inputs.architecture }}
+        configuration: Release
+        static: 1
+        static-runtime: 1
+        directory: ${{ runner.workspace }}/static_boost
+          
+    - name: Build Boost (regular)
+      id: boost
+      uses: mickem/build-boost@v1
+      with:
+        version: ${{ ENV.BOOST_VERSION }}
+        libraries: system filesystem thread regex date_time program_options python chrono json
+        platform: ${{ inputs.architecture }}
+        configuration: Release
+  
+    - id: paths
+      run: |
+        $path_unix="${{ steps.boost.outputs.root }}".replace('\','/')
+        echo "boost_root=$path_unix" >> $env:GITHUB_OUTPUT
+        $path_unix="${{ steps.boost.outputs.librarydir }}".replace('\','/')
+        echo "boost_librarydir=$path_unix" >> $env:GITHUB_OUTPUT
+        $path_unix="${{ steps.static_boost.outputs.root }}".replace('\','/')
+        echo "static_boost_root=$path_unix" >> $env:GITHUB_OUTPUT
+        $path_unix="${{ steps.static_boost.outputs.librarydir }}".replace('\','/')
+        echo "static_boost_librarydir=$path_unix" >> $env:GITHUB_OUTPUT
+        $path_unix="${{ env.Python_ROOT_DIR }}".replace('\','/')
+        echo "python_path=$path_unix" >> $env:GITHUB_OUTPUT
+      shell: pwsh
+
+    - uses: DamianReeves/write-file-action@master
+      name: Write NSClient++ cmake config
+      with:
+        path: tmp/nscp/build.cmake
+        contents: |
+            SET(USE_STATIC_RUNTIME FALSE)
+            SET(LIBRARY_ROOT_FOLDER	"${{ env.GITHUB_WORKSPACE }}")
+            SET(BOOST_ROOT "${{ steps.paths.outputs.boost_root }}")
+            SET(BOOST_LIBRARYDIR "${{ steps.paths.outputs.boost_librarydir }}")
+            SET(NSCP_BOOST_PYTHON_VERSION "python311")
+            SET(PROTOBUF_ROOT "${{ steps.protobuf.outputs.path_unix }}")
+            SET(PROTOBUF_LIBRARYDIR "${PROTOBUF_ROOT}/build/Release")
+            SET(OPENSSL_ROOT_DIR "${{ steps.openssl.outputs.path_unix }}")
+            SET(OPENSSL_USE_STATIC_LIBS TRUE)
+            SET(LUA_SOURCE_ROOT "${{ steps.lua.outputs.path_unix }}")
+            SET(Python3_ROOT_DIR "${{ steps.paths.outputs.python_path }}")
+            SET(Python3_FIND_STRATEGY LOCATION)
+            SET(CRYPTOPP_ROOT "${{ steps.cryptopp.outputs.path_unix }}")
+            SET(TINY_XML2_SOURCE_DIR "${{ steps.tinyxml2.outputs.path_unix }}")
+            set(GTEST_ROOT "${{ steps.google-test.outputs.path_unix }}")
+            set(MONGOOSE_SOURCE_DIR "${{ steps.mongoose.outputs.path_unix }}")
+            set(MINIZ_INCLUDE_DIR "${{ steps.miniz.outputs.path_unix }}")
+            set(CHECK_NSCLIENT_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/tmp")
+
+    - name: Make python dist
+      working-directory: tmp/nscp
+      run: |
+        # --version must match the NSCP_BOOST_PYTHON_VERSION cmake variable
+        # written above; the MSI bundles python<version>.zip and expects
+        # this filename to exist. Bump them together when changing Python.
+        & "$env:Python_ROOT_DIR\python" ..\..\build\python\mk_pyzip.py --source ${{ env.Python_ROOT_DIR }} --version python311
+      shell: pwsh
+
+    - name: Download check_nsclient from mickem/check_nsclient
+      shell: bash
+      run: |
+        ver=$(cat .check_nsclient_version | tr -d '[:space:]')
+        url="https://github.com/mickem/check_nsclient/releases/download/${ver}/check_nsclient-${ver}-windows-${{ inputs.architecture }}.exe"
+        echo "Fetching $url"
+        curl -sSfL -o tmp/check_nsclient.exe "$url"
+
+    - name: CMake (installer_lib)
+      working-directory: tmp/installer_lib
+      run: |
+
+        cmake ../../installer_lib -T ${{ steps.setup.outputs.toolset }} -G "Visual Studio 17" -A ${{ steps.setup.outputs.platform }} -DBOOST_ROOT=${{ steps.paths.outputs.static_boost_root }} -DBOOST_LIBRARYDIR=${{ steps.paths.outputs.static_boost_librarydir }} -DOPENSSL_ROOT_DIR=${{ steps.openssl.outputs.path_unix }} -DBUILD_VERSION=${{ inputs.version }}
+    - name: Build installer_lib
+      working-directory: tmp/installer_lib
+      run: |
+        msbuild installer_lib.sln /p:Configuration=Release /p:Platform=${{ steps.setup.outputs.platform }}
+  
+    - name: CMake (NSCP)
+      working-directory: tmp/nscp
+      run: |
+        cmake ../.. -T ${{ steps.setup.outputs.toolset }} -G "Visual Studio 17" -A ${{ steps.setup.outputs.platform }} -D BUILD_VERSION=${{ inputs.version }} -D CRT_MERGE_MODULE_NAME=Microsoft_VC143_CRT
+
+    - name: Build nsclient
+      working-directory: tmp/nscp
+      run: |
+        msbuild NSCP.sln /p:Configuration=RelWithDebInfo /p:Platform=${{ steps.setup.outputs.platform }}
+
+    - name: Run tests
+      if: inputs.architecture != 'arm64'
+      working-directory: tmp/nscp
+      run: |
+        ctest --output-on-failure -C Release
+
+    - name: Sign binaries
+      if: github.actor != 'dependabot[bot]'
+      uses: ./.github/actions/sign-windows-binaries
+      with:
+        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+    - name: Build installer
+      working-directory: tmp/nscp
+      run: |
+        msbuild installers\installer-NSCP\installer_NSCP.vcxproj /p:Configuration=RelWithDebInfo /p:Platform=${{ steps.setup.outputs.platform }} /p:BuildProjectReferences=false
+
+    - name: Post process files
+      uses: ./.github/actions/post-process-windows-binaries
+      with:
+        version: ${{ inputs.version }}
+        platform: ${{ steps.setup.outputs.platform }}
+        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        signing-enabled: ${{ github.actor != 'dependabot[bot]' }}
+
+    - uses: actions/upload-artifact@v6
+      with:
+        name: NSCP-${{ inputs.version }}-${{ steps.setup.outputs.platform }}
+        path: |
+          tmp/nscp/NSCP-${{ inputs.version }}-${{ steps.setup.outputs.platform }}-docs.zip
+          tmp/nscp/NSCP-${{ inputs.version }}-${{ steps.setup.outputs.platform }}.zip
+          tmp/nscp/installers/installer-NSCP/NSCP-${{ inputs.version }}-${{ steps.setup.outputs.platform }}.msi
+          tmp/nscp/NSCP-${{ inputs.version }}-${{ inputs.platform }}-symbols.zip
+        if-no-files-found: error
+
+    - name: Add versions
+      shell: bash
+      run: |
+        echo "| Library | Version |" >> $GITHUB_STEP_SUMMARY
+        echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+        echo "| Boost | ${{ env.BOOST_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Cryptopp | ${{ env.CRYPTOPP_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Lua | ${{ env.LUA_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| OpenSSL | ${{ env.OPENSSL_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Protobuf | ${{ env.PROTOBUF_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| TinyXml2 | ${{ env.TINY_XML_2_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Mongoose | ${{ env.MONGOOSE_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Miniz | ${{ env.MINIZ_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Python | ${{ env.PYTHON_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+
+  integration-tests:
+    needs: build
+    # Cross-compiled ARM64 binaries cannot be executed on the x64 host.
+    if: inputs.architecture != 'arm64'
+    uses: ./.github/workflows/integration-tests-windows.yml
+    with:
+      architecture: ${{ inputs.architecture }}
+      version: ${{ inputs.version }}
+      artifact-name: NSCP-${{ inputs.version }}-${{ needs.build.outputs.platform }}
+      platform: ${{ needs.build.outputs.platform }}

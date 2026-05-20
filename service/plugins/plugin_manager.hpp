@@ -1,0 +1,220 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#pragma once
+
+#include <boost/algorithm/string.hpp>
+#include <boost/filesystem/path.hpp>
+#include <boost/optional.hpp>
+#include <memory>
+#include <nscapi/protobuf/command.hpp>
+#include <nscapi/protobuf/metrics.hpp>
+#include <nsclient/logger/logger.hpp>
+
+#include "../channels.hpp"
+#include "../commands.hpp"
+#include "../path_manager.hpp"
+#include "../permissions.hpp"
+#include "../routers.hpp"
+#include "master_plugin_list.hpp"
+#include "plugin_cache.hpp"
+
+/**
+ * @ingroup NSClient++
+ * Main NSClient++ core class. This is the service core and as such is responsible for pretty much everything.
+ * It also acts as a broker for all plugins and other sub threads and such.
+ *
+ * @version 1.0
+ * first version
+ *
+ * @date 02-12-2005
+ *
+ * @author mickem
+ *
+ * @par license
+ * This code is absolutely free to use and modify. The code is provided "as is" with
+ * no expressed or implied warranty. The author accepts no liability if it causes
+ * any damage to your computer, causes your pet to fall ill, increases baldness
+ * or makes your car start emitting strange noises when you start it up.
+ * This code has no bugs, just undocumented features!
+ *
+ * @todo Plugininfy the socket somehow ?
+ * It is technically possible to make the socket a plug-in but would it be a good idea ?
+ *
+ * @bug
+ *
+ */
+
+namespace nsclient {
+namespace core {
+
+class core_exception : public std::exception {
+  std::string what_;
+
+ public:
+  explicit core_exception(const std::string &error) throw() : what_(error.c_str()) {}
+  ~core_exception() throw() override {};
+
+  const char *what() const throw() override { return what_.c_str(); }
+};
+
+class plugin_manager : public std::enable_shared_from_this<plugin_manager> {
+ public:
+  typedef std::shared_ptr<plugin_interface> plugin_type;
+
+ private:
+  boost::filesystem::path plugin_path_;
+
+  path_instance path_;
+  logging::logger_instance log_instance_;
+  master_plugin_list plugin_list_;
+  commands commands_;
+  channels channels_;
+  simple_plugins_list metrics_fetchers_;
+  simple_plugins_list metrics_submitters_;
+  plugin_cache plugin_cache_;
+  event_subscribers event_subscribers_;
+  permissions permissions_;
+
+ public:
+  plugin_manager(path_instance path_, logging::logger_instance log_instance);
+  virtual ~plugin_manager();
+
+  plugin_cache *get_plugin_cache() { return &plugin_cache_; }
+  commands *get_commands() { return &commands_; }
+  channels *get_channels() { return &channels_; }
+  event_subscribers *get_event_subscribers() { return &event_subscribers_; }
+  permissions *get_permissions() { return &permissions_; }
+
+  // Read /settings/permissions{,/policies} into the in-memory policy
+  // table. Called once at boot (from NSClient++.cpp after settings come
+  // up) and again from do_reload("settings") so operators can update
+  // policies without restarting the service. See
+  // docs/design/core-permissions.md for the wire format.
+  void load_permissions();
+
+  void set_path(boost::filesystem::path path);
+
+  void load_active_plugins();
+  void load_all_plugins();
+  bool load_single_plugin(const std::string &plugin, const std::string &alias = "", bool start = false);
+  void start_plugins(NSCAPI::moduleLoadMode mode);
+  void post_start_plugins();
+  void prepare_shutdown_plugins();
+  void stop_plugins();
+  plugin_type only_load_module(const std::string &module, const std::string &alias, bool &loaded);
+
+  plugin_type find_plugin(const unsigned int plugin_id);
+  bool remove_plugin(const std::string &name);
+  int clone_plugin(unsigned int plugin_id);
+  bool reload_plugin(const std::string &module);
+
+  typedef boost::function<int(plugin_type)> run_function;
+  int load_and_run(std::string module, run_function fun, std::list<std::string> &errors);
+  NSCAPI::errorReturn send_notification(const char *channel, std::string &request, std::string &response);
+  NSCAPI::nagiosReturn execute_query(const std::string &request, std::string &response);
+  ::PB::Commands::QueryResponseMessage execute_query(const ::PB::Commands::QueryRequestMessage &);
+  std::wstring execute(std::wstring password, std::wstring cmd, std::list<std::wstring> args);
+  int simple_exec(std::string command, std::vector<std::string> arguments, std::list<std::string> &resp);
+  int simple_query(std::string module, std::string command, std::vector<std::string> arguments, std::list<std::string> &resp);
+  NSCAPI::nagiosReturn exec_command(const char *target, std::string request, std::string &response);
+  void register_submission_listener(unsigned int plugin_id, const char *channel);
+  NSCAPI::nagiosReturn emit_event(const std::string &request);
+
+  bool is_enabled(const std::string module);
+  void process_metrics(PB::Metrics::MetricsBundle bundle);
+
+  bool enable_plugin(std::string name);
+  bool disable_plugin(std::string name);
+
+ private:
+  typedef std::multimap<std::string, std::string> plugin_alias_list_type;
+
+  boost::optional<boost::filesystem::path> find_file(const std::string &file_name);
+  bool contains_plugin(plugin_alias_list_type &ret, std::string alias, std::string plugin);
+  std::string get_plugin_module_name(unsigned int plugin_id);
+
+  plugin_type add_plugin(const std::string &file_name, const std::string &alias);
+
+  plugin_alias_list_type find_all_plugins();
+  plugin_alias_list_type find_all_active_plugins();
+  logging::logger_instance get_logger() { return log_instance_; }
+  struct plugin_status {
+    std::string alias;
+    std::string plugin;
+    bool enabled;
+
+    plugin_status(std::string alias, std::string plugin, bool enabled) : alias(alias), plugin(plugin), enabled(enabled) {}
+    plugin_status(std::string plugin) : alias(""), plugin(plugin), enabled(true) {}
+    plugin_status(const plugin_status &other) : alias(other.alias), plugin(other.plugin), enabled(other.enabled) {}
+
+    plugin_status &operator=(const plugin_status &other) {
+      this->alias = other.alias;
+      this->plugin = other.plugin;
+      this->enabled = other.enabled;
+      return *this;
+    }
+  };
+  plugin_status parse_plugin(std::string key);
+
+  static std::string get_plugin_file(const std::string &key) {
+#ifdef WIN32
+    return key + ".dll";
+#else
+    return "lib" + key + ".so";
+#endif
+  }
+
+ public:
+  // Resolve the caller subject (`module[:principal]`) from a request
+  // header's metadata. Exposed as a public static so the policy decision
+  // point in execute_query / exec_command can call it, and so unit tests
+  // can exercise it without spinning up a full plugin_manager.
+  //
+  // Reads `nscp.caller_plugin_id` (stamped by nscapi::core_helper) and
+  // resolves it to a module name via the trusted plugin_cache. Reads
+  // `nscp.principal` verbatim. Returns "*" for the module when the
+  // plugin id is missing or unresolved, so a strict allow-list catches
+  // the unknown-caller case explicitly.
+  static std::string extract_subject_from_header(const PB::Common::Header &header, plugin_cache *cache);
+
+  static bool is_module(const boost::filesystem::path &file) {
+#ifdef WIN32
+    return boost::ends_with(file.string(), ".dll");
+#else
+    return boost::ends_with(file.string(), ".so");
+#endif
+  }
+  static boost::filesystem::path get_filename(boost::filesystem::path folder, std::string module);
+  static std::string file_to_module(const boost::filesystem::path &file) {
+    std::string str = file.string();
+#ifdef WIN32
+    if (boost::ends_with(str, ".dll")) str = str.substr(0, str.size() - 4);
+#else
+    if (boost::ends_with(str, ".so")) str = str.substr(0, str.size() - 3);
+    if (boost::starts_with(str, "lib")) str = str.substr(3);
+#endif
+    return str;
+  }
+};
+
+typedef std::shared_ptr<plugin_manager> plugin_mgr_instance;
+
+}  // namespace core
+}  // namespace nsclient

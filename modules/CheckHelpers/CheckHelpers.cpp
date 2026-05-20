@@ -19,598 +19,678 @@
 
 #include "CheckHelpers.h"
 
-#include <parsers/filter/cli_helper.hpp>
-
-#include <nscapi/nscapi_core_helper.hpp>
-#include <nscapi/nscapi_core_wrapper.hpp>
-#include <nscapi/nscapi_protobuf_functions.hpp>
-#include <nscapi/nscapi_protobuf_nagios.hpp>
-#include <nscapi/nscapi_program_options.hpp>
-#include <nscapi/nscapi_settings_helper.hpp>
-
-#include <str/utils.hpp>
-
+#include <algorithm>
 #include <boost/program_options.hpp>
 #include <boost/thread/thread.hpp>
-
+#include <nscapi/nscapi_core_helper.hpp>
+#include <nscapi/nscapi_core_wrapper.hpp>
+#include <nscapi/nscapi_program_options.hpp>
+#include <nscapi/protobuf/functions_response.hpp>
+#include <nscapi/protobuf/nagios.hpp>
+#include <nscapi/settings/helper.hpp>
+#include <nscapi/settings/proxy.hpp>
+#include <parsers/filter/cli_helper.hpp>
+#include <parsers/filter/modern_filter.hpp>
+#include <parsers/where/filter_handler_impl.hpp>
+#include <str/utils.hpp>
+#include <str/xtos.hpp>
 #include <vector>
-#include <algorithm>
 
 namespace sh = nscapi::settings_helper;
 namespace po = boost::program_options;
 
-void check_simple_status(::Plugin::Common_ResultCode status, const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	po::options_description desc = nscapi::program_options::create_desc(request);
-	std::string msg;
-	desc.add_options()
-		("message", po::value<std::string>(&msg)->default_value("No message"), "Message to return")
-		;
-	po::variables_map vm;
-	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response))
-		return;
-	response->set_result(status);
-	response->add_lines()->set_message(msg);
+bool CheckHelpers::loadModuleEx(std::string alias, NSCAPI::moduleLoadMode) {
+  try {
+    sh::settings_registry settings(nscapi::settings_proxy::create(get_id(), get_core()));
+    settings.set_alias(alias, "check helpers");
+
+    aliases_.set_path(settings.alias().get_settings_path("alias"));
+
+    // clang-format off
+    settings.alias().add_path_to_settings()
+      ("alias", sh::fun_values_path([this](auto key, auto value) { this->add_alias(key, value); }),
+        "Command aliases",
+        "A list of aliases for already-defined commands (with arguments).\n"
+        "An alias is an internal command that has been predefined to provide a single command without arguments. "
+        "Be careful so you don't create loops (e.g. check_loop=check_a, check_a=check_loop).\n"
+        "Aliases are also available in CheckExternalScripts under [/settings/external scripts/alias]; "
+        "use this section when you want aliases without enabling external-script execution. "
+        "If the same alias name is registered by both modules, the last one to load wins - avoid duplicating definitions.",
+        "ALIAS", "Query alias")
+      ;
+    // clang-format on
+
+    settings.register_all();
+    settings.notify();
+    settings.clear();
+
+    // Each alias is a flat `name = command line` entry under the section
+    // above. No per-alias subdirectory, no built-in seed aliases - this
+    // section is admin-driven so an operator who wants to migrate from
+    // CheckExternalScripts has to copy definitions over by hand, keeping
+    // the two modules' alias sets independent.
+    nscapi::core_helper core(get_core(), get_id());
+    aliases_.for_each([&core](const std::string &name, const alias::simple_command &def) { core.register_alias(name, "Alias for: " + def.command); });
+  } catch (const std::exception &e) {
+    NSC_LOG_ERROR_EXR("loading CheckHelpers", e);
+    return false;
+  } catch (...) {
+    NSC_LOG_ERROR_EX("loading CheckHelpers");
+    return false;
+  }
+  return true;
 }
 
-void escalate_result(Plugin::QueryResponseMessage::Response * response, ::Plugin::Common_ResultCode new_result) {
-	::Plugin::Common_ResultCode current = response->result();
-	if (current == new_result)
-		return;
-	else if (current == Plugin::Common_ResultCode_OK && new_result != Plugin::Common_ResultCode_OK)
-		response->set_result(new_result);
-	else if (new_result == Plugin::Common_ResultCode_OK)
-		return;
-	else if (current == Plugin::Common_ResultCode_WARNING && new_result != Plugin::Common_ResultCode_WARNING)
-		response->set_result(new_result);
-	else if (new_result == Plugin::Common_ResultCode_WARNING)
-		return;
-	else if (current == Plugin::Common_ResultCode_CRITICAL && new_result != Plugin::Common_ResultCode_CRITICAL)
-		response->set_result(new_result);
-	else if (new_result == Plugin::Common_ResultCode_CRITICAL)
-		return;
-	else if (current == Plugin::Common_ResultCode_UNKNOWN && new_result != Plugin::Common_ResultCode_UNKNOWN)
-		response->set_result(new_result);
+bool CheckHelpers::unloadModule() { return true; }
+
+void CheckHelpers::add_alias(const std::string &key, const std::string &arg) {
+  try {
+    aliases_.add(key, arg);
+  } catch (const std::exception &e) {
+    NSC_LOG_ERROR_EXR("Failed to add alias '" + key + "': ", e);
+  }
 }
 
-void CheckHelpers::check_critical(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	check_simple_status(Plugin::Common_ResultCode_CRITICAL, request, response);
-}
-void CheckHelpers::check_warning(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	check_simple_status(Plugin::Common_ResultCode_WARNING, request, response);
-}
-void CheckHelpers::check_ok(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	check_simple_status(Plugin::Common_ResultCode_OK, request, response);
-}
-void CheckHelpers::check_version(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	po::options_description desc = nscapi::program_options::create_desc(request);
-	std::string msg;
-	po::variables_map vm;
-	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response))
-		return;
-	nscapi::protobuf::functions::set_response_good(*response, utf8::cvt<std::string>(get_core()->getApplicationVersionString()));
+CheckHelpers::forwarded_identity CheckHelpers::extract_identity(const PB::Commands::QueryRequestMessage &request_message) {
+  // Pull the upstream caller identity off the header metadata stamped by
+  // core_helper. plugin_manager extracts the same two keys via
+  // extract_subject_from_header(); we read them here so we can forward
+  // them on the wrapped command's outgoing request.
+  forwarded_identity id;
+  for (const auto &kv : request_message.header().metadata()) {
+    if (kv.key() == "nscp.caller_plugin_id")
+      id.caller_plugin_id = kv.value();
+    else if (kv.key() == "nscp.principal")
+      id.principal = kv.value();
+  }
+  return id;
 }
 
-bool CheckHelpers::simple_query(const std::string &command, const std::vector<std::string> &arguments, Plugin::QueryResponseMessage::Response *response) {
-	std::string local_response_buffer;
-	nscapi::core_helper ch(get_core(), get_id());
-	if (ch.simple_query(command, arguments, local_response_buffer) != NSCAPI::api_return_codes::isSuccess) {
-		nscapi::protobuf::functions::set_response_bad(*response, "Failed to execute: " + command);
-		return false;
-	}
-	Plugin::QueryResponseMessage local_response;
-	local_response.ParseFromString(local_response_buffer);
-	if (local_response.payload_size() != 1) {
-		nscapi::protobuf::functions::set_response_bad(*response, "Invalid payload size: " + command);
-		return false;
-	}
-	response->CopyFrom(local_response.payload(0));
-	return true;
+void CheckHelpers::query_fallback(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response,
+                                  const PB::Commands::QueryRequestMessage &request_message) {
+  const boost::optional<alias::simple_command> alias_def = aliases_.find(request.command());
+  if (!alias_def) {
+    nscapi::protobuf::functions::set_response_bad(*response, "No alias found matching: " + request.command());
+    return;
+  }
+  std::list<std::string> args;
+  for (int i = 0; i < request.arguments_size(); ++i) args.push_back(request.arguments(i));
+  handle_alias(*alias_def, args, response, extract_identity(request_message));
 }
 
-bool CheckHelpers::simple_query(const std::string &command, const std::list<std::string> &arguments, Plugin::QueryResponseMessage::Response *response) {
-	std::string local_response_buffer;
-	nscapi::core_helper ch(get_core(), get_id());
-	if (ch.simple_query(command, arguments, local_response_buffer) != NSCAPI::api_return_codes::isSuccess) {
-		nscapi::protobuf::functions::set_response_bad(*response, "Failed to execute: " + command);
-		return false;
-	}
-	Plugin::QueryResponseMessage local_response;
-	local_response.ParseFromString(local_response_buffer);
-	if (local_response.payload_size() != 1) {
-		nscapi::protobuf::functions::set_response_bad(*response, "Invalid payload size: " + command);
-		return false;
-	}
-	response->CopyFrom(local_response.payload(0));
-	return true;
+void CheckHelpers::handle_alias(const alias::simple_command &cd, const std::list<std::string> &src_args, PB::Commands::QueryResponseMessage::Response *response,
+                                const forwarded_identity &id) const {
+  // $ARGn$ / %ARGn% substitution into the alias's pre-declared argument list.
+  // We DO NOT accept or splice in extra arguments that the alias's template
+  // didn't already mention - this is the security property that makes
+  // aliases safer than CheckExternalScripts' `allow arguments = true` path:
+  // the command and arguments are both controlled by the local admin's
+  // configuration, not by the remote caller.
+  std::list<std::string> args = cd.arguments;
+  for (std::string &arg : args) {
+    int i = 1;
+    for (const std::string &str : src_args) {
+      str::utils::replace(arg, "$ARG" + str::xtos(i) + "$", str);
+      str::utils::replace(arg, "%ARG" + str::xtos(i) + "%", str);
+      i++;
+    }
+  }
+
+  std::string buffer;
+  nscapi::core_helper ch(get_core(), get_id());
+  // Forward the upstream caller's identity so the wrapped command's
+  // permission check sees the ORIGINAL caller rather than CheckHelpers.
+  // When id is empty (legacy call site without metadata), this falls
+  // back to stamping CheckHelpers' own plugin_id - same behaviour as
+  // plain simple_query.
+  if (!ch.simple_query_on_behalf_of(id.caller_plugin_id, id.principal, cd.command, args, buffer)) {
+    nscapi::protobuf::functions::set_response_bad(*response, "Failed to execute: " + cd.get_alias());
+    return;
+  }
+  PB::Commands::QueryResponseMessage tmp;
+  tmp.ParseFromString(buffer);
+  if (tmp.payload_size() != 1) {
+    nscapi::protobuf::functions::set_response_bad(*response, "Invalid response from command: " + cd.get_alias());
+    return;
+  }
+  response->CopyFrom(tmp.payload(0));
 }
 
-void CheckHelpers::check_change_status(::Plugin::Common_ResultCode status, const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	po::options_description desc = nscapi::program_options::create_desc(request);
-	po::variables_map vm;
-	std::vector<std::string> args;
-	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response, true, args))
-		return;
-	if (args.size() == 0)
-		return nscapi::protobuf::functions::set_response_bad(*response, "Needs at least one command");
-	std::string command = args.front();
-	std::vector<std::string> arguments(args.begin() + 1, args.end());
-	Plugin::QueryResponseMessage::Response local_response;
-	if (!simple_query(command, arguments, &local_response))
-		status = ::Plugin::Common_ResultCode_UNKNOWN;
-	response->CopyFrom(local_response);
-	response->set_result(status);
-}
-void CheckHelpers::check_always_critical(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	check_change_status(Plugin::Common_ResultCode_CRITICAL, request, response);
-}
-void CheckHelpers::check_always_warning(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	check_change_status(Plugin::Common_ResultCode_WARNING, request, response);
-}
-void CheckHelpers::check_always_ok(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	check_change_status(Plugin::Common_ResultCode_OK, request, response);
-}
-void CheckHelpers::check_negate(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	std::string command;
-	std::vector<std::string> arguments;
-	po::options_description desc = nscapi::program_options::create_desc(request);
-	desc.add_options()
-		("ok,o", po::value<std::string>(), "The state to return instead of OK")
-		("warning,w", po::value<std::string>(), "The state to return instead of WARNING")
-		("critical,c", po::value<std::string>(), "The state to return instead of CRITICAL")
-		("unknown,u", po::value<std::string>(), "The state to return instead of UNKNOWN")
-
-		("command,q", po::value<std::string>(&command), "Wrapped command to execute")
-		("arguments,a", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
-		;
-	po::variables_map vm;
-	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response))
-		return;
-	if (command.empty())
-		return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
-	Plugin::QueryResponseMessage::Response local_response;
-	if (!simple_query(command, arguments, &local_response))
-		return;
-	response->CopyFrom(local_response);
-	::Plugin::Common_ResultCode new_o = ::Plugin::Common_ResultCode_OK;
-	::Plugin::Common_ResultCode new_w = ::Plugin::Common_ResultCode_WARNING;
-	::Plugin::Common_ResultCode new_c = ::Plugin::Common_ResultCode_CRITICAL;
-	::Plugin::Common_ResultCode new_u = ::Plugin::Common_ResultCode_UNKNOWN;
-
-	if (vm.count("ok"))
-		new_o = nscapi::protobuf::functions::parse_nagios(vm["ok"].as<std::string>());
-	if (vm.count("warning"))
-		new_w = nscapi::protobuf::functions::parse_nagios(vm["warning"].as<std::string>());
-	if (vm.count("critical"))
-		new_c = nscapi::protobuf::functions::parse_nagios(vm["critical"].as<std::string>());
-	if (vm.count("unknown"))
-		new_u = nscapi::protobuf::functions::parse_nagios(vm["unknown"].as<std::string>());
-	if (response->result() == Plugin::Common_ResultCode_OK)
-		response->set_result(new_o);
-	if (response->result() == Plugin::Common_ResultCode_WARNING)
-		response->set_result(new_w);
-	if (response->result() == Plugin::Common_ResultCode_CRITICAL)
-		response->set_result(new_c);
-	if (response->result() == Plugin::Common_ResultCode_UNKNOWN)
-		response->set_result(new_u);
+void check_simple_status(PB::Common::ResultCode status, const PB::Commands::QueryRequestMessage::Request &request,
+                         PB::Commands::QueryResponseMessage::Response *response) {
+  po::options_description desc = nscapi::program_options::create_desc(request);
+  std::string msg;
+  desc.add_options()("message", po::value<std::string>(&msg)->default_value("No message"), "Message to return");
+  po::variables_map vm;
+  if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response)) return;
+  response->set_result(status);
+  response->add_lines()->set_message(msg);
 }
 
-void CheckHelpers::check_multi(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	po::options_description desc = nscapi::program_options::create_desc(request);
-	std::vector<std::string> arguments;
-	std::string separator;
-	std::string prefix;
-	std::string suffix;
-	desc.add_options()
-		("command", po::value<std::vector<std::string> >(&arguments), "Commands to run (can be used multiple times)")
-		("arguments", po::value<std::vector<std::string> >(&arguments), "Deprecated alias for command")
-		("separator", po::value<std::string>(&separator)->default_value(", "), "Separator between messages")
-		("prefix", po::value<std::string>(&prefix), "Message prefix")
-		("suffix", po::value<std::string>(&suffix), "Message suffix")
-		;
-	po::variables_map vm;
-	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response))
-		return;
-	if (arguments.size() == 0)
-		return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
-	response->set_result(Plugin::Common_ResultCode_OK);
-	BOOST_FOREACH(std::string command_line, arguments) {
-		std::list<std::string> args;
-		str::utils::parse_command(command_line, args);
-
-		if (args.size() == 0) {
-			return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
-		}
-		std::string command = args.front(); args.pop_front();
-		Plugin::QueryResponseMessage::Response local_response;
-		if (!simple_query(command, args, &local_response))
-			return nscapi::protobuf::functions::set_response_bad(*response, "Failed to execute command: " + command);
-		bool first = true;
-		BOOST_FOREACH(const ::Plugin::QueryResponseMessage_Response_Line &line, local_response.lines()) {
-			if (first && response->lines_size() > 0) {
-				::Plugin::QueryResponseMessage_Response_Line *nLine = response->add_lines();
-				nLine->CopyFrom(line);
-				nLine->set_message(separator + nLine->message());
-				first = false;
-			} else {
-				response->add_lines()->CopyFrom(line);
-			}
-		}
-		escalate_result(response, local_response.result());
-	}
-	if (response->lines_size() > 0) {
-		if (!prefix.empty())
-			response->mutable_lines(0)->set_message(prefix + response->lines(0).message());
-		if (!suffix.empty())
-			response->mutable_lines(response->lines_size() - 1)->set_message(response->lines(response->lines_size() - 1).message() + suffix);
-	}
+void escalate_result(PB::Commands::QueryResponseMessage::Response *response, PB::Common::ResultCode new_result) {
+  const PB::Common::ResultCode current = response->result();
+  if (current == new_result)
+    return;
+  else if (current == PB::Common::ResultCode::OK && new_result != PB::Common::ResultCode::OK)
+    response->set_result(new_result);
+  else if (new_result == PB::Common::ResultCode::OK)
+    return;
+  else if (current == PB::Common::ResultCode::WARNING && new_result != PB::Common::ResultCode::WARNING)
+    response->set_result(new_result);
+  else if (new_result == PB::Common::ResultCode::WARNING)
+    return;
+  else if (current == PB::Common::ResultCode::CRITICAL && new_result != PB::Common::ResultCode::CRITICAL)
+    response->set_result(new_result);
+  else if (new_result == PB::Common::ResultCode::CRITICAL)
+    return;
+  else if (current == PB::Common::ResultCode::UNKNOWN && new_result != PB::Common::ResultCode::UNKNOWN)
+    response->set_result(new_result);
 }
 
+void CheckHelpers::check_critical(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  check_simple_status(PB::Common::ResultCode::CRITICAL, request, response);
+}
+void CheckHelpers::check_warning(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  check_simple_status(PB::Common::ResultCode::WARNING, request, response);
+}
+void CheckHelpers::check_ok(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  check_simple_status(PB::Common::ResultCode::OK, request, response);
+}
+void CheckHelpers::check_version(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  po::options_description desc = nscapi::program_options::create_desc(request);
+  std::string msg;
+  po::variables_map vm;
+  if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response)) return;
+  nscapi::protobuf::functions::set_response_good(*response, utf8::cvt<std::string>(get_core()->getApplicationVersionString()));
+}
 
-void CheckHelpers::check_and_forward(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	po::options_description desc = nscapi::program_options::create_desc(request);
-	std::vector<std::string> arguments;
-	std::string target;
-	std::string command;
-	desc.add_options()
-		("target", po::value<std::string>(&target), "Commands to run (can be used multiple times)")
-		("command", po::value<std::string>(&command), "Commands to run (can be used multiple times)")
-		("arguments", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
-		;
-	po::variables_map vm;
-	std::vector<std::string> args;
+bool CheckHelpers::simple_query(const std::string &command, const std::vector<std::string> &arguments, PB::Commands::QueryResponseMessage::Response *response,
+                                const forwarded_identity &id) {
+  std::string local_response_buffer;
+  nscapi::core_helper ch(get_core(), get_id());
+  // Convert vector to list - simple_query_on_behalf_of takes only the
+  // list overload. The conversion is on the slow path (one wrapped
+  // command per request) so the copy doesn't matter.
+  std::list<std::string> args_list(arguments.begin(), arguments.end());
+  if (!ch.simple_query_on_behalf_of(id.caller_plugin_id, id.principal, command, args_list, local_response_buffer)) {
+    nscapi::protobuf::functions::set_response_bad(*response, "Failed to execute: " + command);
+    return false;
+  }
+  PB::Commands::QueryResponseMessage local_response;
+  local_response.ParseFromString(local_response_buffer);
+  if (local_response.payload_size() != 1) {
+    nscapi::protobuf::functions::set_response_bad(*response, "Invalid payload size: " + command);
+    return false;
+  }
+  response->CopyFrom(local_response.payload(0));
+  return true;
+}
 
-	po::positional_options_description p;
-	p.add("arguments", -1);
+bool CheckHelpers::simple_query(const std::string &command, const std::list<std::string> &arguments, PB::Commands::QueryResponseMessage::Response *response,
+                                const forwarded_identity &id) {
+  std::string local_response_buffer;
+  nscapi::core_helper ch(get_core(), get_id());
+  if (!ch.simple_query_on_behalf_of(id.caller_plugin_id, id.principal, command, arguments, local_response_buffer)) {
+    nscapi::protobuf::functions::set_response_bad(*response, "Failed to execute: " + command);
+    return false;
+  }
+  PB::Commands::QueryResponseMessage local_response;
+  local_response.ParseFromString(local_response_buffer);
+  if (local_response.payload_size() != 1) {
+    nscapi::protobuf::functions::set_response_bad(*response, "Invalid payload size: " + command);
+    return false;
+  }
+  response->CopyFrom(local_response.payload(0));
+  return true;
+}
 
-	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response, p))
-		return;
-	if (command.size() == 0)
-		return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
+void CheckHelpers::check_change_status(PB::Common::ResultCode status, const PB::Commands::QueryRequestMessage::Request &request,
+                                       PB::Commands::QueryResponseMessage::Response *response, const forwarded_identity &id) {
+  po::options_description desc = nscapi::program_options::create_desc(request);
+  po::variables_map vm;
+  std::vector<std::string> args;
+  if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response, true, args)) {
+    return;
+  }
+  if (args.size() == 0) {
+    return nscapi::protobuf::functions::set_response_bad(*response, "Needs at least one command");
+  }
+  std::string command = args.front();
+  std::vector<std::string> arguments(args.begin() + 1, args.end());
+  PB::Commands::QueryResponseMessage::Response local_response;
+  if (!simple_query(command, arguments, &local_response, id)) status = PB::Common::ResultCode::UNKNOWN;
+  response->CopyFrom(local_response);
+  response->set_result(status);
+}
+void CheckHelpers::check_always_critical(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response,
+                                         const PB::Commands::QueryRequestMessage &request_message) {
+  check_change_status(PB::Common::ResultCode::CRITICAL, request, response, extract_identity(request_message));
+}
+void CheckHelpers::check_always_warning(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response,
+                                        const PB::Commands::QueryRequestMessage &request_message) {
+  check_change_status(PB::Common::ResultCode::WARNING, request, response, extract_identity(request_message));
+}
+void CheckHelpers::check_always_ok(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response,
+                                   const PB::Commands::QueryRequestMessage &request_message) {
+  check_change_status(PB::Common::ResultCode::OK, request, response, extract_identity(request_message));
+}
+void CheckHelpers::check_negate(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response,
+                                const PB::Commands::QueryRequestMessage &request_message) {
+  const forwarded_identity id = extract_identity(request_message);
+  std::string command;
+  std::vector<std::string> arguments;
+  po::options_description desc = nscapi::program_options::create_desc(request);
+  // clang-format off
+  desc.add_options()
+    ("ok,o", po::value<std::string>(), "The state to return instead of OK")
+    ("warning,w", po::value<std::string>(), "The state to return instead of WARNING")
+    ("critical,c", po::value<std::string>(), "The state to return instead of CRITICAL")
+    ("unknown,u", po::value<std::string>(), "The state to return instead of UNKNOWN")
 
+    ("command,q", po::value<std::string>(&command), "Wrapped command to execute")
+    ("arguments,a", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
+    ;
+  // clang-format on
+  po::variables_map vm;
+  if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response)) return;
+  if (command.empty()) return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
+  PB::Commands::QueryResponseMessage::Response local_response;
+  if (!simple_query(command, arguments, &local_response, id)) return;
+  response->CopyFrom(local_response);
+  PB::Common::ResultCode new_o = PB::Common::ResultCode::OK;
+  PB::Common::ResultCode new_w = PB::Common::ResultCode::WARNING;
+  PB::Common::ResultCode new_c = PB::Common::ResultCode::CRITICAL;
+  PB::Common::ResultCode new_u = PB::Common::ResultCode::UNKNOWN;
 
-	std::string local_response;
-	nscapi::core_helper ch(get_core(), get_id());
-	if (ch.simple_query(command, arguments, local_response) != NSCAPI::api_return_codes::isSuccess) {
-		nscapi::protobuf::functions::set_response_bad(*response, "Failed to execute: " + command);
-		return;
-	}
+  if (vm.count("ok")) new_o = nscapi::protobuf::functions::parse_nagios(vm["ok"].as<std::string>());
+  if (vm.count("warning")) new_w = nscapi::protobuf::functions::parse_nagios(vm["warning"].as<std::string>());
+  if (vm.count("critical")) new_c = nscapi::protobuf::functions::parse_nagios(vm["critical"].as<std::string>());
+  if (vm.count("unknown")) new_u = nscapi::protobuf::functions::parse_nagios(vm["unknown"].as<std::string>());
+  if (response->result() == PB::Common::ResultCode::OK) response->set_result(new_o);
+  if (response->result() == PB::Common::ResultCode::WARNING) response->set_result(new_w);
+  if (response->result() == PB::Common::ResultCode::CRITICAL) response->set_result(new_c);
+  if (response->result() == PB::Common::ResultCode::UNKNOWN) response->set_result(new_u);
+}
 
-	std::string submit_response;
-	if (!get_core()->submit_message(target, local_response, submit_response)) {
-		nscapi::protobuf::functions::set_response_bad(*response, "Failed to submit to: " + target);
-	}
-	nscapi::protobuf::functions::set_response_good(*response, "Message submitted: " + target);
+void CheckHelpers::check_multi(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response,
+                               const PB::Commands::QueryRequestMessage &request_message) {
+  const forwarded_identity id = extract_identity(request_message);
+  po::options_description desc = nscapi::program_options::create_desc(request);
+  std::vector<std::string> arguments;
+  std::string separator;
+  std::string prefix;
+  std::string suffix;
+  // clang-format off
+  desc.add_options()
+    ("command", po::value<std::vector<std::string> >(&arguments), "Commands to run (can be used multiple times)")
+    ("arguments", po::value<std::vector<std::string> >(&arguments), "Deprecated alias for command")
+    ("separator", po::value<std::string>(&separator)->default_value(", "), "Separator between messages")
+    ("prefix", po::value<std::string>(&prefix), "Message prefix")
+    ("suffix", po::value<std::string>(&suffix), "Message suffix")
+    ;
+  // clang-format on
+  po::variables_map vm;
+  if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response)) return;
+  if (arguments.size() == 0) return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
+  response->set_result(PB::Common::ResultCode::OK);
+  for (std::string command_line : arguments) {
+    std::list<std::string> args;
+    str::utils::parse_command(command_line, args);
+
+    if (args.size() == 0) {
+      return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
+    }
+    std::string command = args.front();
+    args.pop_front();
+    PB::Commands::QueryResponseMessage::Response local_response;
+    if (!simple_query(command, args, &local_response, id))
+      return nscapi::protobuf::functions::set_response_bad(*response, "Failed to execute command: " + command);
+    bool first = true;
+    for (const ::PB::Commands::QueryResponseMessage_Response_Line &line : local_response.lines()) {
+      if (first && response->lines_size() > 0) {
+        ::PB::Commands::QueryResponseMessage_Response_Line *nLine = response->add_lines();
+        nLine->CopyFrom(line);
+        nLine->set_message(separator + nLine->message());
+        first = false;
+      } else {
+        response->add_lines()->CopyFrom(line);
+      }
+    }
+    escalate_result(response, local_response.result());
+  }
+  if (response->lines_size() > 0) {
+    if (!prefix.empty()) response->mutable_lines(0)->set_message(prefix + response->lines(0).message());
+    if (!suffix.empty()) response->mutable_lines(response->lines_size() - 1)->set_message(response->lines(response->lines_size() - 1).message() + suffix);
+  }
+}
+
+void CheckHelpers::check_and_forward(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response,
+                                     const PB::Commands::QueryRequestMessage &request_message) {
+  const forwarded_identity id = extract_identity(request_message);
+  po::options_description desc = nscapi::program_options::create_desc(request);
+  std::vector<std::string> arguments;
+  std::string target;
+  std::string command;
+  // clang-format off
+  desc.add_options()
+    ("target", po::value<std::string>(&target), "Commands to run (can be used multiple times)")
+    ("command", po::value<std::string>(&command), "Commands to run (can be used multiple times)")
+    ("arguments", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
+    ;
+  // clang-format on
+  po::variables_map vm;
+  std::vector<std::string> args;
+
+  po::positional_options_description p;
+  p.add("arguments", -1);
+
+  if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response, p)) return;
+  if (command.size() == 0) return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
+
+  std::string local_response;
+  nscapi::core_helper ch(get_core(), get_id());
+  // Convert vector to list - simple_query_on_behalf_of doesn't take
+  // a vector overload and the conversion is cheap on this slow path.
+  std::list<std::string> args_list(arguments.begin(), arguments.end());
+  if (!ch.simple_query_on_behalf_of(id.caller_plugin_id, id.principal, command, args_list, local_response)) {
+    nscapi::protobuf::functions::set_response_bad(*response, "Failed to execute: " + command);
+    return;
+  }
+
+  std::string submit_response;
+  if (!get_core()->submit_message(target, local_response, submit_response)) {
+    nscapi::protobuf::functions::set_response_bad(*response, "Failed to submit to: " + target);
+  }
+  nscapi::protobuf::functions::set_response_good(*response, "Message submitted: " + target);
 }
 
 struct worker_object {
-	void proc(nscapi::core_wrapper *core, int plugin_id, std::string command, std::vector<std::string> arguments) {
-		nscapi::core_helper ch(core, plugin_id);
-		ret = ch.simple_query(command, arguments, response_buffer);
-	}
-	NSCAPI::nagiosReturn ret;
-	std::string response_buffer;
+  void proc(nscapi::core_wrapper *core, int plugin_id, const std::string &caller_plugin_id, const std::string &principal, std::string command,
+            std::vector<std::string> arguments) {
+    nscapi::core_helper ch(core, plugin_id);
+    // Forward the upstream caller's identity so the wrapped command's
+    // permission check sees the original caller rather than CheckHelpers.
+    std::list<std::string> args_list(arguments.begin(), arguments.end());
+    ok = ch.simple_query_on_behalf_of(caller_plugin_id, principal, command, args_list, response_buffer);
+  }
+  bool ok = false;
+  std::string response_buffer;
 };
 
-void CheckHelpers::check_timeout(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	std::string command;
-	std::vector<std::string> arguments;
-	unsigned long timeout = 30;
-	po::options_description desc = nscapi::program_options::create_desc(request);
-	desc.add_options()
-		("timeout,t", po::value<unsigned long>(&timeout), "The timeout value")
-		("command,q", po::value<std::string>(&command), "Wrapped command to execute")
-		("arguments,a", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
-		("return,r", po::value<std::string>(), "The return status")
-		;
-	po::variables_map vm;
-	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response))
-		return;
-	if (command.empty())
-		return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
+void CheckHelpers::check_timeout(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response,
+                                 const PB::Commands::QueryRequestMessage &request_message) {
+  const forwarded_identity id = extract_identity(request_message);
+  std::string command;
+  std::vector<std::string> arguments;
+  unsigned long timeout = 30;
+  po::options_description desc = nscapi::program_options::create_desc(request);
+  // clang-format off
+  desc.add_options()
+    ("timeout,t", po::value<unsigned long>(&timeout), "The timeout value")
+    ("command,q", po::value<std::string>(&command), "Wrapped command to execute")
+    ("arguments,a", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
+    ("return,r", po::value<std::string>(), "The return status")
+    ;
+  // clang-format on
+  po::variables_map vm;
+  if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response)) return;
+  if (command.empty()) return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
 
-	worker_object obj;
-	boost::shared_ptr<boost::thread> t = boost::shared_ptr<boost::thread>(new boost::thread(boost::bind(&worker_object::proc, obj, get_core(), get_id(), command, arguments)));
+  worker_object obj;
+  std::shared_ptr<boost::thread> t = std::shared_ptr<boost::thread>(
+      new boost::thread([&obj, this, command, arguments, id]() { obj.proc(get_core(), get_id(), id.caller_plugin_id, id.principal, command, arguments); }));
 
-	if (t->timed_join(boost::posix_time::seconds(timeout))) {
-		if (obj.ret != NSCAPI::query_return_codes::returnOK) {
-			return nscapi::protobuf::functions::set_response_bad(*response, "Failed to execute: " + command);
-		}
-		Plugin::QueryResponseMessage local_response;
-		local_response.ParseFromString(obj.response_buffer);
-		if (local_response.payload_size() != 1) {
-			return nscapi::protobuf::functions::set_response_bad(*response, "Invalid payload size: " + command);
-		}
-		response->CopyFrom(local_response.payload(0));
-		if (vm.count("return"))
-			response->set_result(nscapi::protobuf::functions::parse_nagios(vm["return"].as<std::string>()));
-	} else {
-		t->detach();
-		nscapi::protobuf::functions::set_response_bad(*response, "Thread failed to return within given timeout");
-	}
+  if (t->timed_join(boost::posix_time::seconds(timeout))) {
+    if (!obj.ok) {
+      return nscapi::protobuf::functions::set_response_bad(*response, "Failed to execute: " + command);
+    }
+    PB::Commands::QueryResponseMessage local_response;
+    local_response.ParseFromString(obj.response_buffer);
+    if (local_response.payload_size() != 1) {
+      return nscapi::protobuf::functions::set_response_bad(*response, "Invalid payload size: " + command);
+    }
+    response->CopyFrom(local_response.payload(0));
+    if (vm.count("return")) response->set_result(nscapi::protobuf::functions::parse_nagios(vm["return"].as<std::string>()));
+  } else {
+    t->detach();
+    nscapi::protobuf::functions::set_response_bad(*response, "Thread failed to return within given timeout");
+  }
 }
 
 struct normal_sort {
-	bool operator() (const ::Plugin::Common::PerformanceData &v1, const ::Plugin::Common::PerformanceData &v2) const {
-		if (!v1.has_int_value())
-			return false;
-		if (!v2.has_int_value())
-			return false;
-		if (v1.int_value().value() > v2.int_value().value())
-			return true;
-		return false;
-	}
+  bool operator()(const PB::Common::PerformanceData &v1, const PB::Common::PerformanceData &v2) const {
+    if (!v1.has_float_value()) return false;
+    if (!v2.has_float_value()) return false;
+    if (v1.float_value().value() > v2.float_value().value()) return true;
+    return false;
+  }
 };
 struct reverse_sort {
-	bool operator() (const ::Plugin::Common::PerformanceData &v1, const ::Plugin::Common::PerformanceData &v2) const {
-		if (!v1.has_int_value())
-			return false;
-		if (!v2.has_int_value())
-			return false;
-		if (v1.int_value().value() < v2.int_value().value())
-			return true;
-		return false;
-	}
+  bool operator()(const PB::Common::PerformanceData &v1, const PB::Common::PerformanceData &v2) const {
+    if (!v1.has_float_value()) return false;
+    if (!v2.has_float_value()) return false;
+    if (v1.float_value().value() < v2.float_value().value()) return true;
+    return false;
+  }
 };
 
-void CheckHelpers::filter_perf(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	std::string command, sort;
-	std::size_t limit;
-	std::vector<std::string> arguments;
-	po::options_description desc = nscapi::program_options::create_desc(request);
-	desc.add_options()
-		("sort", po::value<std::string>(&sort)->default_value("none"), "The sort order to use: none, normal or reversed")
-		("limit", po::value<std::size_t>(&limit)->default_value(0), "The maximum number of items to return (0 returns all items)")
-		("command", po::value<std::string>(&command), "Wrapped command to execute")
-		("arguments", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
-		;
+void CheckHelpers::filter_perf(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response,
+                               const PB::Commands::QueryRequestMessage &request_message) {
+  const forwarded_identity id = extract_identity(request_message);
+  std::string command, sort;
+  std::size_t limit;
+  std::vector<std::string> arguments;
+  po::options_description desc = nscapi::program_options::create_desc(request);
+  // clang-format off
+  desc.add_options()
+    ("sort", po::value<std::string>(&sort)->default_value("none"), "The sort order to use: none, normal or reversed")
+    ("limit", po::value<std::size_t>(&limit)->default_value(0), "The maximum number of items to return (0 returns all items)")
+    ("command", po::value<std::string>(&command), "Wrapped command to execute")
+    ("arguments", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
+    ;
+  // clang-format on
 
-	po::positional_options_description p;
-	p.add("arguments", -1);
-	po::variables_map vm;
-	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response, p))
-		return;
-	if (command.empty())
-		return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
-	simple_query(command, arguments, response);
-	std::vector<Plugin::Common::PerformanceData> perfs;
+  po::positional_options_description p;
+  p.add("arguments", -1);
+  po::variables_map vm;
+  if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response, p)) return;
+  if (command.empty()) return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
+  simple_query(command, arguments, response, id);
+  std::vector<PB::Common::PerformanceData> perfs;
 
-	std::stringstream ss;
-	BOOST_FOREACH(const ::Plugin::QueryResponseMessage_Response_Line &line, response->lines()) {
-		ss << line.message() << "\n";
-		BOOST_FOREACH(const ::Plugin::Common_PerformanceData &perf, line.perf()) {
-			perfs.push_back(perf);
-		}
-	}
+  std::stringstream ss;
+  for (const ::PB::Commands::QueryResponseMessage_Response_Line &line : response->lines()) {
+    ss << line.message() << "\n";
+    for (const PB::Common::PerformanceData &perf : line.perf()) {
+      perfs.push_back(perf);
+    }
+  }
 
-	if (sort == "normal")
-		std::sort(perfs.begin(), perfs.end(), normal_sort());
-	else if (sort == "reverse")
-		std::sort(perfs.begin(), perfs.end(), reverse_sort());
-	response->clear_lines();
-	::Plugin::QueryResponseMessage_Response_Line* line = response->add_lines();
-	line->set_message(ss.str());
-	if (limit > 0 && perfs.size() > limit)
-		perfs.erase(perfs.begin() + limit, perfs.end());
-	BOOST_FOREACH(const ::Plugin::Common::PerformanceData &v, perfs) {
-		line->add_perf()->CopyFrom(v);
-	}
+  if (sort == "normal")
+    std::sort(perfs.begin(), perfs.end(), normal_sort());
+  else if (sort == "reverse")
+    std::sort(perfs.begin(), perfs.end(), reverse_sort());
+  response->clear_lines();
+  ::PB::Commands::QueryResponseMessage_Response_Line *line = response->add_lines();
+  line->set_message(ss.str());
+  if (limit > 0 && perfs.size() > limit) perfs.erase(perfs.begin() + limit, perfs.end());
+  for (const PB::Common::PerformanceData &v : perfs) {
+    line->add_perf()->CopyFrom(v);
+  }
 }
-
-#include <parsers/where.hpp>
-#include <parsers/where/helpers.hpp>
-
-#include <parsers/where.hpp>
-#include <parsers/where/node.hpp>
-#include <parsers/where/engine.hpp>
-#include <parsers/filter/modern_filter.hpp>
-#include <parsers/where/filter_handler_impl.hpp>
 
 namespace perf_filter {
-	struct filter_obj {
-		const ::Plugin::Common_PerformanceData& data;
+struct filter_obj {
+  const PB::Common::PerformanceData &data;
 
-		filter_obj(const ::Plugin::Common_PerformanceData& data) : data(data) {}
+  filter_obj(const PB::Common::PerformanceData &data) : data(data) {}
 
-		std::string get_key() const {
-			return data.alias();
-		}
-		std::string get_unit() const {
-			if (data.has_bool_value())
-				return data.bool_value().unit();
-			if (data.has_float_value())
-				return data.float_value().unit();
-			if (data.has_int_value())
-				return data.int_value().unit();
-			return "";
-		}
-		std::string get_value() const {
-			if (data.has_bool_value())
-				return str::xtos(data.bool_value().value());
-			if (data.has_float_value())
-				return str::xtos(data.float_value().value());
-			if (data.has_int_value())
-				return str::xtos(data.int_value().value());
-			if (data.has_string_value())
-				return data.string_value().value();
-			return "";
-		}
-		std::string get_warn() const {
-			if (data.has_bool_value())
-				return str::xtos(data.bool_value().warning());
-			if (data.has_float_value())
-				return str::xtos(data.float_value().warning());
-			if (data.has_int_value())
-				return str::xtos(data.int_value().warning());
-			return "";
-		}
-		std::string get_crit() const {
-			if (data.has_bool_value())
-				return str::xtos(data.bool_value().critical());
-			if (data.has_float_value())
-				return str::xtos(data.float_value().critical());
-			if (data.has_int_value())
-				return str::xtos(data.int_value().critical());
-			return "";
-		}
-		std::string get_max() const {
-			if (data.has_float_value())
-				return str::xtos(data.float_value().maximum());
-			if (data.has_int_value())
-				return str::xtos(data.int_value().maximum());
-			return "";
-		}
-		std::string get_min() const {
-			if (data.has_float_value())
-				return str::xtos(data.float_value().minimum());
-			if (data.has_int_value())
-				return str::xtos(data.int_value().minimum());
-			return "";
-		}
-	};
-	typedef parsers::where::filter_handler_impl<boost::shared_ptr<filter_obj> > native_context;
+  std::string show() const { return data.alias() + "=" + get_value() + get_unit(); }
+  std::string get_key() const { return data.alias(); }
+  std::string get_unit() const {
+    if (data.has_float_value()) return data.float_value().unit();
+    return "";
+  }
+  std::string get_value() const {
+    if (data.has_float_value()) return str::xtos(data.float_value().value());
+    if (data.has_string_value()) return data.string_value().value();
+    return "";
+  }
+  // %(warn) / %(crit) template substitutions: prefer the original Nagios
+  // range syntax (e.g. "4:5") when present, fall back to the numeric
+  // lower bound for plain-number thresholds (issue #748). Without this,
+  // `render_perf` would replace a "4:5" warning with just "4".
+  std::string get_warn() const {
+    if (!data.has_float_value()) return "";
+    if (!data.float_value().warning_range().empty()) return data.float_value().warning_range();
+    if (data.float_value().has_warning()) return str::xtos(data.float_value().warning().value());
+    return "";
+  }
+  std::string get_crit() const {
+    if (!data.has_float_value()) return "";
+    if (!data.float_value().critical_range().empty()) return data.float_value().critical_range();
+    if (data.float_value().has_critical()) return str::xtos(data.float_value().critical().value());
+    return "";
+  }
+  std::string get_max() const {
+    if (data.has_float_value() && data.float_value().has_maximum()) return str::xtos(data.float_value().maximum().value());
+    return "";
+  }
+  std::string get_min() const {
+    if (data.has_float_value() && data.float_value().has_minimum()) return str::xtos(data.float_value().minimum().value());
+    return "";
+  }
+};
+typedef parsers::where::filter_handler_impl<std::shared_ptr<filter_obj> > native_context;
 
-	struct filter_obj_handler : public native_context {
-		filter_obj_handler();
-	};
+struct filter_obj_handler : public native_context {
+  filter_obj_handler();
+};
 
-	typedef modern_filter::modern_filters<filter_obj, filter_obj_handler> filter;
+typedef modern_filter::modern_filters<filter_obj, filter_obj_handler> filter;
 
-	filter_obj_handler::filter_obj_handler() {
-		registry_.add_string()
-			("key", boost::bind(&filter_obj::get_key, _1), "Major version number")
-			("value", boost::bind(&filter_obj::get_value, _1), "Major version number")
-			("unit", boost::bind(&filter_obj::get_unit, _1), "Major version number")
-			("warn", boost::bind(&filter_obj::get_warn, _1), "Major version number")
-			("crit", boost::bind(&filter_obj::get_crit, _1), "Major version number")
-			("max", boost::bind(&filter_obj::get_min, _1), "Major version number")
-			("min", boost::bind(&filter_obj::get_max, _1), "Major version number")
-			("message", boost::bind(&filter_obj::get_key, _1), "Major version number")
-			;
-	}
+filter_obj_handler::filter_obj_handler() {
+  registry_.add_string_var("key", &filter_obj::get_key, "Major version number")
+      .add_string_var("value", &filter_obj::get_value, "Major version number")
+      .add_string_var("unit", &filter_obj::get_unit, "Major version number")
+      .add_string_var("warn", &filter_obj::get_warn, "Major version number")
+      .add_string_var("crit", &filter_obj::get_crit, "Major version number")
+      .add_string_var("max", &filter_obj::get_min, "Major version number")
+      .add_string_var("min", &filter_obj::get_max, "Major version number")
+      .add_string_var("message", &filter_obj::get_key, "Major version number");
+}
+}  // namespace perf_filter
+
+void CheckHelpers::render_perf(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response,
+                               const PB::Commands::QueryRequestMessage &request_message) {
+  const forwarded_identity id = extract_identity(request_message);
+  modern_filter::data_container data;
+  modern_filter::cli_helper<perf_filter::filter> filter_helper(request, response, data);
+
+  std::string command;
+  std::vector<std::string> arguments;
+  bool remove_perf = false;
+  po::options_description desc = nscapi::program_options::create_desc(request);
+  perf_filter::filter filter;
+  filter_helper.add_options("", "", "", filter.get_filter_syntax(), "unknown");
+  filter_helper.add_syntax("%(status): %(message) %(list)", "%(key)\t%(value)\t%(unit)\t%(warn)\t%(crit)\t%(min)\t%(max)\n", "%(key)", "", "");
+  // clang-format off
+  filter_helper.get_desc().add_options()
+    ("command", po::value<std::string>(&command), "Wrapped command to execute")
+    ("arguments", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
+    ("remove-perf", po::bool_switch(&remove_perf), "List of arguments (for wrapped command)")
+    ;
+  // clang-format on
+
+  po::positional_options_description p;
+  p.add("arguments", -1);
+
+  if (!filter_helper.parse_options(p)) return;
+
+  if (!filter_helper.build_filter(filter)) return;
+
+  if (command.empty()) return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
+  simple_query(command, arguments, response, id);
+  for (int i = 0; i < response->lines_size(); i++) {
+    ::PB::Commands::QueryResponseMessage_Response_Line *line = response->mutable_lines(i);
+    for (const PB::Common::PerformanceData &perf : line->perf()) {
+      std::shared_ptr<perf_filter::filter_obj> record(new perf_filter::filter_obj(perf));
+      filter.match(record);
+    }
+    if (remove_perf) line->clear_perf();
+  }
+  filter_helper.post_process(filter);
 }
 
-void CheckHelpers::render_perf(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	modern_filter::data_container data;
-	modern_filter::cli_helper<perf_filter::filter> filter_helper(request, response, data);
+void CheckHelpers::xform_perf(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response,
+                              const PB::Commands::QueryRequestMessage &request_message) {
+  const forwarded_identity id = extract_identity(request_message);
+  modern_filter::data_container data;
 
-	std::string command;
-	std::vector<std::string> arguments;
-	bool remove_perf = false;
-	po::options_description desc = nscapi::program_options::create_desc(request);
-	perf_filter::filter filter;
-	filter_helper.add_options("", "", "", filter.get_filter_syntax(), "unknown");
-	filter_helper.add_syntax("%(status): %(message) %(list)", "%(key)\t%(value)\t%(unit)\t%(warn)\t%(crit)\t%(min)\t%(max)\n", "%(key)", "", "");
-	filter_helper.get_desc().add_options()
-		("command", po::value<std::string>(&command), "Wrapped command to execute")
-		("arguments", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
-		("remove-perf", po::bool_switch(&remove_perf), "List of arguments (for wrapped command)")
-		;
+  std::string command, mode, field, replace;
+  std::vector<std::string> arguments;
+  po::options_description desc = nscapi::program_options::create_desc(request);
+  // clang-format off
+  desc.add_options()
+    ("command", po::value<std::string>(&command), "Wrapped command to execute")
+    ("arguments", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
+    ("mode", po::value<std::string>(&mode), "Transformation mode: extract to fetch data or minmax to add missing min/max")
+    ("field", po::value<std::string>(&field), "Field to work with (value, warn, crit, max, min)")
+    ("replace", po::value<std::string>(&replace), "Replace expression for the alias")
+    ;
+  // clang-format on
 
-	po::positional_options_description p;
-	p.add("arguments", -1);
+  po::positional_options_description p;
+  p.add("arguments", -1);
+  po::variables_map vm;
+  if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response, p)) return;
 
-	if (!filter_helper.parse_options(p))
-		return;
+  if (command.empty()) return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
+  simple_query(command, arguments, response, id);
 
-	if (!filter_helper.build_filter(filter))
-		return;
+  if (mode == "extract") {
+    std::vector<std::string> repl;
+    boost::split(repl, replace, boost::is_any_of("="));
+    if (repl.size() != 2) return nscapi::program_options::invalid_syntax(desc, request.command(), "Invalid syntax replace string", *response);
 
-	if (command.empty())
-		return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
-	simple_query(command, arguments, response);
-	for (int i = 0; i < response->lines_size(); i++) {
-		::Plugin::QueryResponseMessage_Response_Line* line = response->mutable_lines(i);
-		BOOST_FOREACH(const ::Plugin::Common_PerformanceData &perf, line->perf()) {
-			boost::shared_ptr<perf_filter::filter_obj> record(new perf_filter::filter_obj(perf));
-			filter.match(record);
-		}
-		if (remove_perf)
-			line->clear_perf();
-	}
-	filter_helper.post_process(filter);
-}
-
-void CheckHelpers::xform_perf(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	modern_filter::data_container data;
-
-	std::string command, mode, field, replace;
-	std::vector<std::string> arguments;
-	po::options_description desc = nscapi::program_options::create_desc(request);
-	desc.add_options()
-		("command", po::value<std::string>(&command), "Wrapped command to execute")
-		("arguments", po::value<std::vector<std::string> >(&arguments), "List of arguments (for wrapped command)")
-		("mode", po::value<std::string>(&mode), "Transformation mode: extract to fetch data or minmax to add missing min/max")
-		("field", po::value<std::string>(&field), "Field to work with (value, warn, crit, max, min)")
-		("replace", po::value<std::string>(&replace), "Replace expression for the alias")
-		;
-
-	po::positional_options_description p;
-	p.add("arguments", -1);
-	po::variables_map vm;
-	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response, p))
-		return;
-
-	if (command.empty())
-		return nscapi::program_options::invalid_syntax(desc, request.command(), "Missing command", *response);
-	simple_query(command, arguments, response);
-
-
-	if (mode == "extract") {
-
-		std::vector<std::string> repl;
-		boost::split(repl, replace, boost::is_any_of("="));
-		if (repl.size() != 2)
-			return nscapi::program_options::invalid_syntax(desc, request.command(), "Invalid syntax replace string", *response);
-
-		for (int i = 0; i < response->lines_size(); i++) {
-			::Plugin::QueryResponseMessage_Response_Line* line = response->mutable_lines(i);
-			std::vector<Plugin::Common::PerformanceData> perf;
-			for (int i = 0; i < line->perf_size(); i++) {
-				const Plugin::Common::PerformanceData &cp = line->perf(i);
-				Plugin::Common::PerformanceData np;
-				np.CopyFrom(cp);
-				np.set_alias(boost::replace_all_copy(cp.alias(), repl[0], repl[1]));
-				if (field == "max") {
-					if (cp.has_int_value()) {
-						np.mutable_int_value()->set_value(cp.int_value().maximum());
-						perf.push_back(np);
-					} else if (cp.has_float_value()) {
-						np.mutable_float_value()->set_value(cp.float_value().maximum());
-						perf.push_back(np);
-					}
-				} else if (field == "min") {
-					if (cp.has_int_value()) {
-						np.mutable_int_value()->set_value(cp.int_value().minimum());
-						perf.push_back(np);
-					} else if (cp.has_float_value()) {
-						np.mutable_float_value()->set_value(cp.float_value().minimum());
-						perf.push_back(np);
-					}
-				}
-			}
-			BOOST_FOREACH(const Plugin::Common::PerformanceData &p, perf) {
-				line->add_perf()->CopyFrom(p);
-			}
-		}
-	} else if (mode == "minmax") {
-		for (int i = 0; i < response->lines_size(); i++) {
-			::Plugin::QueryResponseMessage_Response_Line* line = response->mutable_lines(i);
-			for (int i=0;i<line->perf_size();i++) {
-				Plugin::Common_PerformanceData *np = line->mutable_perf(i);
-				if (np->has_int_value()) {
-					if (np->int_value().unit() == "%") {
-						np->mutable_int_value()->set_maximum(100);
-						np->mutable_int_value()->set_minimum(0);
-					}
-				} else if (np->has_float_value()) {
-					if (np->float_value().unit() == "%") {
-						np->mutable_float_value()->set_maximum(100);
-						np->mutable_float_value()->set_minimum(0);
-					}
-				}
-			}
-		}
-	} else {
-		return nscapi::program_options::invalid_syntax(desc, request.command(), "Invalid mode specified", *response);
-	}
+    for (int i = 0; i < response->lines_size(); i++) {
+      ::PB::Commands::QueryResponseMessage_Response_Line *line = response->mutable_lines(i);
+      std::vector<PB::Common::PerformanceData> perf;
+      for (int j = 0; j < line->perf_size(); j++) {
+        const PB::Common::PerformanceData &cp = line->perf(j);
+        PB::Common::PerformanceData np;
+        np.CopyFrom(cp);
+        np.set_alias(boost::replace_all_copy(cp.alias(), repl[0], repl[1]));
+        if (field == "max") {
+          if (cp.has_float_value()) {
+            np.mutable_float_value()->set_value(cp.float_value().maximum().value());
+            perf.push_back(np);
+          }
+        } else if (field == "min") {
+          if (cp.has_float_value()) {
+            np.mutable_float_value()->set_value(cp.float_value().minimum().value());
+            perf.push_back(np);
+          }
+        }
+      }
+      for (const PB::Common::PerformanceData &p2 : perf) {
+        line->add_perf()->CopyFrom(p2);
+      }
+    }
+  } else if (mode == "minmax") {
+    for (int i = 0; i < response->lines_size(); i++) {
+      ::PB::Commands::QueryResponseMessage_Response_Line *line = response->mutable_lines(i);
+      for (int index = 0; index < line->perf_size(); index++) {
+        PB::Common::PerformanceData *np = line->mutable_perf(index);
+        if (np->has_float_value()) {
+          if (np->float_value().unit() == "%") {
+            np->mutable_float_value()->mutable_maximum()->set_value(100);
+            np->mutable_float_value()->mutable_minimum()->set_value(0);
+          }
+        }
+      }
+    }
+  } else {
+    return nscapi::program_options::invalid_syntax(desc, request.command(), "Invalid mode specified", *response);
+  }
 }

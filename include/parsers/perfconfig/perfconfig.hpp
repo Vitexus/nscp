@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2016 Michael Medin
+ * Copyright (C) 2004-2026 Michael Medin
  *
  * This file is part of NSClient++ - https://nsclient.org
  *
@@ -17,26 +17,23 @@
  * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define BOOST_SPIRIT_DEBUG  ///$$$ DEFINE THIS WHEN DEBUGGING $$$///
 #pragma once
+// #define BOOST_SPIRIT_DEBUG  ///$$$ DEFINE THIS WHEN DEBUGGING $$$///
 
-#include <iostream>
 #include <string>
 #include <vector>
 
-#include <boost/tuple/tuple.hpp>
-
 namespace parsers {
-	struct perfconfig {
-		struct perf_option {
-			std::string key;
-			std::string value;
-		};
-		struct perf_rule {
-			std::string name;
-			std::vector<perf_option> options;
-		};
-		typedef std::vector<perf_rule> result_type;
-		bool parse(const std::string &str, result_type& v);
-	};
-}
+struct perfconfig {
+  struct perf_option {
+    std::string key;
+    std::string value;
+  };
+  struct perf_rule {
+    std::string name;
+    std::vector<perf_option> options;
+  };
+  typedef std::vector<perf_rule> result_type;
+  static bool parse(const std::string& str, result_type& v);
+};
+}  // namespace parsers

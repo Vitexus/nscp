@@ -19,28 +19,38 @@
 
 #pragma once
 
-#include <nscapi/nscapi_protobuf.hpp>
-#include <nscapi/nscapi_settings_proxy.hpp>
 #include <nscapi/nscapi_plugin_impl.hpp>
-#include <nscapi/nscapi_settings_object.hpp>
+#include <nscapi/protobuf/command.hpp>
+#include <nscapi/protobuf/metrics.hpp>
 
 #include "filter_config_object.hpp"
+#include "realtime_thread.hpp"
 
 class CheckSystem : public nscapi::impl::simple_plugin {
-public:
-	CheckSystem() {}
-	virtual ~CheckSystem() {}
+  std::shared_ptr<pdh_thread> collector_;
 
-	virtual bool loadModuleEx(std::string alias, NSCAPI::moduleLoadMode mode);
-	virtual bool unloadModule();
+  // Configured timezone for `check_uptime`, cached in loadModuleEx (issue #365).
+  // See `include/nscp_time.hpp` for the supported value syntax.
+  std::string timezone_;
 
-	void check_service(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response);
-	void check_memory(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response);
-	//void check_pdh(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response);
-	void check_process(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response);
-	void check_cpu(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response);
-	void check_uptime(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response);
-	void check_pagefile(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response);
-	void add_counter(boost::shared_ptr<nscapi::settings_proxy> proxy, std::string path, std::string key, std::string query);
-	void check_os_version(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response);
+ public:
+  CheckSystem() : simple_plugin() {}
+  virtual ~CheckSystem() = default;
+
+  virtual bool loadModuleEx(std::string alias, NSCAPI::moduleLoadMode mode);
+  virtual bool unloadModule();
+
+  void fetchMetrics(PB::Metrics::MetricsMessage::Response *response);
+
+  void check_service(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+  void check_memory(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+  void check_process(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+  void check_cpu(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+  void check_uptime(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+  void check_pagefile(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+  void check_os_version(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+  void check_os_updates(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+
+  // Accessor for the collector thread (used by check_cpu)
+  std::shared_ptr<pdh_thread> get_collector() { return collector_; }
 };

@@ -4,6 +4,15 @@ Check status via WMI
 
 
 
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `CheckWMI = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+CheckWMI = enabled
+```
+
 
 ## Queries
 
@@ -32,13 +41,15 @@ A list of all short hand aliases for queries (check commands)
 
 Check a set of WMI values and return rows which are matching criteria.
 
-* [Samples](#check_wmi_samples)
 
+**Jump to section:**
+
+* [Sample Commands](#check_wmi_samples)
 * [Command-line Arguments](#check_wmi_options)
 * [Filter keywords](#check_wmi_filter_keys)
 
 
-<a name="check_wmi_samples"/>
+<a id="check_wmi_samples"></a>
 #### Sample Commands
 
 _To edit these sample please edit [this page](https://github.com/mickem/nscp-docs/blob/master/samples/CheckWMI_check_wmi_samples.md)_
@@ -91,20 +102,20 @@ L        cli  Performance data: 'BuildNumber'=10240;9600;8000
 
 
 
-<a name="check_wmi_warn"/>
-<a name="check_wmi_crit"/>
-<a name="check_wmi_debug"/>
-<a name="check_wmi_show-all"/>
-<a name="check_wmi_escape-html"/>
-<a name="check_wmi_help"/>
-<a name="check_wmi_help-pb"/>
-<a name="check_wmi_show-default"/>
-<a name="check_wmi_help-short"/>
-<a name="check_wmi_target"/>
-<a name="check_wmi_user"/>
-<a name="check_wmi_password"/>
-<a name="check_wmi_query"/>
-<a name="check_wmi_options"/>
+<a id="check_wmi_warn"></a>
+<a id="check_wmi_crit"></a>
+<a id="check_wmi_debug"></a>
+<a id="check_wmi_show-all"></a>
+<a id="check_wmi_escape-html"></a>
+<a id="check_wmi_help"></a>
+<a id="check_wmi_help-pb"></a>
+<a id="check_wmi_show-default"></a>
+<a id="check_wmi_help-short"></a>
+<a id="check_wmi_target"></a>
+<a id="check_wmi_user"></a>
+<a id="check_wmi_password"></a>
+<a id="check_wmi_query"></a>
+<a id="check_wmi_options"></a>
 #### Command-line Arguments
 
 
@@ -165,7 +176,6 @@ Filter which marks items which generates an ok state.
 If anything matches this any previous state for this item will be reset to ok.
 
 
-
 <h5 id="check_wmi_empty-state">empty-state:</h5>
 
 Return status to use when nothing matched filter.
@@ -183,7 +193,7 @@ TODO: obj ( key: value; key: value) obj (key:valuer;key:value)
 
 Top level syntax.
 Used to format the message to return can include text as well as special keywords which will include information from the checks.
-To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to excpae on linux).
+To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to escape on linux).
 
 *Default Value:* `${list}`
 
@@ -205,7 +215,7 @@ DEPRECATED! This is the syntax for when nothing matches the filter.
 Detail level syntax.
 Used to format each resulting item in the message.
 %(list) will be replaced with all the items formated by this syntax string in the top-syntax.
-To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to excpae on linux).
+To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to escape on linux).
 
 *Default Value:* `%(line)`
 
@@ -222,25 +232,28 @@ The WMI root namespace to bind to.
 *Default Value:* `root\cimv2`
 
 
-<a name="check_wmi_filter_keys"/>
+<a id="check_wmi_filter_keys"></a>
 #### Filter keywords
 
 
-| Option        | Description                                                                                                  |
-|---------------|--------------------------------------------------------------------------------------------------------------|
-| count         | Number of items matching the filter. Common option for all checks.                                           |
-| crit_count    | Number of items matched the critical criteria. Common option for all checks.                                 |
-| crit_list     | A list of all items which matched the critical criteria. Common option for all checks.                       |
-| detail_list   | A special list with critical, then warning and finally ok. Common option for all checks.                     |
-| list          | A list of all items which matched the filter. Common option for all checks.                                  |
-| ok_count      | Number of items matched the ok criteria. Common option for all checks.                                       |
-| ok_list       | A list of all items which matched the ok criteria. Common option for all checks.                             |
-| problem_count | Number of items matched either warning or critical criteria. Common option for all checks.                   |
-| problem_list  | A list of all items which matched either the critical or the warning criteria. Common option for all checks. |
-| status        | The returned status (OK/WARN/CRIT/UNKNOWN). Common option for all checks.                                    |
-| total         | Total number of items. Common option for all checks.                                                         |
-| warn_count    | Number of items matched the warning criteria. Common option for all checks.                                  |
-| warn_list     | A list of all items which matched the warning criteria. Common option for all checks.                        |
+
+**Common options for all checks:**
+
+| Option        | Description                                                                    |
+|---------------|--------------------------------------------------------------------------------|
+| count         | Number of items matching the filter.                                           |
+| crit_count    | Number of items matched the critical criteria.                                 |
+| crit_list     | A list of all items which matched the critical criteria.                       |
+| detail_list   | A special list with critical, then warning and finally ok.                     |
+| list          | A list of all items which matched the filter.                                  |
+| ok_count      | Number of items matched the ok criteria.                                       |
+| ok_list       | A list of all items which matched the ok criteria.                             |
+| problem_count | Number of items matched either warning or critical criteria.                   |
+| problem_list  | A list of all items which matched either the critical or the warning criteria. |
+| status        | The returned status (OK/WARN/CRIT/UNKNOWN).                                    |
+| total         | Total number of items.                                                         |
+| warn_count    | Number of items matched the warning criteria.                                  |
+| warn_list     | A list of all items which matched the warning criteria.                        |
 
 
 
@@ -249,13 +262,13 @@ The WMI root namespace to bind to.
 
 
 
-| Path / Section                            | Description         |
-|-------------------------------------------|---------------------|
-| [/settings/targets](#target-list-section) | TARGET LIST SECTION |
+| Path / Section                                | Description         |
+|-----------------------------------------------|---------------------|
+| [/settings/wmi/targets](#target-list-section) | TARGET LIST SECTION |
 
 
 
-### TARGET LIST SECTION <a id="/settings/targets"/>
+### TARGET LIST SECTION <a id="/settings/wmi/targets"></a>
 
 A list of available remote target systems
 

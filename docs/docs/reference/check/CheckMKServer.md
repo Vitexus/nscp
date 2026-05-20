@@ -4,6 +4,15 @@ A server that listens for incoming check_mk connection and processes incoming re
 
 
 
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `CheckMKServer = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+CheckMKServer = enabled
+```
+
 
 
 
@@ -14,36 +23,43 @@ A server that listens for incoming check_mk connection and processes incoming re
 | Path / Section                                                  | Description               |
 |-----------------------------------------------------------------|---------------------------|
 | [/settings/check_mk/server](#check-mk-server-section)           | CHECK MK SERVER SECTION   |
+| [/settings/check_mk/server/local](#local-check-entries)         | LOCAL CHECK ENTRIES       |
+| [/settings/check_mk/server/mrpe](#mrpe-entries)                 | MRPE ENTRIES              |
 | [/settings/check_mk/server/scripts](#remote-target-definitions) | REMOTE TARGET DEFINITIONS |
-| [/settings/default](#)                                          |                           |
+| [/settings/default](#default-values)                            | Default values            |
 
 
 
-### CHECK MK SERVER SECTION <a id="/settings/check_mk/server"/>
+### CHECK MK SERVER SECTION <a id="/settings/check_mk/server"></a>
 
 Section for check_mk (CheckMKServer.dll) protocol options.
 
 
 
 
-| Key                                         | Default Value                       | Description           |
-|---------------------------------------------|-------------------------------------|-----------------------|
-| [allowed ciphers](#allowed-ciphers)         | ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH   | ALLOWED CIPHERS       |
-| [allowed hosts](#allowed-hosts)             | 127.0.0.1                           | ALLOWED HOSTS         |
-| [bind to](#bind-to-address)                 |                                     | BIND TO ADDRESS       |
-| [ca](#ca)                                   | ${certificate-path}/ca.pem          | CA                    |
-| [cache allowed hosts](#cache-allowed-hosts) | true                                | CACHE ALLOWED HOSTS   |
-| [certificate](#ssl-certificate)             | ${certificate-path}/certificate.pem | SSL CERTIFICATE       |
-| [certificate format](#certificate-format)   | PEM                                 | CERTIFICATE FORMAT    |
-| [certificate key](#ssl-certificate)         |                                     | SSL CERTIFICATE       |
-| [dh](#dh-key)                               | ${certificate-path}/nrpe_dh_512.pem | DH KEY                |
-| [port](#port-number)                        | 6556                                | PORT NUMBER           |
-| [socket queue size](#listen-queue)          | 0                                   | LISTEN QUEUE          |
-| [ssl options](#verify-mode)                 |                                     | VERIFY MODE           |
-| [thread pool](#thread-pool)                 | 10                                  | THREAD POOL           |
-| [timeout](#timeout)                         | 30                                  | TIMEOUT               |
-| [use ssl](#enable-ssl-encryption)           | false                               | ENABLE SSL ENCRYPTION |
-| [verify mode](#verify-mode)                 | none                                | VERIFY MODE           |
+| Key                                                  | Default Value                       | Description                         |
+|------------------------------------------------------|-------------------------------------|-------------------------------------|
+| [allowed ciphers](#allowed-ciphers)                  | ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH   | ALLOWED CIPHERS                     |
+| [allowed hosts](#allowed-hosts)                      | 127.0.0.1                           | Allowed hosts                       |
+| [bind to](#bind-to-address)                          |                                     | BIND TO ADDRESS                     |
+| [ca](#ca)                                            | ${certificate-path}/ca.pem          | CA                                  |
+| [cache allowed hosts](#cache-list-of-allowed-hosts)  | true                                | Cache list of allowed hosts         |
+| [certificate](#ssl-certificate)                      | ${certificate-path}/certificate.pem | SSL CERTIFICATE                     |
+| [certificate format](#certificate-format)            | PEM                                 | CERTIFICATE FORMAT                  |
+| [certificate key](#ssl-certificate)                  |                                     | SSL CERTIFICATE                     |
+| [debug verify](#debug-peer-certificate-verification) | false                               | Debug peer certificate verification |
+| [dh](#dh-key)                                        |                                     | DH KEY                              |
+| [local channel](#local-submission-channel)           | check_mk-local                      | LOCAL SUBMISSION CHANNEL            |
+| [mrpe channel](#mrpe-submission-channel)             | check_mk-mrpe                       | MRPE SUBMISSION CHANNEL             |
+| [port](#port-number)                                 | 6556                                | PORT NUMBER                         |
+| [socket queue size](#listen-queue)                   | 0                                   | LISTEN QUEUE                        |
+| [ssl options](#verify-mode)                          |                                     | VERIFY MODE                         |
+| [submission ttl](#submitted-result-ttl)              | 60                                  | SUBMITTED RESULT TTL                |
+| [thread pool](#thread-pool)                          | 10                                  | THREAD POOL                         |
+| [timeout](#timeout)                                  | 30                                  | TIMEOUT                             |
+| [tls version](#tls-version-to-use)                   | tlsv1.2+                            | TLS version to use                  |
+| [use ssl](#enable-ssl-encryption)                    | false                               | ENABLE SSL ENCRYPTION               |
+| [verify mode](#verify-mode)                          | none                                | VERIFY MODE                         |
 
 
 
@@ -56,11 +72,15 @@ ca=${certificate-path}/ca.pem
 cache allowed hosts=true
 certificate=${certificate-path}/certificate.pem
 certificate format=PEM
-dh=${certificate-path}/nrpe_dh_512.pem
+debug verify=false
+local channel=check_mk-local
+mrpe channel=check_mk-mrpe
 port=6556
 socket queue size=0
+submission ttl=60
 thread pool=10
 timeout=30
+tls version=tlsv1.2+
 use ssl=false
 verify mode=none
 
@@ -85,7 +105,6 @@ The default here will differ is used in "insecure" mode or not. check_nrpe uses 
 | Key:           | allowed ciphers                                         |
 | Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | `ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH`                     |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -98,9 +117,9 @@ allowed ciphers=ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH
 
 
 
-#### ALLOWED HOSTS <a id="/settings/check_mk/server/allowed hosts"></a>
+#### Allowed hosts <a id="/settings/check_mk/server/allowed hosts"></a>
 
-A comma separated list of allowed hosts. You can use netmasks (/ syntax) or * to create ranges. parent for this key is found under: /settings/default this is marked as advanced in favor of the parent.
+A comma separated list of allowed hosts. You can use netmasks (/ syntax) or * to create ranges.
 
 
 
@@ -110,16 +129,14 @@ A comma separated list of allowed hosts. You can use netmasks (/ syntax) or * to
 |----------------|---------------------------------------------------------|
 | Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
 | Key:           | allowed hosts                                           |
-| Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | `127.0.0.1`                                             |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
 
 ```
 [/settings/check_mk/server]
-# ALLOWED HOSTS
+# Allowed hosts
 allowed hosts=127.0.0.1
 ```
 
@@ -127,7 +144,7 @@ allowed hosts=127.0.0.1
 
 #### BIND TO ADDRESS <a id="/settings/check_mk/server/bind to"></a>
 
-Allows you to bind server to a specific local address. This has to be a dotted ip address not a host name. Leaving this blank will bind to all available IP addresses. parent for this key is found under: /settings/default this is marked as advanced in favor of the parent.
+Allows you to bind server to a specific local address. This has to be a dotted ip address not a host name. Leaving this blank will bind to all available IP addresses.
 
 
 
@@ -138,9 +155,7 @@ Allows you to bind server to a specific local address. This has to be a dotted i
 |----------------|---------------------------------------------------------|
 | Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
 | Key:           | bind to                                                 |
-| Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | _N/A_                                                   |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -167,7 +182,6 @@ bind to=
 | Key:           | ca                                                      |
 | Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | `${certificate-path}/ca.pem`                            |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -180,9 +194,9 @@ ca=${certificate-path}/ca.pem
 
 
 
-#### CACHE ALLOWED HOSTS <a id="/settings/check_mk/server/cache allowed hosts"></a>
+#### Cache list of allowed hosts <a id="/settings/check_mk/server/cache allowed hosts"></a>
 
-If host names (DNS entries) should be cached, improves speed and security somewhat but won't allow you to have dynamic IPs for your Nagios server. parent for this key is found under: /settings/default this is marked as advanced in favor of the parent.
+If host names (DNS entries) should be cached, improves speed and security somewhat but won't allow you to have dynamic IPs for your Nagios server.
 
 
 
@@ -192,16 +206,14 @@ If host names (DNS entries) should be cached, improves speed and security somewh
 |----------------|---------------------------------------------------------|
 | Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
 | Key:           | cache allowed hosts                                     |
-| Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | `true`                                                  |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
 
 ```
 [/settings/check_mk/server]
-# CACHE ALLOWED HOSTS
+# Cache list of allowed hosts
 cache allowed hosts=true
 ```
 
@@ -221,7 +233,6 @@ cache allowed hosts=true
 | Key:           | certificate                                             |
 | Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | `${certificate-path}/certificate.pem`                   |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -248,7 +259,6 @@ certificate=${certificate-path}/certificate.pem
 | Key:           | certificate format                                      |
 | Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | `PEM`                                                   |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -276,7 +286,6 @@ certificate format=PEM
 | Key:           | certificate key                                         |
 | Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | _N/A_                                                   |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -289,7 +298,34 @@ certificate key=
 
 
 
+#### Debug peer certificate verification <a id="/settings/check_mk/server/debug verify"></a>
+
+Set this to tru to output certificate verification errors, these are outputed to stdout (not the log).
+
+
+
+
+
+| Key            | Description                                             |
+|----------------|---------------------------------------------------------|
+| Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
+| Key:           | debug verify                                            |
+| Advanced:      | Yes (means it is not commonly used)                     |
+| Default value: | `false`                                                 |
+
+
+**Sample:**
+
+```
+[/settings/check_mk/server]
+# Debug peer certificate verification
+debug verify=false
+```
+
+
+
 #### DH KEY <a id="/settings/check_mk/server/dh"></a>
+
 
 
 
@@ -302,8 +338,7 @@ certificate key=
 | Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
 | Key:           | dh                                                      |
 | Advanced:      | Yes (means it is not commonly used)                     |
-| Default value: | `${certificate-path}/nrpe_dh_512.pem`                   |
-| Used by:       | CheckMKServer                                           |
+| Default value: | _N/A_                                                   |
 
 
 **Sample:**
@@ -311,7 +346,57 @@ certificate key=
 ```
 [/settings/check_mk/server]
 # DH KEY
-dh=${certificate-path}/nrpe_dh_512.pem
+dh=
+```
+
+
+
+#### LOCAL SUBMISSION CHANNEL <a id="/settings/check_mk/server/local channel"></a>
+
+Channel name passive check results land on to be relayed as cached <<<local>>> entries.
+
+
+
+
+
+| Key            | Description                                             |
+|----------------|---------------------------------------------------------|
+| Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
+| Key:           | local channel                                           |
+| Default value: | `check_mk-local`                                        |
+
+
+**Sample:**
+
+```
+[/settings/check_mk/server]
+# LOCAL SUBMISSION CHANNEL
+local channel=check_mk-local
+```
+
+
+
+#### MRPE SUBMISSION CHANNEL <a id="/settings/check_mk/server/mrpe channel"></a>
+
+Channel name passive check results land on to be relayed as cached <<<mrpe>>> entries.
+
+
+
+
+
+| Key            | Description                                             |
+|----------------|---------------------------------------------------------|
+| Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
+| Key:           | mrpe channel                                            |
+| Default value: | `check_mk-mrpe`                                         |
+
+
+**Sample:**
+
+```
+[/settings/check_mk/server]
+# MRPE SUBMISSION CHANNEL
+mrpe channel=check_mk-mrpe
 ```
 
 
@@ -329,7 +414,6 @@ Port to use for check_mk.
 | Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
 | Key:           | port                                                    |
 | Default value: | `6556`                                                  |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -344,7 +428,7 @@ port=6556
 
 #### LISTEN QUEUE <a id="/settings/check_mk/server/socket queue size"></a>
 
-Number of sockets to queue before starting to refuse new incoming connections. This can be used to tweak the amount of simultaneous sockets that the server accepts. parent for this key is found under: /settings/default this is marked as advanced in favor of the parent.
+Number of sockets to queue before starting to refuse new incoming connections. This can be used to tweak the amount of simultaneous sockets that the server accepts.
 
 
 
@@ -356,7 +440,6 @@ Number of sockets to queue before starting to refuse new incoming connections. T
 | Key:           | socket queue size                                       |
 | Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | `0`                                                     |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -374,9 +457,12 @@ socket queue size=0
 Comma separated list of verification flags to set on the SSL socket.
 
 default-workarounds	Various workarounds for what I understand to be broken ssl implementations
-no-sslv2	Do not use the SSLv2 protocol.
-no-sslv3	Do not use the SSLv3 protocol.
-no-tlsv1	Do not use the TLSv1 protocol.
+no-sslv2	Do not use the SSLv2 protocol (prefer tls version instead).
+no-sslv3	Do not use the SSLv3 protocol (prefer tls version instead).
+no-tlsv1	Do not use the TLSv1 protocol (prefer tls version instead).
+no-tlsv1_1	Do not use the TLSv1.1 protocol (prefer tls version instead).
+no-tlsv1_2	Do not use the TLSv1.2 protocol (prefer tls version instead).
+no-tlsv1_3	Do not use the TLSv1.3 protocol (prefer tls version instead).
 single-dh-use	Always create a new key when using temporary/ephemeral DH parameters. This option must be used to prevent small subgroup attacks, when the DH parameters were not generated using "strong" primes (e.g. when using DSA-parameters).
 
 
@@ -393,7 +479,6 @@ single-dh-use	Always create a new key when using temporary/ephemeral DH paramete
 | Key:           | ssl options                                             |
 | Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | _N/A_                                                   |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -406,9 +491,34 @@ ssl options=
 
 
 
+#### SUBMITTED RESULT TTL <a id="/settings/check_mk/server/submission ttl"></a>
+
+How long (seconds) a submitted check result is advertised as fresh in the cached(...) header. Should be at least the scheduler interval that submits it.
+
+
+
+
+
+| Key            | Description                                             |
+|----------------|---------------------------------------------------------|
+| Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
+| Key:           | submission ttl                                          |
+| Default value: | `60`                                                    |
+
+
+**Sample:**
+
+```
+[/settings/check_mk/server]
+# SUBMITTED RESULT TTL
+submission ttl=60
+```
+
+
+
 #### THREAD POOL <a id="/settings/check_mk/server/thread pool"></a>
 
- parent for this key is found under: /settings/default this is marked as advanced in favor of the parent.
+
 
 
 
@@ -420,7 +530,6 @@ ssl options=
 | Key:           | thread pool                                             |
 | Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | `10`                                                    |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -435,7 +544,7 @@ thread pool=10
 
 #### TIMEOUT <a id="/settings/check_mk/server/timeout"></a>
 
-Timeout when reading packets on incoming sockets. If the data has not arrived within this time we will bail out. parent for this key is found under: /settings/default this is marked as advanced in favor of the parent.
+Timeout (in seconds) when reading packets on incoming sockets. If the data has not arrived within this time we will bail out.
 
 
 
@@ -445,9 +554,7 @@ Timeout when reading packets on incoming sockets. If the data has not arrived wi
 |----------------|---------------------------------------------------------|
 | Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
 | Key:           | timeout                                                 |
-| Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | `30`                                                    |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -456,6 +563,32 @@ Timeout when reading packets on incoming sockets. If the data has not arrived wi
 [/settings/check_mk/server]
 # TIMEOUT
 timeout=30
+```
+
+
+
+#### TLS version to use <a id="/settings/check_mk/server/tls version"></a>
+
+Valid options are tlsv1.3, tlsv1.2, tlsv1.1, tlsv1.0, sslv3 as well as tlsv1.3+, tlsv1.2+, tlsv1.1+, tlsv1.0+, sslv3+ (Which uses the version mentioned and above)
+
+
+
+
+
+| Key            | Description                                             |
+|----------------|---------------------------------------------------------|
+| Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
+| Key:           | tls version                                             |
+| Advanced:      | Yes (means it is not commonly used)                     |
+| Default value: | `tlsv1.2+`                                              |
+
+
+**Sample:**
+
+```
+[/settings/check_mk/server]
+# TLS version to use
+tls version=tlsv1.2+
 ```
 
 
@@ -473,7 +606,6 @@ This option controls if SSL should be enabled.
 | Path:          | [/settings/check_mk/server](#/settings/check_mk/server) |
 | Key:           | use ssl                                                 |
 | Default value: | `false`                                                 |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -511,7 +643,6 @@ client-once	Only request a client certificate on the initial TLS/SSL handshake. 
 | Key:           | verify mode                                             |
 | Advanced:      | Yes (means it is not commonly used)                     |
 | Default value: | `none`                                                  |
-| Used by:       | CheckMKServer                                           |
 
 
 **Sample:**
@@ -523,7 +654,35 @@ verify mode=none
 ```
 
 
-### REMOTE TARGET DEFINITIONS <a id="/settings/check_mk/server/scripts"/>
+### LOCAL CHECK ENTRIES <a id="/settings/check_mk/server/local"></a>
+
+Each key under this path becomes a Checkmk service in <<<local>>> with the value `command=<nscp-command> [args...]`.
+Example:
+  CPU Load = command=check_cpu warn=load>80
+
+
+This is a section of objects. This means that you will create objects below this point by adding sections which all look the same.
+
+
+
+
+
+
+### MRPE ENTRIES <a id="/settings/check_mk/server/mrpe"></a>
+
+Each key under this path becomes a Checkmk service in <<<mrpe>>> with the value `command=<nscp-command> [args...]`.
+Example:
+  Uptime = command=check_uptime warn=uptime<2d
+
+
+This is a section of objects. This means that you will create objects below this point by adding sections which all look the same.
+
+
+
+
+
+
+### REMOTE TARGET DEFINITIONS <a id="/settings/check_mk/server/scripts"></a>
 
 
 
@@ -535,29 +694,30 @@ This is a section of objects. This means that you will create objects below this
 
 
 
-### /settings/default <a id="/settings/default"/>
+### Default values <a id="/settings/default"></a>
+
+Default values used in other config sections.
 
 
 
 
-
-
-| Key                                         | Default Value | Description           |
-|---------------------------------------------|---------------|-----------------------|
-| [allowed hosts](#allowed-hosts)             | 127.0.0.1     | ALLOWED HOSTS         |
-| [bind to](#bind-to-address)                 |               | BIND TO ADDRESS       |
-| [cache allowed hosts](#cache-allowed-hosts) | true          | CACHE ALLOWED HOSTS   |
-| [encoding](#nrpe-payload-encoding)          |               | NRPE PAYLOAD ENCODING |
-| [inbox](#inbox)                             | inbox         | INBOX                 |
-| [password](#password)                       |               | PASSWORD              |
-| [socket queue size](#listen-queue)          | 0             | LISTEN QUEUE          |
-| [thread pool](#thread-pool)                 | 10            | THREAD POOL           |
-| [timeout](#timeout)                         | 30            | TIMEOUT               |
+| Key                                                 | Default Value | Description                 |
+|-----------------------------------------------------|---------------|-----------------------------|
+| [allowed hosts](#allowed-hosts)                     | 127.0.0.1     | Allowed hosts               |
+| [bind to](#bind-to-address)                         |               | BIND TO ADDRESS             |
+| [cache allowed hosts](#cache-list-of-allowed-hosts) | true          | Cache list of allowed hosts |
+| [encoding](#nrpe-payload-encoding)                  |               | NRPE PAYLOAD ENCODING       |
+| [inbox](#inbox)                                     | inbox         | INBOX                       |
+| [password](#password)                               |               | Password                    |
+| [socket queue size](#listen-queue)                  | 0             | LISTEN QUEUE                |
+| [thread pool](#thread-pool)                         | 10            | THREAD POOL                 |
+| [timeout](#timeout)                                 | 30            | TIMEOUT                     |
+| [timezone](#timezone)                               | local         | Timezone                    |
 
 
 
 ```ini
-# 
+# Default values used in other config sections.
 [/settings/default]
 allowed hosts=127.0.0.1
 cache allowed hosts=true
@@ -565,6 +725,7 @@ inbox=inbox
 socket queue size=0
 thread pool=10
 timeout=30
+timezone=local
 
 ```
 
@@ -572,7 +733,7 @@ timeout=30
 
 
 
-#### ALLOWED HOSTS <a id="/settings/default/allowed hosts"></a>
+#### Allowed hosts <a id="/settings/default/allowed hosts"></a>
 
 A comma separated list of allowed hosts. You can use netmasks (/ syntax) or * to create ranges.
 
@@ -580,19 +741,18 @@ A comma separated list of allowed hosts. You can use netmasks (/ syntax) or * to
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | allowed hosts                                                    |
-| Default value: | `127.0.0.1`                                                      |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | allowed hosts                           |
+| Default value: | `127.0.0.1`                             |
 
 
 **Sample:**
 
 ```
 [/settings/default]
-# ALLOWED HOSTS
+# Allowed hosts
 allowed hosts=127.0.0.1
 ```
 
@@ -607,12 +767,11 @@ Allows you to bind server to a specific local address. This has to be a dotted i
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | bind to                                                          |
-| Default value: | _N/A_                                                            |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | bind to                                 |
+| Default value: | _N/A_                                   |
 
 
 **Sample:**
@@ -625,7 +784,7 @@ bind to=
 
 
 
-#### CACHE ALLOWED HOSTS <a id="/settings/default/cache allowed hosts"></a>
+#### Cache list of allowed hosts <a id="/settings/default/cache allowed hosts"></a>
 
 If host names (DNS entries) should be cached, improves speed and security somewhat but won't allow you to have dynamic IPs for your Nagios server.
 
@@ -633,19 +792,18 @@ If host names (DNS entries) should be cached, improves speed and security somewh
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | cache allowed hosts                                              |
-| Default value: | `true`                                                           |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | cache allowed hosts                     |
+| Default value: | `true`                                  |
 
 
 **Sample:**
 
 ```
 [/settings/default]
-# CACHE ALLOWED HOSTS
+# Cache list of allowed hosts
 cache allowed hosts=true
 ```
 
@@ -660,13 +818,12 @@ cache allowed hosts=true
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | encoding                                                         |
-| Advanced:      | Yes (means it is not commonly used)                              |
-| Default value: | _N/A_                                                            |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | encoding                                |
+| Advanced:      | Yes (means it is not commonly used)     |
+| Default value: | _N/A_                                   |
 
 
 **Sample:**
@@ -687,12 +844,11 @@ The default channel to post incoming messages on
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | inbox                                                            |
-| Default value: | `inbox`                                                          |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | inbox                                   |
+| Default value: | `inbox`                                 |
 
 
 **Sample:**
@@ -705,7 +861,7 @@ inbox=inbox
 
 
 
-#### PASSWORD <a id="/settings/default/password"></a>
+#### Password <a id="/settings/default/password"></a>
 
 Password used to authenticate against server
 
@@ -714,19 +870,18 @@ Password used to authenticate against server
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | password                                                         |
-| Default value: | _N/A_                                                            |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | password                                |
+| Default value: | _N/A_                                   |
 
 
 **Sample:**
 
 ```
 [/settings/default]
-# PASSWORD
+# Password
 password=
 ```
 
@@ -740,13 +895,12 @@ Number of sockets to queue before starting to refuse new incoming connections. T
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | socket queue size                                                |
-| Advanced:      | Yes (means it is not commonly used)                              |
-| Default value: | `0`                                                              |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | socket queue size                       |
+| Advanced:      | Yes (means it is not commonly used)     |
+| Default value: | `0`                                     |
 
 
 **Sample:**
@@ -767,13 +921,12 @@ socket queue size=0
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | thread pool                                                      |
-| Advanced:      | Yes (means it is not commonly used)                              |
-| Default value: | `10`                                                             |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | thread pool                             |
+| Advanced:      | Yes (means it is not commonly used)     |
+| Default value: | `10`                                    |
 
 
 **Sample:**
@@ -788,18 +941,17 @@ thread pool=10
 
 #### TIMEOUT <a id="/settings/default/timeout"></a>
 
-Timeout when reading packets on incoming sockets. If the data has not arrived within this time we will bail out.
+Timeout (in seconds) when reading packets on incoming sockets. If the data has not arrived within this time we will bail out.
 
 
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | timeout                                                          |
-| Default value: | `30`                                                             |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | timeout                                 |
+| Default value: | `30`                                    |
 
 
 **Sample:**
@@ -808,6 +960,32 @@ Timeout when reading packets on incoming sockets. If the data has not arrived wi
 [/settings/default]
 # TIMEOUT
 timeout=30
+```
+
+
+
+#### Timezone <a id="/settings/default/timezone"></a>
+
+Timezone used to render dates such as boot time. Accepts 'local' (default), 'utc', or any POSIX TZ string parseable by Boost.Date_time (e.g. 'MST-07' or 'EST-05EDT,M3.2.0,M11.1.0').
+
+
+
+
+
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | timezone                                |
+| Advanced:      | Yes (means it is not commonly used)     |
+| Default value: | `local`                                 |
+
+
+**Sample:**
+
+```
+[/settings/default]
+# Timezone
+timezone=local
 ```
 
 

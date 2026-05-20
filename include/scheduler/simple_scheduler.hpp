@@ -18,219 +18,237 @@
  */
 
 #pragma once
-#include <string>
-#include <list>
-#include <queue>
-
-#include <boost/date_time.hpp>
+#include <boost/date_time/local_time/local_time.hpp>
+#include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/date_time/posix_time/ptime.hpp>
 #include <boost/date_time/time_duration.hpp>
-#include <boost/thread.hpp>
-#include <boost/date_time/local_time/local_time.hpp>
 #include <boost/optional.hpp>
-#include <boost/unordered_map.hpp>
+#include <boost/thread.hpp>
 #include <boost/thread/shared_mutex.hpp>
-#include <boost/function.hpp>
-
-#include <has-threads.hpp>
-
+#include <boost/unordered_map.hpp>
+#include <nscp_time.hpp>
 #include <parsers/cron/cron_parser.hpp>
+#include <queue>
+#include <random>
+#include <string>
+#include <threads/has-threads.hpp>
+#include <utility>
 
 namespace simple_scheduler {
 
-	struct task {
-		int id;
-		std::string tag;
-	private:
-		boost::posix_time::time_duration duration;
-		cron_parser::schedule schedule;
-		bool has_duration;
-		bool has_schedule;
-		double randomeness;
-
-	public:
-		task() : id(0), duration(boost::posix_time::seconds(0)), has_duration(false), has_schedule(false), randomeness(0.0) {}
-		task(std::string tag, boost::posix_time::time_duration duration, double randomeness) : id(0), tag(tag), duration(duration), has_duration(true), has_schedule(false), randomeness(randomeness) {}
-		task(std::string tag, cron_parser::schedule schedule) : id(0), tag(tag), schedule(schedule), has_duration(false), has_schedule(true), randomeness(0.0) {}
-
-		bool is_disabled() const {
-			return !has_duration && !has_schedule;
-		}
-		std::string to_string() const {
-			std::stringstream ss;
-			ss << id << "[" << tag << "] = ";
-			if (has_duration)
-				ss << duration.total_seconds() << " " << (randomeness*100) << "% randomness";
-			else if (has_schedule)
-				ss << schedule.to_string();
-			else
-				ss << "disabled";
-			return ss.str();
-		}
-		boost::posix_time::ptime get_next(boost::posix_time::ptime now_time) const {
-			if (has_duration && duration.total_seconds() > 0) {
-				double total_delay = duration.total_seconds();
-				double val = (total_delay * randomeness) * (static_cast<double>(rand()) / static_cast<double>(RAND_MAX));
-				double time_to_wait = (total_delay * (1.0 - randomeness)) + val;
-				if (time_to_wait < 1.0) {
-					time_to_wait = 1.0;
-				}
-				return now_time + boost::posix_time::seconds(time_to_wait);
-			} else if (has_duration) {
-				return now_time;
-			}
-			return schedule.find_next(now_time);
-		}
-	};
-
-
-	class handler {
-	public:
-		virtual bool handle_schedule(task item) = 0;
-		virtual void on_error(const char* file, int line, std::string error) = 0;
-		virtual void on_trace(const char* file, int line, std::string error) = 0;
-	};
-	struct schedule_instance {
-		boost::posix_time::ptime time;
-		int schedule_id;
-		friend inline bool operator < (const schedule_instance& p1, const schedule_instance& p2) {
-			return p1.time > p2.time;
-		}
-	};
-
-	template<typename T>
-	class safe_schedule_queue {
-	public:
-		typedef boost::optional<T> value_type;
-	private:
-		typedef std::priority_queue<T> schedule_queue_type;
-		schedule_queue_type queue_;
-		boost::shared_mutex mutex_;
-	public:
-		bool empty(unsigned int timeout = 5) {
-			boost::shared_lock<boost::shared_mutex> lock(mutex_, boost::get_system_time() + boost::posix_time::seconds(timeout));
-			if (!lock.owns_lock())
-				return false;
-			return queue_.empty();
-		}
-
-		boost::optional<T> top(unsigned int timeout = 5) {
-			boost::shared_lock<boost::shared_mutex> lock(mutex_, boost::get_system_time() + boost::posix_time::seconds(timeout));
-			if (!lock || queue_.empty())
-				return boost::optional<T>();
-			return boost::optional<T>(queue_.top());
-		}
-
-		std::size_t size(unsigned int timeout = 5) {
-			boost::shared_lock<boost::shared_mutex> lock(mutex_, boost::get_system_time() + boost::posix_time::seconds(timeout));
-			if (!lock || queue_.empty())
-				return 0;
-			return queue_.size();
-		}
-
-		boost::optional<T> pop(unsigned int timeout = 5) {
-			boost::unique_lock<boost::shared_mutex> lock(mutex_, boost::get_system_time() + boost::posix_time::seconds(timeout));
-			if (!lock || queue_.empty())
-				return boost::optional<T>();
-			boost::optional<T>  ret = queue_.top();
-			queue_.pop();
-			return ret;
-		}
-
-		bool push(T instance, unsigned int timeout = 5) {
-			boost::unique_lock<boost::shared_mutex> lock(mutex_, boost::get_system_time() + boost::posix_time::seconds(timeout));
-			if (!lock) {
-				return false;
-			}
-			queue_.push(instance);
-			return true;
-		}
-	};
-
-	class scheduler : public boost::noncopyable {
-	private:
-		typedef boost::unordered_map<int, task> tasks_list_type;
-		typedef boost::optional<task> op_task_object;
-		typedef safe_schedule_queue<schedule_instance> schedule_queue_type;
-
-		// thread variables
-		unsigned int schedule_id_;
-		volatile bool stop_requested_;
-		volatile bool running_;
-		volatile bool has_watchdog_;
-		std::size_t thread_count_;
-		handler* handler_;
-		int error_threshold_;
-
-		has_threads threads_;
-		boost::mutex mutex_;
-		tasks_list_type tasks_;
-		schedule_queue_type queue_;
-		boost::mutex idle_thread_mutex_;
-		boost::condition_variable idle_thread_cond_;
-	public:
-
-		scheduler() : schedule_id_(0), stop_requested_(false), running_(false), has_watchdog_(false), thread_count_(10), handler_(NULL), error_threshold_(5) {}
-		~scheduler() {}
-
-		void set_handler(handler* handler) {
-			handler_ = handler;
-		}
-		void unset_handler() {
-			handler_ = NULL;
-		}
-
-		boost::mutex& get_mutex() {
-			return mutex_;
-		}
-
-		int get_metric_executed() const;
-		int get_metric_compleated() const;
-		int get_metric_errors() const;
-		int get_avg_time() const;
-		int get_metric_rate() const;
-		std::size_t get_metric_threads() const;
-		std::size_t get_metric_ql();
-		bool has_metrics() const;
-
-		int add_task(std::string tag, boost::posix_time::time_duration duration, double randomness);
-		int add_task(std::string tag, cron_parser::schedule schedule);
-		void remove_task(int id);
-		op_task_object get_task(int id);
-		void clear_tasks();
-
-		void start();
-		void stop();
-		void prepare_shutdown();
-
-
-		void set_threads(int threads) {
-			thread_count_ = threads;
-			start_threads();
-		}
-		int get_threads() const { return thread_count_; }
-
-	private:
-
-		void watch_dog(int id);
-		void thread_proc(int id);
-
-
-		void reschedule(const task &item, boost::posix_time::ptime now_time);
-		void reschedule_at(const int id, boost::posix_time::ptime new_time);
-		void start_threads();
-
-		void log_error(const char* file, int line, std::string err) {
-			if (handler_)
-				handler_->on_error(file, line, err);
-		}
-		void log_trace(const char* file, int line, std::string err) {
-			if (handler_)
-				handler_->on_trace(file, line, err);
-		}
-
-		inline boost::posix_time::ptime now() const {
-			return boost::get_system_time();
-		}
-	};
+// Per-thread RNG for scheduler jitter. Seeded once from std::random_device,
+// which is CSPRNG-backed on supported platforms (RtlGenRandom on Windows,
+// /dev/urandom on Linux). Not used for any security-sensitive purpose; the
+// only goal is that two NSClient++ agents started at the same instant pick
+// distinct jitter so they don't synchronise their checks at the monitoring
+// server.
+inline std::mt19937& jitter_rng() {
+  thread_local std::mt19937 rng{std::random_device{}()};
+  return rng;
 }
+
+struct task {
+  int id;
+  std::string tag;
+
+ private:
+  boost::posix_time::time_duration duration;
+  cron_parser::schedule schedule;
+  bool has_duration;
+  bool has_schedule;
+  double jitter_factor_;
+
+ public:
+  task() : id(0), duration(boost::posix_time::seconds(0)), has_duration(false), has_schedule(false), jitter_factor_(0.0) {}
+  task(std::string tag, const boost::posix_time::time_duration duration, double jitter_factor)
+      : id(0), tag(std::move(tag)), duration(duration), has_duration(true), has_schedule(false), jitter_factor_(jitter_factor) {}
+  task(std::string tag, cron_parser::schedule schedule)
+      : id(0), tag(std::move(tag)), schedule(std::move(schedule)), has_duration(false), has_schedule(true), jitter_factor_(0.0) {}
+
+  bool is_disabled() const { return !has_duration && !has_schedule; }
+  std::string to_string() const {
+    std::stringstream ss;
+    ss << id << "[" << tag << "] = ";
+    if (has_duration)
+      ss << duration.total_seconds() << " " << (jitter_factor_ * 100) << "% randomness";
+    else if (has_schedule)
+      ss << schedule.to_string();
+    else
+      ss << "disabled";
+    return ss.str();
+  }
+  boost::posix_time::ptime get_next(boost::posix_time::ptime now_time) const {
+    if (has_duration && duration.total_seconds() > 0) {
+      const auto total_delay = static_cast<double>(duration.total_seconds());
+      std::uniform_real_distribution<> dist(0.0, 1.0);
+      const double val = (total_delay * jitter_factor_) * dist(jitter_rng());
+      double time_to_wait = (total_delay * (1.0 - jitter_factor_)) + val;
+      if (time_to_wait < 1.0) {
+        time_to_wait = 1.0;
+      }
+      return now_time + boost::posix_time::seconds(static_cast<long>(time_to_wait));
+    }
+    if (has_duration) {
+      return now_time;
+    }
+    return schedule.find_next(now_time);
+  }
+};
+
+class handler {
+ public:
+  virtual ~handler() = default;
+  virtual bool handle_schedule(task item) = 0;
+  virtual void on_error(const char* file, int line, std::string error) = 0;
+  virtual void on_trace(const char* file, int line, std::string error) = 0;
+};
+struct schedule_instance {
+  boost::posix_time::ptime time;
+  std::string tag;
+  int schedule_id{};
+  friend bool operator<(const schedule_instance& p1, const schedule_instance& p2) { return p1.time > p2.time; }
+};
+
+template <typename T>
+class safe_schedule_queue {
+ public:
+  typedef boost::optional<T> value_type;
+
+ private:
+  typedef std::priority_queue<T> schedule_queue_type;
+  schedule_queue_type queue_;
+  boost::shared_mutex mutex_;
+
+ public:
+  bool empty(const unsigned int timeout = 5) {
+    boost::shared_lock<boost::shared_mutex> lock(mutex_, boost::get_system_time() + boost::posix_time::seconds(timeout));
+    if (!lock.owns_lock()) return false;
+    return queue_.empty();
+  }
+
+  boost::optional<T> top(const unsigned int timeout = 5) {
+    boost::shared_lock<boost::shared_mutex> lock(mutex_, boost::get_system_time() + boost::posix_time::seconds(timeout));
+    if (!lock || queue_.empty()) return boost::optional<T>();
+    return boost::optional<T>(queue_.top());
+  }
+
+  std::size_t size(const unsigned int timeout = 5) {
+    boost::shared_lock<boost::shared_mutex> lock(mutex_, boost::get_system_time() + boost::posix_time::seconds(timeout));
+    if (!lock || queue_.empty()) return 0;
+    return queue_.size();
+  }
+
+  boost::optional<T> pop(const unsigned int timeout = 5) {
+    boost::unique_lock<boost::shared_mutex> lock(mutex_, boost::get_system_time() + boost::posix_time::seconds(timeout));
+    if (!lock || queue_.empty()) return boost::optional<T>();
+    boost::optional<T> ret = queue_.top();
+    queue_.pop();
+    return ret;
+  }
+
+  bool push(T instance, const unsigned int timeout = 5) {
+    boost::unique_lock<boost::shared_mutex> lock(mutex_, boost::get_system_time() + boost::posix_time::seconds(timeout));
+    if (!lock) {
+      return false;
+    }
+    queue_.push(instance);
+    return true;
+  }
+};
+
+class scheduler : public boost::noncopyable {
+ private:
+  typedef boost::unordered_map<int, task> tasks_list_type;
+  typedef boost::optional<task> op_task_object;
+  typedef safe_schedule_queue<schedule_instance> schedule_queue_type;
+
+  // thread variables
+  unsigned int schedule_id_;
+  volatile bool stop_requested_;
+  volatile bool running_;
+  volatile bool has_watchdog_;
+  std::size_t thread_count_;
+  handler* handler_;
+  int error_threshold_;
+  // Reference clock for cron evaluation. Empty string / "local" (default)
+  // matches standard cron semantics; "utc" / "gmt" restore the pre-0.13
+  // behaviour; any POSIX TZ string accepted by nscp_time (e.g. "MST-07" or
+  // "EST-05EDT,M3.2.0,M11.1.0") is also honoured. Read on every `now()`
+  // call but only written from `loadModuleEx` before the worker threads
+  // start, so a plain string is sufficient.
+  std::string tz_;
+
+  has_threads threads_;
+  boost::mutex mutex_;
+  tasks_list_type tasks_;
+  schedule_queue_type queue_;
+  boost::mutex idle_thread_mutex_;
+  boost::condition_variable idle_thread_cond_;
+
+ public:
+  scheduler() : schedule_id_(0), stop_requested_(false), running_(false), has_watchdog_(false), thread_count_(10), handler_(nullptr), error_threshold_(5) {}
+  ~scheduler() = default;
+
+  void set_handler(handler* handler) { handler_ = handler; }
+  void unset_handler() { handler_ = nullptr; }
+
+  boost::mutex& get_mutex() { return mutex_; }
+
+  int get_metric_executed() const;
+  int get_metric_compleated() const;
+  int get_metric_errors() const;
+  int get_avg_time() const;
+  int get_metric_rate() const;
+  std::size_t get_metric_threads() const;
+  std::size_t get_metric_ql();
+  bool has_metrics() const;
+
+  int add_task(const std::string& tag, boost::posix_time::time_duration duration, double jitter_factor);
+  int add_task(const std::string& tag, const cron_parser::schedule& schedule);
+  void remove_task(int id);
+  op_task_object get_task(int id);
+  void clear_tasks();
+
+  void start();
+  void stop();
+  void prepare_shutdown();
+
+  void set_threads(std::size_t threads) {
+    thread_count_ = threads;
+    start_threads();
+  }
+  std::size_t get_threads() const { return thread_count_; }
+
+  // Set the scheduler's reference clock. Accepts the same strings as
+  // nscp_time: "local" (default), "utc"/"gmt", or any POSIX TZ string
+  // such as "EST-05EDT,M3.2.0,M11.1.0". Unparseable values fall back to
+  // UTC inside `nscp_time::now`. Call from `loadModuleEx` before `start()`.
+  void set_timezone(const std::string& tz) { tz_ = tz; }
+  std::string get_timezone() const { return tz_; }
+
+ private:
+  void watch_dog(int id);
+  void thread_proc(int id);
+
+  void reschedule(const task& item, boost::posix_time::ptime now_time);
+  void reschedule_at(const std::string& tag, int id, boost::posix_time::ptime new_time);
+  void start_threads();
+
+  void log_error(const char* file, const int line, const std::string& err) const {
+    if (handler_) handler_->on_error(file, line, err);
+  }
+  void log_trace(const char* file, const int line, const std::string& err) const {
+    if (handler_) handler_->on_trace(file, line, err);
+  }
+
+ public:
+  // Cron expressions are evaluated in local time by default so that fields
+  // like "40 15 * * *" mean "15:40 on the host's clock", matching standard
+  // cron semantics (issue #570). The reference clock follows the
+  // module-level `timezone` setting via `nscp_time::now`, which accepts
+  // "local" (default), "utc"/"gmt", or any POSIX TZ string. Second-level
+  // precision is sufficient — cron is minute-granular and durations are
+  // second-granular.
+  inline boost::posix_time::ptime now() const { return nscp_time::now(tz_); }
+};
+}  // namespace simple_scheduler

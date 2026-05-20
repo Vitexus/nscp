@@ -19,312 +19,369 @@
 
 #pragma once
 
-
-#include <parsers/expression/expression.hpp>
-#include <parsers/where/engine_impl.hpp>
-
 #include <NSCAPI.h>
-#include <nscapi/nscapi_helper.hpp>
+
+#include <atomic>
+#include <map>
+#include <memory>
+#include <nscapi/macros.hpp>
 #include <nscapi/nscapi_core_helper.hpp>
 #include <nscapi/nscapi_helper_singleton.hpp>
-#include <nscapi/macros.hpp>
-
 #include <nsclient/nsclient_exception.hpp>
-
-#include <boost/shared_ptr.hpp>
-#include <boost/function.hpp>
-
+#include <parsers/filter/modern_filter.hpp>
+#include <str/utf8.hpp>
+#include <utility>
 
 namespace parsers {
-	namespace where {
-		template<class runtime_data, class config_object>
-		struct realtime_filter_helper {
-			nscapi::core_wrapper *core;
-			int plugin_id;
-			realtime_filter_helper(nscapi::core_wrapper *core, int plugin_id) : core(core), plugin_id(plugin_id) {}
+namespace where {
+template <class runtime_data, class config_object>
+struct realtime_filter_helper {
+  nscapi::core_wrapper *core;
+  int plugin_id;
+  realtime_filter_helper(nscapi::core_wrapper *core, const int plugin_id) : core(core), plugin_id(plugin_id) {}
 
-			typedef typename runtime_data::filter_type filter_type;
-			typedef typename runtime_data::transient_data_type transient_data_type;
-			typedef boost::optional<boost::posix_time::time_duration> op_duration;
-			struct container {
-			private:
-				std::string alias;
-				std::string event_name;
-				std::string target;
-				std::string target_id;
-				std::string source_id;
-			public:
-				std::string command;
-				std::string timeout_msg;
-				NSCAPI::nagiosReturn severity;
-				boost::optional<boost::posix_time::time_duration> max_age;
-				boost::optional<boost::posix_time::time_duration> silent_period;
+  typedef typename runtime_data::filter_type filter_type;
+  typedef typename runtime_data::transient_data_type transient_data_type;
+  typedef boost::optional<boost::posix_time::time_duration> op_duration;
+  struct container {
+   private:
+    std::string alias;
+    std::string event_name;
+    std::string target;
+    std::string target_id;
+    std::string source_id;
 
-				// should be private...
-				filter_type filter;
+   public:
+    std::string command;
+    std::string timeout_msg;
+    NSCAPI::nagiosReturn severity;
+    boost::optional<boost::posix_time::time_duration> max_age;
+    boost::optional<boost::posix_time::time_duration> silent_period;
 
-			private:
-				boost::posix_time::ptime next_ok_;
-				boost::posix_time::ptime next_alert_;
-			public:
-				bool debug;
-				bool escape_html;
-				runtime_data data;
+    // should be private...
+    filter_type filter;
 
-				container(std::string alias, std::string event_name, runtime_data data) : alias(alias), event_name(event_name), command(alias), debug(false), escape_html(false), data(data) {}
+   private:
+    boost::posix_time::ptime next_ok_;
+    boost::posix_time::ptime next_alert_;
 
-				void set_target(std::string new_target, std::string new_target_id, std::string new_source_id) {
-					target = new_target;
-					target_id = new_target_id;
-					source_id = new_source_id;
-				}
-				bool is_event() const {
-					return target == "event";
-				}
-				bool is_events() const {
-					return target == "events";
-				}
+   public:
+    bool debug;
+    bool escape_html;
+    runtime_data data;
+    std::atomic<long long> match_count;
+    std::atomic<long long> error_count;
+    // Set when build_filters fails during init. The container is still kept
+    // in `items` so its error_count surfaces in get_counts() — without that
+    // a filter that never started would simply be invisible in metrics. All
+    // runtime paths skip broken items so no half-built filter ever runs.
+    bool broken;
 
-				std::string get_event_name() const {
-					return event_name;
-				}
-				std::string get_alias() const {
-					return alias;
-				}
-				std::string get_target() const {
-					return target;
-				}
-				std::string get_target_id() const {
-					return target_id;
-				}
-				std::string get_source_id() const {
-					return source_id;
-				}
+    container(const std::string &alias, std::string event_name, runtime_data data)
+        : alias(alias),
+          event_name(std::move(event_name)),
+          command(alias),
+          severity(0),
+          debug(false),
+          escape_html(false),
+          data(data),
+          match_count(0),
+          error_count(0),
+          broken(false) {}
 
-				bool build_filters(nscapi::settings_filters::filter_object config, std::string &error) {
-					std::string message;
-					if (!filter.build_syntax(config.debug, config.syntax_top, config.syntax_detail, config.perf_data, config.perf_config, config.syntax_ok, config.syntax_empty, message)) {
-						error = "Failed to build strings " + alias + ": " + message;
-						return false;
-					}
-					if (!filter.build_engines(config.debug, config.filter_string, config.filter_ok, config.filter_warn, config.filter_crit)) {
-						error = "Failed to build filters: " + alias;
-						return false;
-					}
+    void set_target(const std::string &new_target, const std::string &new_target_id, const std::string &new_source_id) {
+      target = new_target;
+      target_id = new_target_id;
+      source_id = new_source_id;
+    }
+    bool is_event() const { return target == "event"; }
+    bool is_events() const { return target == "events"; }
 
-					if (!filter.validate(message)) {
-						error = "Failed to validate filter for " + alias + ": " + message;
-						return false;
-					}
-					return true;
-				}
+    std::string get_event_name() const { return event_name; }
+    std::string get_alias() const { return alias; }
+    std::string get_target() const { return target; }
+    std::string get_target_id() const { return target_id; }
+    std::string get_source_id() const { return source_id; }
 
-				bool is_silent(const boost::posix_time::ptime &now) {
-					if (!silent_period) {
-						return false;
-					}
-					return now < next_alert_;
-				}
+    bool build_filters(nscapi::settings_filters::filter_object config, std::string &error) {
+      std::string message;
+      if (!filter.build_syntax(config.debug, config.syntax_top, config.syntax_detail, config.perf_data, config.perf_config, config.syntax_ok,
+                               config.syntax_empty)) {
+        error = "Failed to build strings " + alias;
+        return false;
+      }
+      if (!filter.build_engines(config.debug, config.filter_string(), config.filter_ok, config.filter_warn, config.filter_crit)) {
+        error = "Failed to build filters: " + alias;
+        return false;
+      }
 
-				void touch(const boost::posix_time::ptime &now, bool alert) {
-					if (max_age)
-						next_ok_ = now + (*max_age);
-					if (alert && silent_period)
-						next_alert_ = now + (*silent_period);
-					else if (silent_period)
-						next_alert_ = now;
-					data.touch(now);
-				}
+      if (!filter.validate(message)) {
+        error = "Failed to validate filter for " + alias + ": " + message;
+        return false;
+      }
+      return true;
+    }
 
-				bool has_timedout(const boost::posix_time::ptime &now) const {
-					return max_age && next_ok_ <= now;
-				}
+    bool is_silent(const boost::posix_time::ptime &now) const {
+      if (!silent_period) {
+        return false;
+      }
+      return now < next_alert_;
+    }
 
-				bool find_minimum_timeout(boost::optional<boost::posix_time::ptime> &minNext) const {
-					if (!max_age)
-						return false;
-					if (!minNext)				// No value yes, lest assign ours.
-						minNext = next_ok_;
-					if (next_ok_ > *minNext)	// Our value is not interesting: lets ignore us
-						return false;
-					minNext = next_ok_;
-					return true;
-				}
-			};
+    void touch(const boost::posix_time::ptime &now, bool alert) {
+      if (max_age) next_ok_ = now + (*max_age);
+      if (alert && silent_period)
+        next_alert_ = now + (*silent_period);
+      else if (silent_period)
+        next_alert_ = now;
+      data.touch(now);
+    }
 
-			typedef boost::shared_ptr<container> container_type;
+    bool has_timedout(const boost::posix_time::ptime &now) const { return max_age && next_ok_ <= now; }
 
-			std::list<container_type> items;
+    bool find_minimum_timeout(boost::optional<boost::posix_time::ptime> &minNext) const {
+      if (!max_age) return false;
+      if (!minNext)  // No value yes, lest assign ours.
+        minNext = next_ok_;
+      if (next_ok_ > *minNext)  // Our value is not interesting: lets ignore us
+        return false;
+      minNext = next_ok_;
+      return true;
+    }
+  };
 
-			bool add_item(const boost::shared_ptr<config_object> object, const runtime_data &source_data, const std::string event_name) {
-				container_type item(new container(object->get_alias(), event_name, source_data));
-				item->set_target(object->filter.target, object->filter.target_id, object->filter.source_id);
-				item->timeout_msg = object->filter.timeout_msg;
-				item->severity = object->filter.severity;
-				item->max_age = object->filter.max_age;
-				item->silent_period = object->filter.silent_period;
-				item->debug = object->filter.debug;
-				item->escape_html = object->filter.escape_html;
-				if (!object->filter.command.empty())
-					item->command = object->filter.command;
-				std::string message;
+  typedef std::shared_ptr<container> container_type;
 
-				if (!item->build_filters(object->filter, message)) {
-					NSC_LOG_ERROR(message);
-					return false;
-				}
+  std::list<container_type> items;
 
-				item->data.boot();
-				items.push_back(item);
-				return true;
-			}
+  bool add_item(const std::shared_ptr<config_object> object, const runtime_data &source_data, const std::string &event_name) {
+    container_type item(new container(object->get_alias(), event_name, source_data));
+    item->set_target(object->filter.target, object->filter.target_id, object->filter.source_id);
+    item->timeout_msg = object->filter.timeout_msg;
+    item->severity = object->filter.severity;
+    item->max_age = object->filter.max_age;
+    item->silent_period = object->filter.silent_period;
+    item->debug = object->filter.debug;
+    item->escape_html = object->filter.escape_html;
+    if (!object->filter.command.empty()) item->command = object->filter.command;
+    std::string message;
 
-			void process_timeout(const container_type item) {
-				std::string response;
-				nscapi::core_helper ch(core, plugin_id);
-				if (!ch.submit_simple_message(item->get_target(), item->get_source_id(), item->get_target_id(), item->command, NSCAPI::query_return_codes::returnOK, item->timeout_msg, "", response)) {
-					NSC_LOG_ERROR("Failed to submit result: " + response);
-				}
-			}
+    if (!item->build_filters(object->filter, message)) {
+      NSC_LOG_ERROR(message);
+      // Keep the failed filter in `items` so its alias still appears in
+      // get_counts() with a non-zero `.errors` value — this is how an
+      // operator notices that a configured filter never came up. The
+      // boolean guard makes every runtime path treat the entry as inert.
+      item->broken = true;
+      item->error_count.fetch_add(1, std::memory_order_relaxed);
+      items.push_back(item);
+      return false;
+    }
 
-			bool process_item(container_type item, transient_data_type data, bool is_silent) {
-				std::string response;
-				if (item->is_events() || item->is_event()) {
-					item->filter.fetch_hash(true);
-				}
-				item->filter.start_match();
-				if (item->severity != -1)
-					item->filter.summary.returnCode = item->severity;
+    item->data.boot();
+    items.push_back(item);
+    return true;
+  }
 
-				modern_filter::match_result result = item->data.process_item(item->filter, data);
-				if (!result.matched_filter) {
-					return false;
-				}
+  void process_timeout(const container_type item) {
+    std::string response;
+    nscapi::core_helper ch(core, plugin_id);
+    if (!ch.submit_simple_message(item->get_target(), item->get_source_id(), item->get_target_id(), item->command, NSCAPI::query_return_codes::returnOK,
+                                  item->timeout_msg, "", response)) {
+      item->error_count.fetch_add(1, std::memory_order_relaxed);
+      NSC_LOG_ERROR("Failed to submit result: " + response);
+    }
+  }
 
-				if (is_silent) {
-					NSC_TRACE_MSG("Eventlog filter is silenced " + item->get_alias());
-					return true;
-				}
+  bool process_item(container_type item, transient_data_type data, const bool is_silent) {
+    std::string response;
+    try {
+      if (item->is_events() || item->is_event()) {
+        item->filter.fetch_hash(true);
+      }
+      item->filter.start_match();
+      if (item->severity != -1) item->filter.summary.returnCode = item->severity;
 
-				nscapi::core_helper ch(core, plugin_id);
-				if (item->is_event()) {
-					typedef std::list<std::map<std::string, std::string> > list_type;
-					typedef std::map<std::string, std::string> hash_type;
+      const modern_filter::match_result result = item->data.process_item(item->filter, data);
+      // Evaluate deferred warn/crit records and post-iteration summary
+      // expressions so the summary state reflects the final verdict before we
+      // act on it. This mirrors the cli_helper::post_process flow used by the
+      // active check path.
+      item->filter.match_post();
+      if (!result.matched_filter) {
+        return false;
+      }
+      item->match_count.fetch_add(1, std::memory_order_relaxed);
 
-					list_type keys = item->filter.records_;
-					BOOST_FOREACH(hash_type &bundle, keys) {
-						if (!ch.emit_event(item->get_event_name(), item->get_alias(), bundle, response)) {
-							NSC_LOG_ERROR("Failed to submit '" + response);
-						}
-					}
-					return true;
-				}
-				if (item->is_events()) {
-					std::list<std::map<std::string, std::string> > keys = item->filter.records_;
-					if (!ch.emit_event(item->get_event_name(), item->get_alias(), keys, response)) {
-						NSC_LOG_ERROR("Failed to submit '" + response);
-					}
-					return true;
-				}
+      if (is_silent) {
+        NSC_TRACE_MSG("Eventlog filter is silenced " + item->get_alias());
+        return true;
+      }
 
-				std::string message = item->filter.get_message();
-				if (message.empty())
-					message = "Nothing matched";
-				if (!ch.submit_simple_message(item->get_target(), item->get_source_id(), item->get_target_id(), item->command, item->filter.summary.returnCode, message, "", response)) {
-					NSC_LOG_ERROR("Failed to submit '" + message);
-				}
-				return true;
-			}
+      nscapi::core_helper ch(core, plugin_id);
+      if (item->is_event()) {
+        typedef std::list<std::map<std::string, std::string> > list_type;
+        typedef std::map<std::string, std::string> hash_type;
 
-			void touch_all() {
-				boost::posix_time::ptime current_time = boost::posix_time::second_clock::local_time();
-				BOOST_FOREACH(container_type item, items) {
-					item->touch(current_time, false);
-				}
-			}
+        list_type keys = item->filter.records_;
+        for (hash_type &bundle : keys) {
+          if (!ch.emit_event(item->get_event_name(), item->get_alias(), bundle, response)) {
+            item->error_count.fetch_add(1, std::memory_order_relaxed);
+            NSC_LOG_ERROR("Failed to submit '" + response);
+          }
+        }
+        return true;
+      }
+      if (item->is_events()) {
+        const std::list<std::map<std::string, std::string> > keys = item->filter.records_;
+        if (!ch.emit_event(item->get_event_name(), item->get_alias(), keys, response)) {
+          item->error_count.fetch_add(1, std::memory_order_relaxed);
+          NSC_LOG_ERROR("Failed to submit '" + response);
+        }
+        return true;
+      }
 
-			void process_items(transient_data_type data) {
-				try {
-					boost::posix_time::ptime current_time = boost::posix_time::second_clock::local_time();
-					bool has_matched = false;
-					bool has_changed = false;
-					// Process all items matching this event
-					if (items.size() == 0) {
-						NSC_TRACE_MSG("No filters to check for: " + data->to_string());
-					}
-					BOOST_FOREACH(container_type item, items) {
-						if (item->data.has_changed(data)) {
-							has_changed = true;
-							if (process_item(item, data, item->is_silent(current_time))) {
-								has_matched = true;
-								item->touch(current_time, true);
-							}
-						}
-					}
-					if (!has_changed) {
-						NSC_TRACE_MSG("No filters changes detected: " + data->to_string());
-					} else if (!has_matched) {
-						NSC_TRACE_MSG("No filters matched: " + data->to_string());
-					}
-					do_process_no_items(current_time);
-				} catch (const nsclient::nsclient_exception &e) {
-					NSC_DEBUG_MSG("Realtime processing faillure: " + e.reason());
-				} catch (const std::exception &e) {
-					NSC_DEBUG_MSG("Realtime processing faillure: " + utf8::utf8_from_native(e.what()));
-				} catch (...) {
-					NSC_DEBUG_MSG("Realtime processing faillure");
-				}
-			}
+      std::string message = item->filter.get_message();
+      if (message.empty()) message = "Nothing matched";
+      if (!ch.submit_simple_message(item->get_target(), item->get_source_id(), item->get_target_id(), item->command, item->filter.summary.returnCode, message,
+                                    "", response)) {
+        item->error_count.fetch_add(1, std::memory_order_relaxed);
+        NSC_LOG_ERROR("Failed to submit '" + message);
+      }
+      return true;
+    } catch (const nsclient::nsclient_exception &e) {
+      item->error_count.fetch_add(1, std::memory_order_relaxed);
+      NSC_DEBUG_MSG("Realtime filter '" + item->get_alias() + "' failed: " + e.reason());
+    } catch (const std::exception &e) {
+      item->error_count.fetch_add(1, std::memory_order_relaxed);
+      NSC_DEBUG_MSG("Realtime filter '" + item->get_alias() + "' failed: " + utf8::utf8_from_native(e.what()));
+    } catch (...) {
+      item->error_count.fetch_add(1, std::memory_order_relaxed);
+      NSC_DEBUG_MSG("Realtime filter '" + item->get_alias() + "' failed");
+    }
+    return false;
+  }
 
-			void do_process_no_items(boost::posix_time::ptime current_time) {
-				try {
-					// Match any stale items and process timeouts
-					BOOST_FOREACH(container_type item, items) {
-						if (item->has_timedout(current_time)) {
-							process_timeout(item);
-							item->touch(current_time, false);
-						}
-					}
-				} catch (...) {
-					NSC_DEBUG_MSG("Realtime processing faillure");
-				}
-			}
+  void touch_all() {
+    boost::posix_time::ptime current_time = boost::posix_time::second_clock::local_time();
+    for (container_type item : items) {
+      if (item->broken) continue;
+      item->touch(current_time, false);
+    }
+  }
 
-			void process_no_items() {
-				do_process_no_items(boost::posix_time::second_clock::local_time());
-			}
+  void process_items(transient_data_type data) {
+    try {
+      boost::posix_time::ptime current_time = boost::posix_time::second_clock::local_time();
+      bool has_matched = false;
+      bool has_changed = false;
+      // Process all items matching this event
+      if (items.size() == 0) {
+        NSC_TRACE_MSG("No filters to check for: " + data->to_string());
+      }
+      for (container_type item : items) {
+        if (item->broken) continue;
+        if (item->data.has_changed(data)) {
+          has_changed = true;
+          if (process_item(item, data, item->is_silent(current_time))) {
+            has_matched = true;
+            item->touch(current_time, true);
+          }
+        }
+      }
+      if (!has_changed) {
+        NSC_TRACE_MSG("No filters changes detected: " + data->to_string());
+      } else if (!has_matched) {
+        NSC_TRACE_MSG("No filters matched: " + data->to_string());
+      }
+      do_process_no_items(current_time);
+    } catch (const nsclient::nsclient_exception &e) {
+      bump_all_errors();
+      NSC_DEBUG_MSG("Realtime processing faillure: " + e.reason());
+    } catch (const std::exception &e) {
+      bump_all_errors();
+      NSC_DEBUG_MSG("Realtime processing faillure: " + utf8::utf8_from_native(e.what()));
+    } catch (...) {
+      bump_all_errors();
+      NSC_DEBUG_MSG("Realtime processing faillure");
+    }
+  }
 
-			op_duration find_minimum_timeout() {
-				op_duration ret;
-				boost::posix_time::ptime current_time = boost::posix_time::second_clock::local_time();
-				boost::optional<boost::posix_time::ptime> minNext;
-				BOOST_FOREACH(const container_type item, items) {
-					item->find_minimum_timeout(minNext);
-				}
+  void do_process_no_items(boost::posix_time::ptime current_time) {
+    try {
+      // Match any stale items and process timeouts
+      for (container_type item : items) {
+        if (item->broken) continue;
+        if (item->has_timedout(current_time)) {
+          process_timeout(item);
+          item->touch(current_time, false);
+        }
+      }
+    } catch (...) {
+      bump_all_errors();
+      NSC_DEBUG_MSG("Realtime processing faillure");
+    }
+  }
 
-				boost::posix_time::time_duration dur;
-				if (!minNext) {
-					NSC_TRACE_MSG("Next miss time is in: no timeout specified");
-				} else {
-					boost::posix_time::time_duration dur = *minNext - current_time;
-					if (dur.total_seconds() <= 0) {
-						NSC_LOG_ERROR("Invalid duration for eventlog check, assuming all values stale");
-						touch_all();
-						minNext = boost::none;
-						BOOST_FOREACH(const container_type item, items) {
-							item->find_minimum_timeout(minNext);
-						}
-						dur = *minNext - current_time;
-						if (dur.total_seconds() <= 0) {
-							NSC_LOG_ERROR("Something is fishy with your periods, returning 30 seconds...");
-							dur = boost::posix_time::time_duration(0, 0, 30, 0);
-						}
-					}
-					NSC_TRACE_MSG("Next miss time is in: " + str::xtos(dur.total_seconds()) + "s");
-					ret = dur;
-				}
-				return ret;
-			}
-		};
-	}
-}
+  // Failures observed outside any specific item (e.g. exception thrown
+  // while iterating items / setting up transient data) cannot be attributed
+  // to a single filter, so they get charged to every configured item. This
+  // keeps `.errors` honest as "did this collection cycle complete cleanly"
+  // rather than silently dropping the failure. Broken items are skipped:
+  // their error count is already non-zero from the build failure, and
+  // stacking cycle errors on top would mask whether new failures are
+  // accumulating in the surviving filters.
+  void bump_all_errors() {
+    for (const container_type &item : items) {
+      if (item->broken) continue;
+      item->error_count.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
+
+  void process_no_items() { do_process_no_items(boost::posix_time::second_clock::local_time()); }
+
+  std::map<std::string, long long> get_counts() const {
+    std::map<std::string, long long> ret;
+    for (const container_type &item : items) {
+      ret[item->get_alias() + ".fired"] = item->match_count.load(std::memory_order_relaxed);
+      ret[item->get_alias() + ".errors"] = item->error_count.load(std::memory_order_relaxed);
+    }
+    return ret;
+  }
+
+  op_duration find_minimum_timeout() {
+    op_duration ret;
+    boost::posix_time::ptime current_time = boost::posix_time::second_clock::local_time();
+    boost::optional<boost::posix_time::ptime> minNext;
+    for (const container_type &item : items) {
+      if (item->broken) continue;
+      item->find_minimum_timeout(minNext);
+    }
+
+    if (!minNext) {
+      NSC_TRACE_MSG("Next miss time is in: no timeout specified");
+    } else {
+      boost::posix_time::time_duration dur = *minNext - current_time;
+      if (dur.total_seconds() <= 0) {
+        NSC_LOG_ERROR("Invalid duration for eventlog check, assuming all values stale");
+        touch_all();
+        minNext = boost::none;
+        for (const container_type &item : items) {
+          if (item->broken) continue;
+          item->find_minimum_timeout(minNext);
+        }
+        dur = *minNext - current_time;
+        if (dur.total_seconds() <= 0) {
+          NSC_LOG_ERROR("Something is fishy with your periods, returning 30 seconds...");
+          dur = boost::posix_time::time_duration(0, 0, 30, 0);
+        }
+      }
+      NSC_TRACE_MSG("Next miss time is in: " + str::xtos(dur.total_seconds()) + "s");
+      ret = dur;
+    }
+    return ret;
+  }
+};
+}  // namespace where
+}  // namespace parsers

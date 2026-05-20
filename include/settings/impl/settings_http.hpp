@@ -19,26 +19,12 @@
 
 #pragma once
 
-#include <string>
-#include <fstream>
-
-#include <boost/filesystem/path.hpp>
 #include <boost/filesystem/operations.hpp>
-
-#ifdef HAVE_LIBCRYPTOPP
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wtype-limits"
-#pragma GCC diagnostic ignored "-pedantic"
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#endif
-#include <sha.h>
-#include <hex.h>
-#include <files.h>
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
-#endif
+#include <boost/filesystem/path.hpp>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <string>
 
 #ifdef HAVE_MINIZ
 #ifdef __GNUC__
@@ -52,328 +38,382 @@
 #endif
 #endif
 
-#include <socket/client.hpp>
-#include <socket/clients/http/http_client_protocol.hpp>
+#include <config.h>
 
-#include <http/client.hpp>
-#include <net/net.hpp>
 #include <file_helpers.hpp>
-
+#include <net/http/client.hpp>
+#include <net/http/http_client_protocol.hpp>
+#include <net/http/proxy_config.hpp>
+#include <net/net.hpp>
+#include <net/socket/client.hpp>
 #include <settings/settings_core.hpp>
 #include <settings/settings_interface_impl.hpp>
 
-#include <config.h>
-
 namespace settings {
-	class settings_http : public settings::settings_interface_impl {
-	private:
-		std::string url_;
-		boost::filesystem::path local_file;
-		net::url remote_url;
+class settings_http : public settings::settings_interface_impl {
+ private:
+  std::string url_;
+  boost::filesystem::path local_file_;
+  net::url remote_url;
+  instance_raw_ptr child_instance;
 
+ public:
+  settings_http(settings::settings_core *core, std::string alias, std::string context) : settings::settings_interface_impl(core, alias, context) {
+    remote_url = net::parse(utf8::cvt<std::string>(context));
+    boost::filesystem::path path = core->expand_path(CACHE_FOLDER);
+    if (!boost::filesystem::is_directory(path)) {
+      if (boost::filesystem::is_regular_file(path)) throw new settings_exception(__FILE__, __LINE__, "Cache path not found: " + path.string());
+      boost::filesystem::create_directories(path);
+      if (!boost::filesystem::is_directory(path)) throw new settings_exception(__FILE__, __LINE__, "Cache path not found: " + path.string());
+    }
+    local_file_ = boost::filesystem::path(path) / "cached.ini";
 
-	public:
-		settings_http(settings::settings_core *core, std::string alias, std::string context) : settings::settings_interface_impl(core, alias, context) {
-			remote_url = net::parse(utf8::cvt<std::string>(context));
-			boost::filesystem::path path = core->expand_path(CACHE_FOLDER);
-			if (!boost::filesystem::is_directory(path)) {
-				if (boost::filesystem::is_regular_file(path))
-					throw new settings_exception(__FILE__, __LINE__, "Cache path not found: " + path.string());
-				boost::filesystem::create_directories(path);
-				if (!boost::filesystem::is_directory(path))
-					throw new settings_exception(__FILE__, __LINE__, "Cache path not found: " + path.string());
-			}
-			local_file = boost::filesystem::path(path) / "cached.ini";
+    initial_load();
+  }
 
-			initial_load();
-		}
+  bool supports_updates() override { return false; }
 
-		virtual void real_clear_cache() {}
+  virtual void real_clear_cache() {}
 
-		std::string hash_file(const boost::filesystem::path &file) {
-			std::string result;
-#ifdef HAVE_LIBCRYPTOPP
-			CryptoPP::SHA1 hash;
-			CryptoPP::FileSource(file.string().c_str(), true,
-				new CryptoPP::HashFilter(hash, new CryptoPP::HexEncoder(
-					new CryptoPP::StringSink(result), true)));
+  static std::string hash_file(const boost::filesystem::path &file) { return hash_string(file_helpers::read_file_as_string(file)); }
+
+  static std::string hash_string(const std::string &input) {
+#ifdef USE_SSL
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    EVP_MD_CTX *context = EVP_MD_CTX_new();
+
+    if (context == nullptr) {
+      throw std::runtime_error("Failed to create EVP_MD_CTX");
+    }
+
+    if (EVP_DigestInit_ex(context, EVP_sha256(), nullptr) != 1 || EVP_DigestUpdate(context, input.c_str(), input.size()) != 1 ||
+        EVP_DigestFinal_ex(context, hash, nullptr) != 1) {
+      EVP_MD_CTX_free(context);
+      throw std::runtime_error("Failed to compute SHA-256 digest");
+    }
+
+    EVP_MD_CTX_free(context);
+
+    std::ostringstream oss;
+    for (unsigned char c : hash) {
+      oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(c);
+    }
+    return oss.str();
+#else
+    get_logger()->error("settings", __FILE__, __LINE__, "Settings http not compiled with hashing support");
 #endif
-			return result;
-		}
+  }
 
-		boost::filesystem::path resolve_cache_file(const net::url &url) const {
-			boost::filesystem::path local_file = get_core()->expand_path(CACHE_FOLDER);
-			boost::filesystem::path remote_file_name = url.path;
-			local_file /= remote_file_name.filename();
-			return local_file;
-		}
+  boost::filesystem::path resolve_cache_file(const net::url &url) const {
+    boost::filesystem::path local_file = get_core()->expand_path(CACHE_FOLDER);
+    boost::filesystem::path remote_file_name = url.path;
+    local_file /= remote_file_name.filename();
+    return local_file;
+  }
 
+  virtual void log_debug(std::string file, int line, std::string msg) const { core_->get_logger()->debug("settings", file.c_str(), line, msg); }
 
-		virtual void log_debug(std::string file, int line, std::string msg) const {}
+  virtual void log_error(std::string file, int line, std::string msg) const { core_->get_logger()->error("settings", file.c_str(), line, msg); }
+  virtual std::string expand_path(std::string path) { return path; }
 
-		virtual void log_error(std::string file, int line, std::string msg) const {}
-			virtual std::string expand_path(std::string path) {
-				return path;
-			}
+  bool cache_remote_file(const net::url &url, const std::string &file) {
+    bool unzip = false;
+    boost::filesystem::path tmp_file = file + ".tmp";
+    boost::filesystem::path local_file = file;
+    if (file.size() > 6 && file.substr(0, 6) == "unzip:") {
+      unzip = true;
+      local_file = file.substr(6);
+      tmp_file = resolve_cache_file(url);
+    }
 
-		bool cache_remote_file(const net::url &url, const std::string &file) {
-			bool unzip = false;
-			boost::filesystem::path tmp_file = file + ".tmp";
-			boost::filesystem::path local_file = file;
-			if (file.size() > 6 && file.substr(0, 6) == "unzip:") {
-				unzip = true;
-				local_file = file.substr(6);
-				tmp_file = resolve_cache_file(url);
-			}
+    // RAII-ish guard so we never leak the tmp file on any code path (issue #370).
+    struct tmp_guard {
+      boost::filesystem::path path;
+      bool active = true;
+      ~tmp_guard() {
+        if (!active) return;
+        boost::system::error_code ec;
+        if (boost::filesystem::exists(path, ec)) boost::filesystem::remove(path, ec);
+      }
+    } guard{tmp_file};
 
-			std::ofstream os(tmp_file.string().c_str(), std::ofstream::binary);
-			std::string error;
+    std::ofstream os(tmp_file.string().c_str(), std::ofstream::binary);
 
-			try {
-				http::packet packet("GET", url.get_host(), url.path);
+    try {
+      std::string error;
+      http::request packet("GET", url.get_host(), url.path);
 
-				std::string def_port = url.protocol == "https"?"443":"80";
+      std::string def_port = url.protocol == "https" ? "443" : "80";
 
-				if (!http::simple_client::download(url.protocol, url.host, url.get_port_string(def_port), url.path, os, error)) {
-					os.close();
-					get_logger()->error("settings", __FILE__, __LINE__, "Failed to download " + tmp_file.string() + ": " + error);
-					if (boost::filesystem::is_regular_file(local_file)) {
-						get_logger()->error("settings", __FILE__, __LINE__, "Using cached artifact: " + tmp_file.string());
-						return true;
-					}
-					return false;
-				}
-				os.close();
+      auto tls_version = get_core()->get_tls_version();
+      auto verify_mode = get_core()->get_tls_verify_mode();
+      auto ca = get_core()->get_tls_ca();
 
-				if (!boost::filesystem::is_regular_file(tmp_file)) {
-					get_logger()->error("settings", __FILE__, __LINE__, "Failed to find cached settings: " + tmp_file.string());
-					return false;
-				}
+      http::proxy_config proxy = http::parse_proxy_url(get_core()->get_proxy_url());
+      const std::string no_proxy_str = get_core()->get_no_proxy();
+      if (!no_proxy_str.empty()) {
+        std::istringstream ss(no_proxy_str);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+          if (!token.empty()) proxy.no_proxy.push_back(token);
+        }
+      }
 
+      get_logger()->debug("settings", __FILE__, __LINE__, "Using TLS settings version: " + tls_version + ", verify: " + verify_mode + ", ca: " + ca);
+      if (proxy.is_set()) {
+        get_logger()->debug("settings", __FILE__, __LINE__, "Using proxy: " + get_core()->get_proxy_url());
+      }
+      if (!http::simple_client::download(url.protocol, url.host, url.get_port_string(def_port), url.path, tls_version, verify_mode, ca, os, error, proxy)) {
+        os.close();
+        get_logger()->error("settings", __FILE__, __LINE__, "Failed to download " + tmp_file.string() + ": " + error);
+        if (boost::filesystem::is_regular_file(local_file)) {
+          get_logger()->error("settings", __FILE__, __LINE__, "Using cached artifact: " + tmp_file.string());
+          return true;
+        }
+        return false;
+      }
+      os.close();
 
-			} catch (const socket_helpers::socket_exception &e) {
-				get_logger()->error("settings", __FILE__, __LINE__, "Failed to update settings file: " + e.reason());
-				return false;
-			}
+      if (!boost::filesystem::is_regular_file(tmp_file)) {
+        get_logger()->error("settings", __FILE__, __LINE__, "Failed to find cached settings: " + tmp_file.string());
+        return false;
+      }
 
+    } catch (const socket_helpers::socket_exception &e) {
+      get_logger()->error("settings", __FILE__, __LINE__, "Failed to update settings file: " + e.reason());
+      return false;
+    }
 
-
-
-			if (unzip) {
+    if (unzip) {
 #ifdef HAVE_MINIZ
 
-				mz_zip_archive zip_archive;
-				mz_bool status;
+      mz_zip_archive zip_archive;
+      mz_bool status;
 
-				// Now try to open the archive.
-				memset(&zip_archive, 0, sizeof(zip_archive));
+      // Now try to open the archive.
+      memset(&zip_archive, 0, sizeof(zip_archive));
 
-				status = mz_zip_reader_init_file(&zip_archive, tmp_file.string().c_str(), 0);
-				if (!status) {
-					printf("mz_zip_reader_init_file() failed!\n");
-					return false;
-				}
+      status = mz_zip_reader_init_file(&zip_archive, tmp_file.string().c_str(), 0);
+      if (!status) {
+        printf("mz_zip_reader_init_file() failed!\n");
+        return false;
+      }
 
-				// Get and print information about each file in the archive.
-				for (mz_uint i = 0; i < mz_zip_reader_get_num_files(&zip_archive); i++) {
-					mz_zip_archive_file_stat file_stat;
-					if (!mz_zip_reader_file_stat(&zip_archive, i, &file_stat)) {
-						printf("mz_zip_reader_file_stat() failed!\n");
-						mz_zip_reader_end(&zip_archive);
-						return false;
-					}
+      // Get and print information about each file in the archive.
+      for (mz_uint i = 0; i < mz_zip_reader_get_num_files(&zip_archive); i++) {
+        mz_zip_archive_file_stat file_stat;
+        if (!mz_zip_reader_file_stat(&zip_archive, i, &file_stat)) {
+          printf("mz_zip_reader_file_stat() failed!\n");
+          mz_zip_reader_end(&zip_archive);
+          return false;
+        }
 
-					boost::filesystem::path tr = local_file / file_stat.m_filename;
+        // Zip-slip guard: a malicious or compromised settings host can put
+        // entries like "../../Windows/System32/foo" or "/etc/cron.d/foo"
+        // into the archive. is_safe_archive_entry rejects empty / NUL-bearing
+        // names and any join that escapes local_file after lexical
+        // normalisation. A single bad entry fails the whole archive - a
+        // hostile source should not get partial application.
+        const std::string raw_name = file_stat.m_filename != nullptr ? std::string(file_stat.m_filename) : std::string();
+        boost::filesystem::path tr;
+        if (!file_helpers::checks::is_safe_archive_entry(local_file, raw_name, tr)) {
+          get_logger()->error("settings", __FILE__, __LINE__,
+                              "Refusing zip entry that would extract outside '" + local_file.string() + "': '" + raw_name + "'");
+          mz_zip_reader_end(&zip_archive);
+          return false;
+        }
 
-					if (!boost::filesystem::exists(tr)) {
-
-						if (!boost::filesystem::exists(tr.parent_path())) {
-							boost::filesystem::create_directories(tr.parent_path());
-						}
-						get_logger()->error("settings", __FILE__, __LINE__, "Unzip to:: " + tr.string());
-						if (!mz_zip_reader_is_file_a_directory(&zip_archive, i)) {
-							mz_zip_reader_extract_to_file(&zip_archive, i, tr.string().c_str(), 0);
-						}
-					}
-				}
+        if (!boost::filesystem::exists(tr)) {
+          if (!boost::filesystem::exists(tr.parent_path())) {
+            boost::filesystem::create_directories(tr.parent_path());
+          }
+          get_logger()->error("settings", __FILE__, __LINE__, "Unzip to:: " + tr.string());
+          if (!mz_zip_reader_is_file_a_directory(&zip_archive, i)) {
+            mz_zip_reader_extract_to_file(&zip_archive, i, tr.string().c_str(), 0);
+          }
+        }
+      }
+      mz_zip_reader_end(&zip_archive);
 #endif
-			} else {
-				if (boost::filesystem::is_regular_file(local_file)) {
-					std::string old_hash = hash_file(local_file);
-					std::string new_hash = hash_file(tmp_file);
-					if (old_hash.empty() || old_hash != new_hash) {
-						if (old_hash.empty()) {
-							get_logger()->error("settings", __FILE__, __LINE__, "Compiled without cryptopp cannot detect changes (assuming always changed)");
-						}
-						get_logger()->debug("settings", __FILE__, __LINE__, "File has changed: " + local_file.string());
-						boost::filesystem::rename(tmp_file, local_file);
-						return true;
-					}
-				} else {
-					if (!boost::filesystem::exists(local_file.parent_path())) {
-						boost::filesystem::create_directories(local_file.parent_path());
-					}
-					boost::filesystem::rename(tmp_file, local_file);
-				}
-			}
-			return false;
-		}
+      // tmp_file is the downloaded zip; the guard above removes it (issue #370).
+    } else {
+      if (boost::filesystem::is_regular_file(local_file)) {
+        std::string old_hash = hash_file(local_file);
+        std::string new_hash = hash_file(tmp_file);
+        if (old_hash.empty() || old_hash != new_hash) {
+          if (old_hash.empty()) {
+            get_logger()->error("settings", __FILE__, __LINE__, "Compiled without cryptopp cannot detect changes (assuming always changed)");
+          }
+          get_logger()->debug("settings", __FILE__, __LINE__, "File has changed: " + local_file.string());
+          // Use remove+rename so this also works when local_file already
+          // exists on Windows where rename is non-overwriting.
+          boost::system::error_code ec;
+          boost::filesystem::remove(local_file, ec);
+          boost::filesystem::rename(tmp_file, local_file);
+          guard.active = false;  // tmp_file has been moved into place
+          return true;
+        }
+        // Hashes match: the cached file is up to date and we just leave
+        // local_file alone. The guard removes the now-redundant tmp_file
+        // (issue #370).
+      } else {
+        if (!boost::filesystem::exists(local_file.parent_path())) {
+          boost::filesystem::create_directories(local_file.parent_path());
+        }
+        boost::filesystem::rename(tmp_file, local_file);
+        guard.active = false;  // tmp_file has been moved into place
+      }
+    }
+    return false;
+  }
 
-		void fetch_attachments(instance_raw_ptr child) {
-			if (!child)
-				return;
-			string_list keys = child->get_keys("/attachments");
-			BOOST_FOREACH(const std::string &k, keys) {
-				std::string target = get_core()->expand_path(k);
-				op_string str = child->get_string("/attachments", k);
-				if (!str)
-					continue;
-				net::url source = net::parse(*str);
-				get_logger()->debug("settings", __FILE__, __LINE__, "Found attachment: " + source.to_string() + " as " + target);
-				cache_remote_file(source, target);
-			}
-		}
+  void fetch_attachments(instance_raw_ptr child) {
+    if (!child) return;
+    string_list keys = child->get_keys("/attachments");
+    for (const std::string &k : keys) {
+      std::string target = get_core()->expand_path(k);
+      op_string str = child->get_string("/attachments", k);
+      if (!str) continue;
+      net::url source = net::parse(*str);
+      get_logger()->debug("settings", __FILE__, __LINE__, "Found attachment: " + source.to_string() + " as " + target);
+      cache_remote_file(source, target);
+    }
+  }
 
-		void initial_load() {
-			boost::filesystem::path local_file = resolve_cache_file(remote_url);
-			cache_remote_file(remote_url, local_file.string());
-			fetch_attachments(add_child("remote_http_file", "ini://" + local_file.string()));
-		}
+  void initial_load() {
+    boost::filesystem::path local_file = resolve_cache_file(remote_url);
+    cache_remote_file(remote_url, local_file.string());
+    child_instance = add_child("remote_http_file", "ini://" + local_file.string());
+    fetch_attachments(child_instance);
+  }
 
-		void reload_data() {
-			boost::filesystem::path local_file = resolve_cache_file(remote_url);
-			if (cache_remote_file(remote_url, local_file.string())) {
-				clear_cache();
-				fetch_attachments(add_child("remote_http_file", "ini://" + local_file.string()));
-				get_core()->set_reload(true);
-			}
-		}
-		//////////////////////////////////////////////////////////////////////////
-		/// Get a string value if it does not exist exception will be thrown
-		///
-		/// @param path the path to look up
-		/// @param key the key to lookup
-		/// @return the string value
-		///
-		/// @author mickem
-		virtual op_string get_real_string(settings_core::key_path_type key) {
-			return op_string();
-		}
-		//////////////////////////////////////////////////////////////////////////
-		/// Get an integer value if it does not exist exception will be thrown
-		///
-		/// @param path the path to look up
-		/// @param key the key to lookup
-		/// @return the int value
-		///
-		/// @author mickem
-		virtual op_int get_real_int(settings_core::key_path_type key) {
-			return op_int();
-		}
-		//////////////////////////////////////////////////////////////////////////
-		/// Get a boolean value if it does not exist exception will be thrown
-		///
-		/// @param path the path to look up
-		/// @param key the key to lookup
-		/// @return the boolean value
-		///
-		/// @author mickem
-		virtual op_bool get_real_bool(settings_core::key_path_type key) {
-			return op_bool();
-		}
-		//////////////////////////////////////////////////////////////////////////
-		/// Check if a key exists
-		///
-		/// @param path the path to look up
-		/// @param key the key to lookup
-		/// @return true/false if the key exists.
-		///
-		/// @author mickem
-		virtual bool has_real_key(settings_core::key_path_type key) {
-			return false;
-		}
-		virtual bool has_real_path(std::string path) {
-			return false;
-		}
-		//////////////////////////////////////////////////////////////////////////
-		/// Write a value to the resulting context.
-		///
-		/// @param key The key to write to
-		/// @param value The value to write
-		///
-		/// @author mickem
-		virtual void set_real_value(settings_core::key_path_type key, conainer value) {
-			get_logger()->error("settings", __FILE__, __LINE__, "Cant save over HTTP: " + make_skey(key.first, key.second));
-			throw settings_exception(__FILE__, __LINE__, "Cannot save settings over HTTP");
-		}
+  void reload_data() {
+    boost::filesystem::path local_file = resolve_cache_file(remote_url);
+    if (cache_remote_file(remote_url, local_file.string())) {
+      clear_cache();
+      fetch_attachments(add_child("remote_http_file", "ini://" + local_file.string()));
+      get_core()->set_reload(true);
+    }
+  }
+  //////////////////////////////////////////////////////////////////////////
+  /// Get a string value if it does not exist exception will be thrown
+  ///
+  /// @param path the path to look up
+  /// @param key the key to lookup
+  /// @return the string value
+  ///
+  /// @author mickem
+  virtual op_string get_real_string(settings_core::key_path_type key) { return op_string(); }
+  //////////////////////////////////////////////////////////////////////////
+  /// Get an integer value if it does not exist exception will be thrown
+  ///
+  /// @param path the path to look up
+  /// @param key the key to lookup
+  /// @return the int value
+  ///
+  /// @author mickem
+  virtual op_int get_real_int(settings_core::key_path_type key) { return op_int(); }
+  //////////////////////////////////////////////////////////////////////////
+  /// Get a boolean value if it does not exist exception will be thrown
+  ///
+  /// @param path the path to look up
+  /// @param key the key to lookup
+  /// @return the boolean value
+  ///
+  /// @author mickem
+  virtual op_bool get_real_bool(settings_core::key_path_type key) { return op_bool(); }
+  //////////////////////////////////////////////////////////////////////////
+  /// Check if a key exists
+  ///
+  /// @param path the path to look up
+  /// @param key the key to lookup
+  /// @return true/false if the key exists.
+  ///
+  /// @author mickem
+  virtual bool has_real_key(settings_core::key_path_type key) { return false; }
+  virtual bool has_real_path(std::string path) { return false; }
+  //////////////////////////////////////////////////////////////////////////
+  /// Write a value to the resulting context.
+  ///
+  /// @param key The key to write to
+  /// @param value The value to write
+  ///
+  /// @author mickem
+  virtual void set_real_value(settings_core::key_path_type key, conainer value) {
+    get_logger()->error("settings", __FILE__, __LINE__, "Cant save over HTTP: " + make_skey(key.first, key.second));
+    throw settings_exception(__FILE__, __LINE__, "Cannot save settings over HTTP");
+  }
 
-		virtual void set_real_path(std::string path) {
-			get_logger()->error("settings", __FILE__, __LINE__, "Cant save over HTTP: " + path);
-			throw settings_exception(__FILE__, __LINE__, "Cannot save settings over HTTP");
-		}
-		virtual void remove_real_value(settings_core::key_path_type key) {
-			get_logger()->error("settings", __FILE__, __LINE__, "Cant save over HTTP");
-			throw settings_exception(__FILE__, __LINE__, "Cannot save settings over HTTP");
-		}
-		virtual void remove_real_path(std::string path) {
-			get_logger()->error("settings", __FILE__, __LINE__, "Cant save over HTTP");
-			throw settings_exception(__FILE__, __LINE__, "Cannot save settings over HTTP");
-		}
+  virtual void set_real_path(std::string path) {
+    get_logger()->error("settings", __FILE__, __LINE__, "Cant save over HTTP: " + path);
+    throw settings_exception(__FILE__, __LINE__, "Cannot save settings over HTTP");
+  }
+  virtual void remove_real_value(settings_core::key_path_type key) {
+    get_logger()->error("settings", __FILE__, __LINE__, "Cant save over HTTP");
+    throw settings_exception(__FILE__, __LINE__, "Cannot save settings over HTTP");
+  }
+  virtual void remove_real_path(std::string path) {
+    get_logger()->error("settings", __FILE__, __LINE__, "Cant save over HTTP");
+    throw settings_exception(__FILE__, __LINE__, "Cannot save settings over HTTP");
+  }
 
-		//////////////////////////////////////////////////////////////////////////
-		/// Get all (sub) sections (given a path).
-		/// If the path is empty all root sections will be returned
-		///
-		/// @param path The path to get sections from (if empty root sections will be returned)
-		/// @param list The list to append nodes to
-		/// @return a list of sections
-		///
-		/// @author mickem
-		virtual void get_real_sections(std::string, string_list &) {}
-		//////////////////////////////////////////////////////////////////////////
-		/// Get all keys given a path/section.
-		/// If the path is empty all root sections will be returned
-		///
-		/// @param path The path to get sections from (if empty root sections will be returned)
-		/// @param list The list to append nodes to
-		/// @return a list of sections
-		///
-		/// @author mickem
-		virtual void get_real_keys(std::string, string_list &) {}
-		//////////////////////////////////////////////////////////////////////////
-		/// Save the settings store
-		///
-		/// @author mickem
-		virtual void save() {
-			get_logger()->error("settings", __FILE__, __LINE__, "Cannot save settings over HTTP");
-			throw settings_exception(__FILE__, __LINE__, "Cannot save settings over HTTP");
-		}
+  //////////////////////////////////////////////////////////////////////////
+  /// Get all (sub) sections (given a path).
+  /// If the path is empty all root sections will be returned
+  ///
+  /// @param path The path to get sections from (if empty root sections will be returned)
+  /// @param list The list to append nodes to
+  /// @return a list of sections
+  ///
+  /// @author mickem
+  virtual void get_real_sections(std::string section, string_list &list) {
+    if (child_instance) {
+      auto child_list = child_instance->get_sections(section);
+      list.insert(list.end(), child_list.begin(), child_list.end());
+    }
+  }
+  //////////////////////////////////////////////////////////////////////////
+  /// Get all keys given a path/section.
+  /// If the path is empty all root sections will be returned
+  ///
+  /// @param path The path to get sections from (if empty root sections will be returned)
+  /// @param list The list to append nodes to
+  /// @return a list of sections
+  ///
+  /// @author mickem
+  virtual void get_real_keys(std::string path, string_list &list) {
+    if (child_instance) {
+      auto child_list = child_instance->get_keys(path);
+      list.insert(list.end(), child_list.begin(), child_list.end());
+    }
+  }
+  //////////////////////////////////////////////////////////////////////////
+  /// Save the settings store
+  ///
+  /// @author mickem
+  virtual void save(bool _re_save_all) {
+    get_logger()->error("settings", __FILE__, __LINE__, "Cannot save settings over HTTP");
+    throw settings_exception(__FILE__, __LINE__, "Cannot save settings over HTTP");
+  }
 
-		settings::error_list validate() {
-			settings::error_list ret;
-			return ret;
-		}
-		void ensure_exists() {}
+  settings::error_list validate() {
+    settings::error_list ret;
+    return ret;
+  }
+  void ensure_exists() {}
 
-		virtual std::string get_type() { return "http"; }
+  virtual std::string get_type() { return "http"; }
 
-		virtual void house_keeping() {
-			reload_data();
-		}
+  virtual void house_keeping() { reload_data(); }
 
-	private:
-
-		std::string get_file_name() {
-			if (url_.empty()) {
-				url_ = get_file_from_context();
-			}
-			return url_;
-		}
-		bool file_exists() {
-			return boost::filesystem::is_regular(get_file_name());
-		}
-		virtual std::string get_info() {
-			return "HTTP settings: (" + context_ + ", " + get_file_name() + ")";
-		}
-	};
-}
+  std::string get_file_name() {
+    if (url_.empty()) {
+      url_ = get_file_from_context();
+    }
+    return url_;
+  }
+  bool file_exists() { return boost::filesystem::is_regular_file(get_file_name()); }
+  virtual std::string get_info() { return "HTTP settings: (" + context_ + ", " + get_file_name() + ")"; }
+  void enable_credentials() override { get_logger()->warning("settings", __FILE__, __LINE__, "Http settings is read only and does not support credentials"); }
+};
+}  // namespace settings

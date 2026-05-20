@@ -17,13 +17,26 @@
  * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <nscapi/nscapi_protobuf.hpp>
 #include <nscapi/nscapi_plugin_impl.hpp>
+#include <nscapi/protobuf/command.hpp>
 
 class CheckNet : public nscapi::impl::simple_plugin {
-public:
-	CheckNet() {};
+  // Path to the trusted CA bundle, resolved once from ${ca-path} during
+  // loadModuleEx and reused by every check_http invocation. Avoids hitting
+  // the path expander on the hot path and gives us a single, consistent
+  // value across the module's lifetime.
+  std::string default_ca_;
 
-	// Check commands
-	void check_ping(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response);
+ public:
+  CheckNet() {};
+
+  bool loadModuleEx(const std::string &alias, NSCAPI::moduleLoadMode mode);
+
+  // Check commands
+  static void check_ping(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+  static void check_tcp(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+  static void check_dns(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+  void check_http(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) const;
+  static void check_connections(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
+  static void check_ntp_offset(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
 };

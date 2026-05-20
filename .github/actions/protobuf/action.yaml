@@ -1,0 +1,100 @@
+---
+name: Build protobuf
+description: Build and cache protobuf libraries
+inputs:
+  version:
+    description: The protobuf version to build
+    required: true
+  architecture:
+    description: The openssl architecture to build
+    required: true
+  runtime:
+    description: The openssl architecture to build
+    default: dynamic
+  toolset:
+    description: The toolset to use for building
+    required: true
+  support_xp:
+    description: If we should support Windows XP
+    default: 'false'
+outputs:
+  path:
+    description: The path to the protobuf folder
+    value:  ${{ steps.path.outputs.path }}
+  path_unix:
+    description: The path to the protobuf folder
+    value:  ${{ steps.path.outputs.path_unix }}
+runs:
+  using: composite
+  steps:
+
+    - name: Download protobuf
+      run: |
+            curl -L https://github.com/protocolbuffers/protobuf/releases/download/v${{ inputs.version }}/protobuf-all-${{ inputs.version }}.zip --output protobuf.zip
+            7z x protobuf.zip
+      working-directory: tmp
+      shell: cmd
+
+    - id: cache
+      uses: actions/cache@v3
+      with:
+        key: ${{ runner.os }}-protobuf-${{ inputs.version }}-${{ inputs.architecture }}-${{ inputs.runtime }}-${{ inputs.toolset }}
+        path: |
+          tmp/protobuf-${{ inputs.version }}/build/Release
+
+    - id: setup
+      run: |
+        if ("${{ inputs.architecture }}" -eq "x64") {
+          echo "platform=x64" >> $env:GITHUB_OUTPUT
+        } else {
+          echo "platform=Win32" >> $env:GITHUB_OUTPUT
+        }
+        if ("${{ inputs.runtime }}" -eq "dynamic") {
+          echo "shared_libs=TRUE" >> $env:GITHUB_OUTPUT
+        } else {
+          echo "shared_libs=FALSE" >> $env:GITHUB_OUTPUT
+        }
+        if ("${{ inputs.support_xp }}" -eq "true") {
+          echo 'additional_options=/p:AdditionalOptions="/DGOOGLE_PROTOBUF_SUPPORT_WINDOWS_XP %(AdditionalOptions)"' >> $env:GITHUB_OUTPUT
+          echo "cmake_toolset=${{ inputs.toolset }},version=14.16" >> $env:GITHUB_OUTPUT
+          echo "vctools_version=/p:VCToolsVersion=14.16.27023" >> $env:GITHUB_OUTPUT
+        } else {
+          echo "additional_options=" >> $env:GITHUB_OUTPUT
+          echo "cmake_toolset=${{ inputs.toolset }}" >> $env:GITHUB_OUTPUT
+          echo "vctools_version=" >> $env:GITHUB_OUTPUT
+        }
+        
+
+      shell: pwsh
+
+    - name: Prepare
+      run: |
+        mkdir build
+      working-directory: tmp/protobuf-${{ inputs.version }}
+      shell: cmd
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+
+    - name: CMake
+      run: |
+        cmake -DBUILD_SHARED_LIBS=${{ steps.setup.outputs.shared_libs }} -Dprotobuf_WITH_ZLIB=OFF -G "Visual Studio 17" -T ${{ steps.setup.outputs.cmake_toolset }} -A ${{ steps.setup.outputs.platform }} ..
+      working-directory: tmp/protobuf-${{ inputs.version }}/build
+      shell: cmd
+
+    - name: Build
+      run: |
+        echo msbuild libprotobuf.vcxproj /p:Configuration=Release /p:Platform=${{ steps.setup.outputs.platform }} /p:PlatformToolset=${{ inputs.toolset }} ${{ steps.setup.outputs.vctools_version }} ${{ steps.setup.outputs.additional_options }}
+        msbuild libprotobuf.vcxproj /p:Configuration=Release /p:Platform=${{ steps.setup.outputs.platform }} /p:PlatformToolset=${{ inputs.toolset }} ${{ steps.setup.outputs.vctools_version }} ${{ steps.setup.outputs.additional_options }}
+        msbuild libprotoc.vcxproj /p:Configuration=Release /p:Platform=${{ steps.setup.outputs.platform }} /p:PlatformToolset=${{ inputs.toolset }} ${{ steps.setup.outputs.vctools_version }}
+        msbuild protoc.vcxproj /p:Configuration=Release /p:Platform=${{ steps.setup.outputs.platform }} /p:PlatformToolset=${{ inputs.toolset }} ${{ steps.setup.outputs.vctools_version }}
+      working-directory: tmp/protobuf-${{ inputs.version }}/build
+      shell: cmd
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+
+    - id: path
+      run: |
+        $path=$pwd.path
+        $path_unix=$pwd.path.replace('\','/')
+        echo "path=$path" >> $env:GITHUB_OUTPUT
+        echo "path_unix=$path_unix" >> $env:GITHUB_OUTPUT
+      shell: pwsh
+      working-directory: tmp/protobuf-${{ inputs.version }}

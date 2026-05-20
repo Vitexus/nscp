@@ -4,6 +4,15 @@ Use this to schedule check commands and jobs in conjunction with for instance pa
 
 
 
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `Scheduler = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+Scheduler = enabled
+```
+
 
 ## Samples
 
@@ -93,16 +102,17 @@ The syntax of the schedule is similar to a cron expression in that you have:
 
 
 
-### Scheduler <a id="/settings/scheduler"/>
+### Scheduler <a id="/settings/scheduler"></a>
 
 Section for the Scheduler module.
 
 
 
 
-| Key                 | Default Value | Description |
-|---------------------|---------------|-------------|
-| [threads](#threads) | 5             | Threads     |
+| Key                   | Default Value | Description |
+|-----------------------|---------------|-------------|
+| [threads](#threads)   | 5             | Threads     |
+| [timezone](#timezone) | local         | Timezone    |
 
 
 
@@ -110,6 +120,7 @@ Section for the Scheduler module.
 # Section for the Scheduler module.
 [/settings/scheduler]
 threads=5
+timezone=local
 
 ```
 
@@ -130,7 +141,6 @@ Number of threads to use.
 | Path:          | [/settings/scheduler](#/settings/scheduler) |
 | Key:           | threads                                     |
 | Default value: | `5`                                         |
-| Used by:       | Scheduler                                   |
 
 
 **Sample:**
@@ -142,7 +152,32 @@ threads=5
 ```
 
 
-### Schedules <a id="/settings/scheduler/schedules"/>
+
+#### Timezone <a id="/settings/scheduler/timezone"></a>
+
+Reference clock for cron expressions. Accepts 'local' (default — standard cron semantics), 'utc'/'gmt' (restores the pre-0.13 behaviour), or any POSIX TZ string such as 'EST-05EDT,M3.2.0,M11.1.0'. Unparseable values fall back to UTC and are flagged in the tz label as 'UTC?'.
+
+
+
+
+
+| Key            | Description                                 |
+|----------------|---------------------------------------------|
+| Path:          | [/settings/scheduler](#/settings/scheduler) |
+| Key:           | timezone                                    |
+| Default value: | `local`                                     |
+
+
+**Sample:**
+
+```
+[/settings/scheduler]
+# Timezone
+timezone=local
+```
+
+
+### Schedules <a id="/settings/scheduler/schedules"></a>
 
 Section for the Scheduler module.
 
@@ -153,19 +188,19 @@ This is a section of objects. This means that you will create objects below this
 **Keys:**
 
 
-| Key         | Default Value | Description        |
-|-------------|---------------|--------------------|
-| alias       |               | ALIAS              |
-| channel     |               | SCHEDULE CHANNEL   |
-| command     |               | SCHEDULE COMMAND   |
-| interval    |               | SCHEDULE INTERAVAL |
-| is template | false         | IS TEMPLATE        |
-| parent      | default       | PARENT             |
-| randomness  |               | RANDOMNESS         |
-| report      |               | REPORT MODE        |
-| schedule    |               | SCHEDULE           |
-| source      |               | SOURCE             |
-| target      |               | TARGET             |
+| Key         | Default Value | Description       |
+|-------------|---------------|-------------------|
+| alias       |               | ALIAS             |
+| channel     |               | SCHEDULE CHANNEL  |
+| command     |               | SCHEDULE COMMAND  |
+| interval    |               | SCHEDULE INTERVAL |
+| is template | false         | IS TEMPLATE       |
+| parent      | default       | PARENT            |
+| randomness  |               | RANDOMNESS        |
+| report      |               | REPORT MODE       |
+| schedule    |               | SCHEDULE          |
+| source      |               | SOURCE            |
+| target      |               | TARGET            |
 
 
 **Sample:**

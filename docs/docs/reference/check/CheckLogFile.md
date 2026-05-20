@@ -4,6 +4,15 @@ File for checking log files and various other forms of updating text files
 
 
 
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `CheckLogFile = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+CheckLogFile = enabled
+```
+
 
 ## Queries
 
@@ -33,6 +42,8 @@ A list of all short hand aliases for queries (check commands)
 Check for errors in log file or generic pattern matching in text files.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_logfile_options)
 * [Filter keywords](#check_logfile_filter_keys)
 
@@ -40,18 +51,18 @@ Check for errors in log file or generic pattern matching in text files.
 
 
 
-<a name="check_logfile_warn"/>
-<a name="check_logfile_crit"/>
-<a name="check_logfile_debug"/>
-<a name="check_logfile_show-all"/>
-<a name="check_logfile_escape-html"/>
-<a name="check_logfile_help"/>
-<a name="check_logfile_help-pb"/>
-<a name="check_logfile_show-default"/>
-<a name="check_logfile_help-short"/>
-<a name="check_logfile_split"/>
-<a name="check_logfile_files"/>
-<a name="check_logfile_options"/>
+<a id="check_logfile_warn"></a>
+<a id="check_logfile_crit"></a>
+<a id="check_logfile_debug"></a>
+<a id="check_logfile_show-all"></a>
+<a id="check_logfile_escape-html"></a>
+<a id="check_logfile_help"></a>
+<a id="check_logfile_help-pb"></a>
+<a id="check_logfile_show-default"></a>
+<a id="check_logfile_help-short"></a>
+<a id="check_logfile_split"></a>
+<a id="check_logfile_files"></a>
+<a id="check_logfile_options"></a>
 #### Command-line Arguments
 
 
@@ -77,7 +88,7 @@ Check for errors in log file or generic pattern matching in text files.
 | [empty-syntax](#check_logfile_empty-syntax)   | %(status): Nothing found            | Empty syntax.                                                                                                    |
 | [detail-syntax](#check_logfile_detail-syntax) | ${column1}                          | Detail level syntax.                                                                                             |
 | [perf-syntax](#check_logfile_perf-syntax)     | ${column1}                          | Performance alias syntax.                                                                                        |
-| [line-split](#check_logfile_line-split)       | \n                                  | Character string used to split a file into several lines (default \n)                                            |
+| [line-split](#check_logfile_line-split)       | \n                                  | Character string used to split a file into several lines (default `\n`).                                         |
 | [column-split](#check_logfile_column-split)   | \t                                  | Character string to split a line into several columns (default \t)                                               |
 | split                                         |                                     | Alias for split-column                                                                                           |
 | [file](#check_logfile_file)                   |                                     | File to read (can be specified multiple times to check multiple files.                                           |
@@ -112,7 +123,6 @@ Filter which marks items which generates an ok state.
 If anything matches this any previous state for this item will be reset to ok.
 
 
-
 <h5 id="check_logfile_empty-state">empty-state:</h5>
 
 Return status to use when nothing matched filter.
@@ -130,7 +140,7 @@ TODO: obj ( key: value; key: value) obj (key:valuer;key:value)
 
 Top level syntax.
 Used to format the message to return can include text as well as special keywords which will include information from the checks.
-To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to excpae on linux).
+To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to escape on linux).
 
 *Default Value:* `${count}/${total} (${problem_list})`
 
@@ -153,7 +163,7 @@ DEPRECATED! This is the syntax for when nothing matches the filter.
 Detail level syntax.
 Used to format each resulting item in the message.
 %(list) will be replaced with all the items formated by this syntax string in the top-syntax.
-To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to excpae on linux).
+To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to escape on linux).
 
 *Default Value:* `${column1}`
 
@@ -166,7 +176,9 @@ This is the syntax for the base names of the performance data.
 
 <h5 id="check_logfile_line-split">line-split:</h5>
 
-Character string used to split a file into several lines (default \n)
+Character string used to split a file into several lines (default `\n`).
+The escape sequences `\n` and `\t` are translated to LF and TAB respectively; all other characters are taken literally. Multi-character delimiters are supported (for example `\r\n` to split strictly on CRLF, or `|||` for a  custom separator). Setting `line-split` to an empty value (`line-split=`) makes the entire file content available as a single record, which is useful together with a multi-line regular-expression filter.\nWhen the chosen delimiter ends with `
+`, a trailing carriage return is stripped from each record so that files with CRLF line endings produce clean lines.
 
 *Default Value:* `\n`
 
@@ -184,38 +196,43 @@ In other words if one file contains an error the entire check will result in err
 
 
 
-<a name="check_logfile_filter_keys"/>
+<a id="check_logfile_filter_keys"></a>
 #### Filter keywords
 
 
-| Option        | Description                                                                                                  |
-|---------------|--------------------------------------------------------------------------------------------------------------|
-| column()      | Fetch the value from the given column number.                                                                |
-| column1       | The value in the first column                                                                                |
-| column2       | The value in the second column                                                                               |
-| column3       | The value in the third column                                                                                |
-| column4       | The value in the 4:th column                                                                                 |
-| column5       | The value in the 5:th column                                                                                 |
-| column6       | The value in the 6:th column                                                                                 |
-| column7       | The value in the 7:th column                                                                                 |
-| column8       | The value in the 8:th column                                                                                 |
-| column9       | The value in the 9:th column                                                                                 |
-| count         | Number of items matching the filter. Common option for all checks.                                           |
-| crit_count    | Number of items matched the critical criteria. Common option for all checks.                                 |
-| crit_list     | A list of all items which matched the critical criteria. Common option for all checks.                       |
-| detail_list   | A special list with critical, then warning and finally ok. Common option for all checks.                     |
-| file          | The name of the file                                                                                         |
-| filename      | The name of the file                                                                                         |
-| line          | Match the content of an entire line                                                                          |
-| list          | A list of all items which matched the filter. Common option for all checks.                                  |
-| ok_count      | Number of items matched the ok criteria. Common option for all checks.                                       |
-| ok_list       | A list of all items which matched the ok criteria. Common option for all checks.                             |
-| problem_count | Number of items matched either warning or critical criteria. Common option for all checks.                   |
-| problem_list  | A list of all items which matched either the critical or the warning criteria. Common option for all checks. |
-| status        | The returned status (OK/WARN/CRIT/UNKNOWN). Common option for all checks.                                    |
-| total         | Total number of items. Common option for all checks.                                                         |
-| warn_count    | Number of items matched the warning criteria. Common option for all checks.                                  |
-| warn_list     | A list of all items which matched the warning criteria. Common option for all checks.                        |
+| Option   | Description                                   |
+|----------|-----------------------------------------------|
+| column() | Fetch the value from the given column number. |
+| column1  | The value in the first column                 |
+| column2  | The value in the second column                |
+| column3  | The value in the third column                 |
+| column4  | The value in the 4:th column                  |
+| column5  | The value in the 5:th column                  |
+| column6  | The value in the 6:th column                  |
+| column7  | The value in the 7:th column                  |
+| column8  | The value in the 8:th column                  |
+| column9  | The value in the 9:th column                  |
+| file     | The name of the file                          |
+| filename | The name of the file                          |
+| line     | Match the content of an entire line           |
+
+**Common options for all checks:**
+
+| Option        | Description                                                                    |
+|---------------|--------------------------------------------------------------------------------|
+| count         | Number of items matching the filter.                                           |
+| crit_count    | Number of items matched the critical criteria.                                 |
+| crit_list     | A list of all items which matched the critical criteria.                       |
+| detail_list   | A special list with critical, then warning and finally ok.                     |
+| list          | A list of all items which matched the filter.                                  |
+| ok_count      | Number of items matched the ok criteria.                                       |
+| ok_list       | A list of all items which matched the ok criteria.                             |
+| problem_count | Number of items matched either warning or critical criteria.                   |
+| problem_list  | A list of all items which matched either the critical or the warning criteria. |
+| status        | The returned status (OK/WARN/CRIT/UNKNOWN).                                    |
+| total         | Total number of items.                                                         |
+| warn_count    | Number of items matched the warning criteria.                                  |
+| warn_list     | A list of all items which matched the warning criteria.                        |
 
 
 
@@ -231,7 +248,7 @@ In other words if one file contains an error the entire check will result in err
 
 
 
-### Real-time filtering <a id="/settings/logfile/real-time"/>
+### Real-time filtering <a id="/settings/logfile/real-time"></a>
 
 A set of options to configure the real time checks
 
@@ -268,7 +285,6 @@ Spawns a background thread which waits for file changes.
 | Path:          | [/settings/logfile/real-time](#/settings/logfile/real-time) |
 | Key:           | enabled                                                     |
 | Default value: | `false`                                                     |
-| Used by:       | CheckLogFile                                                |
 
 
 **Sample:**
@@ -280,7 +296,7 @@ enabled=false
 ```
 
 
-### Real-time filters <a id="/settings/logfile/real-time/checks"/>
+### Real-time filters <a id="/settings/logfile/real-time/checks"></a>
 
 A set of filters to use in real-time mode
 
@@ -305,7 +321,7 @@ This is a section of objects. This means that you will create objects below this
 | file             |                           | FILE             |
 | files            |                           | FILES            |
 | filter           |                           | FILTER           |
-| maximum age      | 5m                        | MAGIMUM AGE      |
+| maximum age      | 5m                        | MAXIMUM AGE      |
 | ok               |                           | OK FILTER        |
 | ok syntax        |                           | SYNTAX           |
 | perf config      |                           | PERF CONFIG      |

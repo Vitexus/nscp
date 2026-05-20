@@ -4,6 +4,15 @@ Check status of your scheduled jobs.
 
 
 
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `CheckTaskSched = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+CheckTaskSched = enabled
+```
+
 
 ## Queries
 
@@ -13,10 +22,9 @@ A quick reference for all available queries (check commands) in the CheckTaskSch
 
 A list of all available queries (check commands)
 
-| Command                             | Description                       |
-|-------------------------------------|-----------------------------------|
-| [check_tasksched](#check_tasksched) | Check status of scheduled jobs.   |
-| [checktasksched](#checktasksched)   | Legacy version of check_tasksched |
+| Command                             | Description                     |
+|-------------------------------------|---------------------------------|
+| [check_tasksched](#check_tasksched) | Check status of scheduled jobs. |
 
 
 
@@ -25,13 +33,15 @@ A list of all available queries (check commands)
 
 Check status of scheduled jobs.
 
-* [Samples](#check_tasksched_samples)
 
+**Jump to section:**
+
+* [Sample Commands](#check_tasksched_samples)
 * [Command-line Arguments](#check_tasksched_options)
 * [Filter keywords](#check_tasksched_filter_keys)
 
 
-<a name="check_tasksched_samples"/>
+<a id="check_tasksched_samples"></a>
 #### Sample Commands
 
 _To edit these sample please edit [this page](https://github.com/mickem/nscp-docs/blob/master/samples/CheckTaskSched_check_tasksched_samples.md)_
@@ -45,24 +55,24 @@ check_nrpe --host 192.168.56.103 --command check_tasksched
 
 
 
-<a name="check_tasksched_warn"/>
-<a name="check_tasksched_crit"/>
-<a name="check_tasksched_debug"/>
-<a name="check_tasksched_show-all"/>
-<a name="check_tasksched_escape-html"/>
-<a name="check_tasksched_help"/>
-<a name="check_tasksched_help-pb"/>
-<a name="check_tasksched_show-default"/>
-<a name="check_tasksched_help-short"/>
-<a name="check_tasksched_force-old"/>
-<a name="check_tasksched_computer"/>
-<a name="check_tasksched_user"/>
-<a name="check_tasksched_domain"/>
-<a name="check_tasksched_password"/>
-<a name="check_tasksched_folder"/>
-<a name="check_tasksched_recursive"/>
-<a name="check_tasksched_hidden"/>
-<a name="check_tasksched_options"/>
+<a id="check_tasksched_warn"></a>
+<a id="check_tasksched_crit"></a>
+<a id="check_tasksched_debug"></a>
+<a id="check_tasksched_show-all"></a>
+<a id="check_tasksched_escape-html"></a>
+<a id="check_tasksched_help"></a>
+<a id="check_tasksched_help-pb"></a>
+<a id="check_tasksched_show-default"></a>
+<a id="check_tasksched_help-short"></a>
+<a id="check_tasksched_force-old"></a>
+<a id="check_tasksched_computer"></a>
+<a id="check_tasksched_user"></a>
+<a id="check_tasksched_domain"></a>
+<a id="check_tasksched_password"></a>
+<a id="check_tasksched_folder"></a>
+<a id="check_tasksched_recursive"></a>
+<a id="check_tasksched_hidden"></a>
+<a id="check_tasksched_options"></a>
 #### Command-line Arguments
 
 
@@ -129,7 +139,6 @@ Filter which marks items which generates an ok state.
 If anything matches this any previous state for this item will be reset to ok.
 
 
-
 <h5 id="check_tasksched_empty-state">empty-state:</h5>
 
 Return status to use when nothing matched filter.
@@ -147,7 +156,7 @@ TODO: obj ( key: value; key: value) obj (key:valuer;key:value)
 
 Top level syntax.
 Used to format the message to return can include text as well as special keywords which will include information from the checks.
-To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to excpae on linux).
+To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to escape on linux).
 
 *Default Value:* `${status}: ${problem_list}`
 
@@ -171,7 +180,7 @@ DEPRECATED! This is the syntax for when nothing matches the filter.
 Detail level syntax.
 Used to format each resulting item in the message.
 %(list) will be replaced with all the items formated by this syntax string in the top-syntax.
-To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to excpae on linux).
+To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to escape on linux).
 
 *Default Value:* `${folder}/${title}: ${exit_code} != 0`
 
@@ -183,92 +192,44 @@ This is the syntax for the base names of the performance data.
 *Default Value:* `${title}`
 
 
-<a name="check_tasksched_filter_keys"/>
+<a id="check_tasksched_filter_keys"></a>
 #### Filter keywords
 
 
-| Option               | Description                                                                                                  |
-|----------------------|--------------------------------------------------------------------------------------------------------------|
-| application          | Retrieves the name of the application that the task is associated with.                                      |
-| comment              | Retrieves the comment or description for the work item.                                                      |
-| count                | Number of items matching the filter. Common option for all checks.                                           |
-| creator              | Retrieves the creator of the work item.                                                                      |
-| crit_count           | Number of items matched the critical criteria. Common option for all checks.                                 |
-| crit_list            | A list of all items which matched the critical criteria. Common option for all checks.                       |
-| detail_list          | A special list with critical, then warning and finally ok. Common option for all checks.                     |
-| enabled              | TODO.                                                                                                        |
-| exit_code            | Retrieves the work item's last exit code.                                                                    |
-| folder               | The task folder                                                                                              |
-| has_run              | True if the task has ever executed.                                                                          |
-| list                 | A list of all items which matched the filter. Common option for all checks.                                  |
-| max_run_time         | Retrieves the maximum length of time the task can run.                                                       |
-| most_recent_run_time | Retrieves the most recent time the work item began running.                                                  |
-| ok_count             | Number of items matched the ok criteria. Common option for all checks.                                       |
-| ok_list              | A list of all items which matched the ok criteria. Common option for all checks.                             |
-| parameters           | Retrieves the command-line parameters of a task.                                                             |
-| priority             | Retrieves the priority for the task.                                                                         |
-| problem_count        | Number of items matched either warning or critical criteria. Common option for all checks.                   |
-| problem_list         | A list of all items which matched either the critical or the warning criteria. Common option for all checks. |
-| status               | The returned status (OK/WARN/CRIT/UNKNOWN). Common option for all checks.                                    |
-| task_status          | Retrieves the status of the work item.                                                                       |
-| title                | The task title                                                                                               |
-| total                | Total number of items. Common option for all checks.                                                         |
-| warn_count           | Number of items matched the warning criteria. Common option for all checks.                                  |
-| warn_list            | A list of all items which matched the warning criteria. Common option for all checks.                        |
-| working_directory    | Retrieves the working directory of the task.                                                                 |
+| Option               | Description                                                             |
+|----------------------|-------------------------------------------------------------------------|
+| application          | Retrieves the name of the application that the task is associated with. |
+| comment              | Retrieves the comment or description for the work item.                 |
+| creator              | Retrieves the creator of the work item.                                 |
+| enabled              | TODO.                                                                   |
+| exit_code            | Retrieves the work item's last exit code.                               |
+| folder               | The task folder                                                         |
+| has_run              | True if the task has ever executed.                                     |
+| max_run_time         | Retrieves the maximum length of time the task can run.                  |
+| most_recent_run_time | Retrieves the most recent time the work item began running.             |
+| parameters           | Retrieves the command-line parameters of a task.                        |
+| priority             | Retrieves the priority for the task.                                    |
+| task_status          | Retrieves the status of the work item.                                  |
+| title                | The task title                                                          |
+| working_directory    | Retrieves the working directory of the task.                            |
 
+**Common options for all checks:**
 
-### checktasksched
-
-Legacy version of check_tasksched
-
-
-* [Command-line Arguments](#checktasksched_options)
-
-
-
-
-
-<a name="checktasksched_help"/>
-<a name="checktasksched_help-pb"/>
-<a name="checktasksched_show-default"/>
-<a name="checktasksched_help-short"/>
-<a name="checktasksched_warn"/>
-<a name="checktasksched_crit"/>
-<a name="checktasksched_MaxWarn"/>
-<a name="checktasksched_MaxCrit"/>
-<a name="checktasksched_MinWarn"/>
-<a name="checktasksched_MinCrit"/>
-<a name="checktasksched_Counter"/>
-<a name="checktasksched_truncate"/>
-<a name="checktasksched_syntax"/>
-<a name="checktasksched_master-syntax"/>
-<a name="checktasksched_filter"/>
-<a name="checktasksched_debug"/>
-<a name="checktasksched_options"/>
-#### Command-line Arguments
-
-
-| Option        | Default Value | Description                                                     |
-|---------------|---------------|-----------------------------------------------------------------|
-| help          | N/A           | Show help screen (this screen)                                  |
-| help-pb       | N/A           | Show help screen as a protocol buffer payload                   |
-| show-default  | N/A           | Show default values for a given command                         |
-| help-short    | N/A           | Show help screen (short format).                                |
-| warn          |               | Warning bounds.                                                 |
-| crit          |               | Critical bounds.                                                |
-| MaxWarn       |               | Maximum value before a warning is returned.                     |
-| MaxCrit       |               | Maximum value before a critical is returned.                    |
-| MinWarn       |               | Minimum value before a warning is returned.                     |
-| MinCrit       |               | Minimum value before a critical is returned.                    |
-| Counter       |               | The time to check                                               |
-| truncate      |               | Deprecated option                                               |
-| syntax        |               | Syntax (same as detail-syntax in the check_tasksched check)     |
-| master-syntax |               | Master Syntax (same as top-syntax in the check_tasksched check) |
-| filter        |               | Filter (same as filter in the check_tasksched check)            |
-| debug         | N/A           | Filter (same as filter in the check_tasksched check)            |
-
-
+| Option        | Description                                                                    |
+|---------------|--------------------------------------------------------------------------------|
+| count         | Number of items matching the filter.                                           |
+| crit_count    | Number of items matched the critical criteria.                                 |
+| crit_list     | A list of all items which matched the critical criteria.                       |
+| detail_list   | A special list with critical, then warning and finally ok.                     |
+| list          | A list of all items which matched the filter.                                  |
+| ok_count      | Number of items matched the ok criteria.                                       |
+| ok_list       | A list of all items which matched the ok criteria.                             |
+| problem_count | Number of items matched either warning or critical criteria.                   |
+| problem_list  | A list of all items which matched either the critical or the warning criteria. |
+| status        | The returned status (OK/WARN/CRIT/UNKNOWN).                                    |
+| total         | Total number of items.                                                         |
+| warn_count    | Number of items matched the warning criteria.                                  |
+| warn_list     | A list of all items which matched the warning criteria.                        |
 
 
 

@@ -1,5 +1,5 @@
 from NSCP import Settings, Registry, Core, log, status, log_error
-from test_helper import BasicTest, TestResult, Callable, setup_singleton, install_testcases, init_testcases, shutdown_testcases
+from test_helper import BasicTest, TestResult, setup_singleton, install_testcases, init_testcases, shutdown_testcases
 
 from sys import path
 import os
@@ -8,9 +8,11 @@ path.append(os.getcwd() + '/scripts/python')
 from test_nsca import NSCAServerTest
 from test_nrpe import NRPEServerTest
 from test_python import PythonTest
+from test_check_helpers import CheckHelpersTest
+import test_uptime
 
-# 
-all_tests = [NSCAServerTest, PythonTest, NRPEServerTest]
+#
+all_tests = [NSCAServerTest, PythonTest, NRPEServerTest, CheckHelpersTest, test_uptime.instance]
 if os.name == 'nt':
 	from test_eventlog import EventLogTest
 	from test_w32_system import Win32SystemTest

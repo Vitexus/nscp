@@ -19,151 +19,147 @@
 
 #include "realtime_data.hpp"
 
-#include <nscapi/nscapi_helper_singleton.hpp>
+#include <boost/filesystem.hpp>
 #include <nscapi/macros.hpp>
-
+#include <nscapi/nscapi_helper_singleton.hpp>
 #include <str/utils.hpp>
 
-#include <boost/foreach.hpp>
-#include <boost/filesystem.hpp>
-
+#include "file_reader.hpp"
 
 void runtime_data::touch(boost::posix_time::ptime now) {
-	BOOST_FOREACH(file_container &fc, files) {
-		if (boost::filesystem::exists(fc.file)) {
-			fc.size = boost::filesystem::file_size(fc.file);
-		} else {
-			fc.size = 0;
-		}
-	}
+  for (file_container &fc : files) {
+    if (boost::filesystem::exists(fc.file)) {
+      fc.size = boost::filesystem::file_size(fc.file);
+    } else {
+      fc.size = 0;
+    }
+  }
 }
 
 bool runtime_data::has_changed(const file_container &fc) const {
-	if (!boost::filesystem::exists(fc.file)) {
-		NSC_TRACE_ENABLED() {
-			NSC_TRACE_MSG("File was not found: " + fc.file.string());
-		}
-		return false;
-	}
-	if (check_time) {
-		std::time_t time = boost::filesystem::last_write_time(fc.file);
-		if (std::difftime(time, fc.time) != 0) {
-			NSC_TRACE_ENABLED() {
-				NSC_TRACE_MSG("File was changed (time): " + fc.file.string());
-			}
-			return true;
-		}
-	} else {
-		boost::uintmax_t sz = boost::filesystem::file_size(fc.file);
-		if (sz != fc.size) {
-			NSC_TRACE_ENABLED() {
-				NSC_TRACE_MSG("File was changed (size): " + fc.file.string());
-			}
-			return true;
-		}
-	}
-	return false;
+  if (!boost::filesystem::exists(fc.file)) {
+    NSC_TRACE_ENABLED() { NSC_TRACE_MSG("File was not found: " + fc.file.string()); }
+    return false;
+  }
+  if (check_time) {
+    std::time_t time = boost::filesystem::last_write_time(fc.file);
+    if (std::difftime(time, fc.time) != 0) {
+      NSC_TRACE_ENABLED() { NSC_TRACE_MSG("File was changed (time): " + fc.file.string()); }
+      return true;
+    }
+  } else {
+    boost::uintmax_t sz = boost::filesystem::file_size(fc.file);
+    if (sz != fc.size) {
+      NSC_TRACE_ENABLED() { NSC_TRACE_MSG("File was changed (size): " + fc.file.string()); }
+      return true;
+    }
+  }
+  return false;
 }
 
-
 bool runtime_data::has_changed(transient_data_type) const {
-	BOOST_FOREACH(const file_container &fc, files) {
-		if (has_changed(fc)) {
-			return true;
-		}
-	}
-	return false;
+  for (const file_container &fc : files) {
+    if (has_changed(fc)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void runtime_data::add_file(const boost::filesystem::path &path) {
-	try {
-		file_container fc;
-		if (boost::filesystem::exists(path)) {
-			fc.file = path;
-			fc.size = boost::filesystem::file_size(fc.file);
-		} else {
-			fc.file = path;
-			fc.size = 0;
-		}
-		files.push_back(fc);
-	} catch (std::exception &e) {
-		NSC_LOG_ERROR("Failed to add " + path.string() + ": " + utf8::utf8_from_native(e.what()));
-	}
+  try {
+    file_container fc;
+    if (boost::filesystem::exists(path)) {
+      fc.file = path;
+      fc.size = boost::filesystem::file_size(fc.file);
+    } else {
+      fc.file = path;
+      fc.size = 0;
+    }
+    files.push_back(fc);
+  } catch (std::exception &e) {
+    NSC_LOG_ERROR("Failed to add " + path.string() + ": " + utf8::utf8_from_native(e.what()));
+  }
 }
 
 modern_filter::match_result runtime_data::process_item(filter_type &filter, transient_data_type) {
-	modern_filter::match_result ret;
-	BOOST_FOREACH(file_container &c, files) {
-		boost::uintmax_t sz = boost::filesystem::file_size(c.file);
-		if (sz == 0) {
-			NSC_TRACE_ENABLED() {
-				NSC_TRACE_MSG("File was zero, no point in reading it: " + c.file.string());
-			}
-			continue;
-		}
-		if (!has_changed(c)) {
-			NSC_TRACE_ENABLED() {
-				NSC_TRACE_MSG("File was unchanged, no point in reading it: " + c.file.string());
-			}
-			continue;
-		}
-		c.time = boost::filesystem::last_write_time(c.file);
-		c.size = sz;
+  modern_filter::match_result ret;
+  for (file_container &c : files) {
+    boost::uintmax_t sz = boost::filesystem::file_size(c.file);
+    if (sz == 0) {
+      NSC_TRACE_ENABLED() { NSC_TRACE_MSG("File was zero, no point in reading it: " + c.file.string()); }
+      // Track empty so a future write past offset 0 produces "new" data.
+      c.size = 0;
+      c.time = boost::filesystem::last_write_time(c.file);
+      continue;
+    }
+    if (!has_changed(c)) {
+      NSC_TRACE_ENABLED() { NSC_TRACE_MSG("File was unchanged, no point in reading it: " + c.file.string()); }
+      continue;
+    }
 
-		std::ifstream file(c.file.string().c_str());
-		if (file.is_open()) {
-			std::string line;
-			if (!read_from_start && sz > c.size)
-				file.seekg(c.size);
-			while (file.good()) {
-				std::getline(file, line, '\n');
-				if (!line.empty()) {
-					std::list<std::string> chunks = str::utils::split_lst(line, utf8::cvt<std::string>(column_split));
-					boost::shared_ptr<logfile_filter::filter_obj> record(new logfile_filter::filter_obj(c.file.string(), line, chunks));
-					ret.append(filter.match(record));
-				}
-			}
-			file.close();
-		} else {
-			NSC_LOG_ERROR("Failed to open file: " + c.file.string());
-		}
-	}
-	return ret;
+    // Decide where to start reading BEFORE we update `c.size`, otherwise the
+    // previous-end offset is lost and we would always re-read the whole file.
+    const check_logfile::file_reader::seek_decision decision = check_logfile::file_reader::compute_seek(c.size, sz, read_from_start);
+
+    // Update bookkeeping for the next round regardless of what we end up
+    // reading this round (size and mtime always reflect the current state).
+    c.time = boost::filesystem::last_write_time(c.file);
+    c.size = sz;
+
+    if (decision.skip) {
+      NSC_TRACE_ENABLED() { NSC_TRACE_MSG("No new content to read in: " + c.file.string()); }
+      continue;
+    }
+
+    std::ifstream file(c.file.string().c_str(), std::ios::in | std::ios::binary);
+    if (file.is_open()) {
+      if (decision.offset > 0) {
+        file.seekg(static_cast<std::streamoff>(decision.offset));
+      }
+      const std::string effective_line_split = line_split.empty() ? std::string("\n") : line_split;
+      std::string line;
+      while (check_logfile::file_reader::getline_str(file, line, effective_line_split)) {
+        if (!line.empty()) {
+          std::list<std::string> chunks = str::utils::split_lst(line, utf8::cvt<std::string>(column_split));
+          std::shared_ptr<logfile_filter::filter_obj> record(new logfile_filter::filter_obj(c.file.string(), line, chunks));
+          ret.append(filter.match(record));
+        }
+      }
+      file.close();
+    } else {
+      NSC_LOG_ERROR("Failed to open file: " + c.file.string());
+    }
+  }
+  return ret;
 }
 
 void runtime_data::set_read_from_start(bool read_from_start_) {
-	read_from_start = read_from_start_;
-	if (read_from_start) {
-		check_time = true;
-	}
+  read_from_start = read_from_start_;
+  if (read_from_start) {
+    check_time = true;
+  }
 }
-void runtime_data::set_comparison(bool check_time_) {
-	check_time = check_time_;
-}
+void runtime_data::set_comparison(bool check_time_) { check_time = check_time_; }
 
 void runtime_data::set_split(std::string line, std::string column) {
-	if (column.empty())
-		column_split = "\t";
-	else
-		column_split = column;
-	str::utils::replace(column_split, "\\t", "\t");
-	str::utils::replace(column_split, "\\n", "\n");
-	std::size_t len = column_split.size();
-	if (len == 0)
-		column_split = " ";
-	if (len > 2 && column_split[0] == '\"' && column_split[len - 1] == '\"')
-		column_split = column_split.substr(1, len - 2);
+  if (column.empty())
+    column_split = "\t";
+  else
+    column_split = column;
+  str::utils::replace(column_split, "\\t", "\t");
+  str::utils::replace(column_split, "\\n", "\n");
+  std::size_t len = column_split.size();
+  if (len == 0) column_split = " ";
+  if (len > 2 && column_split[0] == '\"' && column_split[len - 1] == '\"') column_split = column_split.substr(1, len - 2);
 
-
-	if (line.empty())
-		line = "\n";
-	else
-		line_split = line;
-	str::utils::replace(line_split, "\\t", "\t");
-	str::utils::replace(line_split, "\\n", "\n");
-	len = line_split.size();
-	if (len == 0)
-		line_split = " ";
-	if (len > 2 && line_split[0] == '\"' && line_split[len - 1] == '\"')
-		line_split = line_split.substr(1, len - 2);
+  if (line.empty())
+    line_split = "\n";
+  else
+    line_split = line;
+  str::utils::replace(line_split, "\\t", "\t");
+  str::utils::replace(line_split, "\\n", "\n");
+  len = line_split.size();
+  if (len == 0) line_split = "\n";
+  if (len > 2 && line_split[0] == '\"' && line_split[len - 1] == '\"') line_split = line_split.substr(1, len - 2);
 }

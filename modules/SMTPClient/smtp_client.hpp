@@ -19,117 +19,127 @@
 
 #pragma once
 
+#include <net/socket/socket_helpers.hpp>
+#include <nscapi/protobuf/functions_convert.hpp>
+#include <nscapi/protobuf/functions_exec.hpp>
+#include <nscapi/protobuf/functions_perfdata.hpp>
+#include <nscapi/protobuf/functions_query.hpp>
+#include <nscapi/protobuf/functions_response.hpp>
+#include <nscapi/protobuf/functions_submit.hpp>
+#include <nscapi/protobuf/metrics.hpp>
+
 #include "smtp.hpp"
 
-#include <socket/socket_helpers.hpp>
-#include <nscapi/nscapi_helper_singleton.hpp>
-
 namespace smtp_client {
-	struct connection_data : public socket_helpers::connection_info {
-		typedef socket_helpers::connection_info parent;
-		std::string recipient_str;
-		std::string sender_hostname;
-		std::string template_string;
+struct connection_data : socket_helpers::connection_info {
+  typedef connection_info parent;
 
-		connection_data(client::destination_container arguments, client::destination_container sender) {
-			address = arguments.address.host;
-			port_ = arguments.address.get_port_string("25");
-			timeout = arguments.get_int_data("timeout", 30);
-			retry = arguments.get_int_data("retry", 3);
+  // Authentication / transport
+  std::string username;
+  std::string password;
+  std::string security;  // "none" | "starttls" | "tls"
+  bool insecure_skip_verify = false;
+  std::string canonical_name;  // EHLO hostname
 
-			recipient_str = arguments.get_string_data("recipient");
-			template_string = arguments.get_string_data("template");
+  // Message construction
+  std::string sender;  // From: header / envelope sender
+  std::string sender_hostname;
+  std::string recipient_str;
+  std::string subject_template;
+  std::string template_string;
 
-			if (sender.has_data("host"))
-				sender_hostname = sender.get_string_data("host");
-		}
+  connection_data(client::destination_container arguments, client::destination_container sender_container) {
+    address = arguments.address.host;
+    port_ = arguments.address.get_port_string("587");
+    timeout = arguments.get_int_data("timeout", 30);
+    retry = arguments.get_int_data("retry", 3);
 
-		std::string to_string() const {
-			std::stringstream ss;
-			ss << "host: " << parent::to_string();
-			ss << ", recipient: " << recipient_str;
-			ss << ", sender: " << sender_hostname;
-			ss << ", template: " << template_string;
-			return ss.str();
-		}
-	};
+    username = arguments.get_string_data("username");
+    password = arguments.get_string_data("password");
+    security = arguments.get_string_data("security");
+    if (security.empty()) security = "starttls";
+    insecure_skip_verify = arguments.get_bool_data("insecure-skip-verify");
 
-	struct g_data {
-		std::string path;
-		std::string value;
-	};
+    sender = arguments.get_string_data("sender");
+    recipient_str = arguments.get_string_data("recipient");
+    subject_template = arguments.get_string_data("subject");
+    template_string = arguments.get_string_data("template");
 
-	struct smtp_client_handler : public client::handler_interface {
-		bool query(client::destination_container sender, client::destination_container target, const Plugin::QueryRequestMessage &request_message, Plugin::QueryResponseMessage &response_message) {
-			return false;
-		}
+    if (sender_container.has_data("host")) {
+      sender_hostname = sender_container.get_string_data("host");
+    }
+    canonical_name = arguments.get_string_data("ehlo-hostname");
+  }
 
-		bool submit(client::destination_container sender, client::destination_container target, const Plugin::SubmitRequestMessage &request_message, Plugin::SubmitResponseMessage &response_message) {
-			const ::Plugin::Common_Header& request_header = request_message.header();
-			connection_data con(sender, target);
+  std::string to_string() const {
+    std::stringstream ss;
+    ss << "host: " << parent::to_string();
+    ss << ", recipient: " << recipient_str;
+    ss << ", sender: " << sender;
+    ss << ", username: " << (username.empty() ? "<unset>" : username);
+    ss << ", password: " << (password.empty() ? "<unset>" : "<set>");
+    ss << ", security: " << security;
+    ss << ", subject: " << subject_template;
+    ss << ", template-len: " << template_string.size();
+    return ss.str();
+  }
+};
 
-			nscapi::protobuf::functions::make_return_header(response_message.mutable_header(), request_header);
+struct smtp_client_handler : client::handler_interface {
+  bool query(client::destination_container, client::destination_container, const PB::Commands::QueryRequestMessage&,
+             PB::Commands::QueryResponseMessage&) override {
+    return false;
+  }
 
-			std::list<g_data> list;
+  bool submit(client::destination_container sender, client::destination_container target, const PB::Commands::SubmitRequestMessage& request_message,
+              PB::Commands::SubmitResponseMessage& response_message) override {
+    const PB::Common::Header& request_header = request_message.header();
+    nscapi::protobuf::functions::make_return_header(response_message.mutable_header(), request_header);
 
-			BOOST_FOREACH(const ::Plugin::QueryResponseMessage_Response &p, request_message.payload()) {
-				boost::asio::io_service io_service;
-				boost::shared_ptr<smtp::client::smtp_client> client(new smtp::client::smtp_client(io_service));
-				std::list<std::string> recipients;
-				std::string message = con.template_string;
+    connection_data con(target, sender);
+    NSC_TRACE_ENABLED() { NSC_TRACE_MSG("SMTP target: " + con.to_string()); }
 
-				str::utils::replace(message, "%message%", nscapi::protobuf::functions::query_data_to_nagios_string(p, nscapi::protobuf::functions::no_truncation));
-				recipients.push_back(con.recipient_str);
-				client->send_mail(con.sender_hostname, recipients, "Hello world\n");
-				io_service.run();
-				nscapi::protobuf::functions::append_simple_submit_response_payload(response_message.add_payload(), "TODO", true, "Message send successfully");
-			}
-			return true;
-		}
+    smtp::connection_config cfg;
+    cfg.server = con.address;
+    cfg.port = con.port_;
+    cfg.username = con.username;
+    cfg.password = con.password;
+    cfg.security = con.security;
+    cfg.insecure_skip_verify = con.insecure_skip_verify;
+    cfg.canonical_name = con.canonical_name.empty() ? con.sender_hostname : con.canonical_name;
+    cfg.timeout_seconds = static_cast<int>(con.timeout);
 
-		bool exec(client::destination_container sender, client::destination_container target, const Plugin::ExecuteRequestMessage &request_message, Plugin::ExecuteResponseMessage &response_message) {
-			return false;
-		}
+    for (const ::PB::Commands::QueryResponseMessage_Response& p : request_message.payload()) {
+      const std::string nagios_msg = nscapi::protobuf::functions::query_data_to_nagios_string(p, nscapi::protobuf::functions::no_truncation);
+      const std::string source_alias = p.alias().empty() ? p.command() : p.alias();
 
-		bool metrics(client::destination_container sender, client::destination_container target, const Plugin::MetricsMessage &request_message) {
-			return false;
-		}
+      smtp::message msg;
+      msg.from = con.sender;
+      msg.to = con.recipient_str;
+      msg.subject = con.subject_template;
+      str::utils::replace(msg.subject, "%message%", nagios_msg);
+      str::utils::replace(msg.subject, "%source%", source_alias);
+      msg.body = con.template_string;
+      str::utils::replace(msg.body, "%message%", nagios_msg);
+      str::utils::replace(msg.body, "%source%", source_alias);
 
+      try {
+        smtp::send(cfg, msg);
+        nscapi::protobuf::functions::append_simple_submit_response_payload(response_message.add_payload(), source_alias, true, "Email sent successfully");
+      } catch (const smtp::smtp_exception& e) {
+        NSC_LOG_ERROR(std::string("SMTP send failed: ") + e.what());
+        nscapi::protobuf::functions::append_simple_submit_response_payload(response_message.add_payload(), source_alias, false,
+                                                                           std::string("SMTP send failed: ") + e.what());
+      }
+    }
+    return true;
+  }
 
-		void send(Plugin::SubmitResponseMessage::Response *payload, connection_data con, const std::list<g_data> &data) {
-			try {
-				boost::asio::io_service io_service;
-				boost::asio::ip::tcp::resolver resolver(io_service);
-				boost::asio::ip::tcp::resolver::query query(con.get_address(), con.get_port());
-				boost::asio::ip::tcp::resolver::iterator endpoint_iterator = resolver.resolve(query);
-				boost::asio::ip::tcp::resolver::iterator end;
+  bool exec(client::destination_container, client::destination_container, const PB::Commands::ExecuteRequestMessage&,
+            PB::Commands::ExecuteResponseMessage&) override {
+    return false;
+  }
 
-				boost::asio::ip::tcp::socket socket(io_service);
-				boost::system::error_code error = boost::asio::error::host_not_found;
-				while (error && endpoint_iterator != end) {
-					socket.close();
-					socket.connect(*endpoint_iterator++, error);
-				}
-				if (error)
-					throw boost::system::system_error(error);
-
-				boost::posix_time::ptime time_t_epoch(boost::gregorian::date(1970, 1, 1));
-				boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
-				boost::posix_time::time_duration diff = now - time_t_epoch;
-				int x = diff.total_seconds();
-
-				BOOST_FOREACH(const g_data &d, data) {
-					std::string msg = d.path + " " + d.value + " " + boost::lexical_cast<std::string>(x) + "\n";
-					socket.send(boost::asio::buffer(msg));
-				}
-				nscapi::protobuf::functions::set_response_good(*payload, "Data presumably sent successfully");
-			} catch (const std::runtime_error &e) {
-				nscapi::protobuf::functions::set_response_bad(*payload, "Socket error: " + utf8::utf8_from_native(e.what()));
-			} catch (const std::exception &e) {
-				nscapi::protobuf::functions::set_response_bad(*payload, "Error: " + utf8::utf8_from_native(e.what()));
-			} catch (...) {
-				nscapi::protobuf::functions::set_response_bad(*payload, "Unknown error -- REPORT THIS!");
-			}
-		}
-	};
-}
+  bool metrics(client::destination_container, client::destination_container, const PB::Metrics::MetricsMessage&) override { return false; }
+};
+}  // namespace smtp_client

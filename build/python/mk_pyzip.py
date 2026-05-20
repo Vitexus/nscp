@@ -1,31 +1,82 @@
 #!/usr/bin/env python
 import os
-import zipfile
+from zipfile import ZipFile, ZIP_DEFLATED
 from optparse import OptionParser
+from shutil import copyfile
+
+WANTED_PACKAGES = [
+    'site-packages/requests',
+    'site-packages/google',
+    'site-packages/google/protobuf',
+    'site-packages/google/protobuf/compiler',
+    'site-packages/google/protobuf/internal',
+    'site-packages/google/protobuf/pyext',
+    'site-packages/google/protobuf/util',
+    'encodings',
+    're',
+    'importlib',
+    'ctypes',
+    'collections',
+    'site-packages/jinja2',
+    'site-packages/markupsafe',
+]
 
 def zipdir(path, ziph):
-	for root, dirs, files in os.walk(path):
-		dir = os.path.relpath(root, path)
-		for file in files:
-			if file.endswith('.py'):
-				ziph.write(os.path.join(root, file), os.path.join(dir, file))
+    missing = list(WANTED_PACKAGES)
+    for root, dirs, files in os.walk(path):
+        if 'pip' in root or 'Doc' in root or 'tcl' in root or 'tools' in root:
+                continue
+        rel_path = os.path.relpath(root, path).replace('\\', '/')
+        for package in missing:
+            if rel_path.startswith(package):
+                missing.remove(package)
+                folder = os.path.relpath(root, os.path.join(path, 'site-packages') if rel_path.startswith('site-packages') else path)
+                print(f"Adding: {folder} to zip dist")
+                for file in files:
+                    if file.endswith('.py'):
+                        ziph.write(os.path.join(root, file), os.path.join(folder, file))
+        if rel_path == '.':
+            for file in files:
+                if file.endswith('.py'):
+                    print(f"Adding: {file} to zip dist")
+                    folder = ''
+                    ziph.write(os.path.join(root, file), os.path.join(folder, file))
+
+
+    if missing:
+        print(f"Error: Missing packages in {path}: {missing}")
+        exit(1)
 
 if __name__ == '__main__':
 
-	parser = OptionParser()
-	parser.add_option("-s", "--source", help="source FOLDER to fiond source files to compress", metavar="SOURCE")
-	parser.add_option("-t", "--target", help="target zip FILE to write", metavar="TARGET")
-	(options, args) = parser.parse_args()
-	
-	if not options.target:
-		options.target = os.getcwd()
-	if os.path.isdir(options.target):
-		options.target = os.path.join(options.target, 'python27.zip')
+    parser = OptionParser()
+    parser.add_option("-s", "--source", help="SOURCE folder of your python installation", metavar="SOURCE")
+    parser.add_option("-t", "--target", help="TARGET folder to write zips in", metavar="TARGET")
+    # Output filename stem must match the installer's BoostPythonVersion variable
+    # (driven from NSCP_BOOST_PYTHON_VERSION in CMake): the WiX project bundles
+    # `<version>.zip`, so a mismatch silently breaks the MSI's Python feature.
+    parser.add_option("-v", "--version", default="python311",
+                      help="Python version stem used in the output filename (e.g. python311, python312)",
+                      metavar="VERSION")
+    (options, args) = parser.parse_args()
 
-	if not options.source:
-		print "Please specify source folder"
-		exit(2)
+    if not options.target:
+        options.target = os.getcwd()
+    if not os.path.isdir(options.target):
+        os.makedirs(options.target)
+    target_zip = os.path.join(options.target, f'{options.version}.zip')
 
-	zipf = zipfile.ZipFile(options.target, 'w')
-	zipdir(options.source, zipf)
-	zipf.close()
+    if not options.source:
+        print("Please specify source folder")
+        exit(2)
+    source_pyd = os.path.join(options.source, 'DLLs')
+    source_lib = os.path.join(options.source, 'lib')
+
+    with ZipFile(target_zip, 'w', compression=ZIP_DEFLATED) as zipf:
+        zipdir(source_lib, zipf)
+        zipf.writestr('google/__init__.py', '')
+
+    print("Created python lib zip: %s"%target_zip)
+
+    for f in ['_socket.pyd', 'unicodedata.pyd', '_ctypes.pyd']:
+        copyfile(os.path.join(source_pyd, f), os.path.join(options.target, f))

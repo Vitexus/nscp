@@ -1,0 +1,256 @@
+/*
+ * Copyright 2004-2016 The NSClient++ Authors - https://nsclient.org
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <boost/optional.hpp>
+#include <nscapi/protobuf/functions_convert.hpp>
+#include <nscapi/protobuf/functions_exec.hpp>
+#include <nscapi/protobuf/settings.hpp>
+#include <nscapi/protobuf/settings_functions.hpp>
+#include <str/utils.hpp>
+#include <str/xtos.hpp>
+#include <utility>
+
+namespace nscapi {
+namespace protobuf {
+namespace functions {
+
+struct settings_query_data {
+  PB::Settings::SettingsRequestMessage request_message;
+  PB::Settings::SettingsResponseMessage response_message;
+  std::string response_buffer;
+  int plugin_id;
+
+  settings_query_data(int plugin_id) : plugin_id(plugin_id) {}
+};
+
+struct settings_query_key_values_data {
+  std::string path;
+  boost::optional<std::string> key;
+  boost::optional<std::string> str_value;
+  boost::optional<long long> int_value;
+  boost::optional<bool> bool_value;
+
+  explicit settings_query_key_values_data(std::string path) : path(std::move(path)) {}
+  settings_query_key_values_data(std::string path, std::string key, std::string str_value)
+      : path(std::move(path)), key(std::move(key)), str_value(std::move(str_value)) {}
+  settings_query_key_values_data(std::string path, std::string key, const long long int_value)
+      : path(std::move(path)), key(std::move(key)), int_value(int_value) {}
+  settings_query_key_values_data(std::string path, std::string key, const bool bool_value)
+      : path(std::move(path)), key(std::move(key)), bool_value(bool_value) {}
+  settings_query_key_values_data(const settings_query_key_values_data &other) = default;
+
+  settings_query_key_values_data &operator=(const settings_query_key_values_data &other) = default;
+};
+
+settings_query::key_values::key_values(std::string path) : pimpl(new settings_query_key_values_data(std::move(path))) {}
+settings_query::key_values::key_values(std::string path, std::string key, std::string str_value)
+    : pimpl(new settings_query_key_values_data(std::move(path), std::move(key), std::move(str_value))) {}
+settings_query::key_values::key_values(std::string path, std::string key, const long long int_value)
+    : pimpl(new settings_query_key_values_data(std::move(path), std::move(key), int_value)) {}
+settings_query::key_values::key_values(std::string path, std::string key, const bool bool_value)
+    : pimpl(new settings_query_key_values_data(std::move(path), std::move(key), bool_value)) {}
+
+settings_query::key_values::key_values(const key_values &other) : pimpl(other.pimpl ? new settings_query_key_values_data(*other.pimpl) : nullptr) {}
+settings_query::key_values &settings_query::key_values::operator=(const key_values &other) {
+  if (this == &other) return *this;
+  delete pimpl;
+  pimpl = other.pimpl ? new settings_query_key_values_data(*other.pimpl) : nullptr;
+  return *this;
+}
+
+settings_query::key_values::~key_values() { delete pimpl; }
+
+bool settings_query::key_values::matches(const char *path, const char *key) const {
+  if (!pimpl || !pimpl->key) return false;
+  return pimpl->path == path && *pimpl->key == key;
+}
+bool settings_query::key_values::matches(const char *path) const {
+  if (!pimpl || !pimpl->key) return false;
+  return pimpl->path == path;
+}
+bool settings_query::key_values::matches(const std::string &path, const std::string &key) const {
+  if (!pimpl || !pimpl->key) return false;
+  return pimpl->path == path && *pimpl->key == key;
+}
+bool settings_query::key_values::matches(const std::string &path) const {
+  if (!pimpl) return false;
+  return pimpl->path == path;
+}
+
+std::string settings_query::key_values::path() const {
+  if (!pimpl) return "";
+  return pimpl->path;
+}
+std::string settings_query::key_values::key() const {
+  if (!pimpl || !pimpl->key) return "";
+  return *pimpl->key;
+}
+
+std::string settings_query::key_values::get_string() const {
+  if (!pimpl) return "";
+  if (pimpl->str_value) return *pimpl->str_value;
+  if (pimpl->int_value) return str::xtos(*pimpl->int_value);
+  if (pimpl->bool_value) return *pimpl->bool_value ? "true" : "false";
+  return "";
+}
+
+long long settings_query::key_values::get_int() const {
+  if (!pimpl) return 0;
+  if (pimpl->str_value) {
+    try {
+      return str::stox<long long>(*pimpl->str_value);
+    } catch (const std::exception &) {
+      return 0;  // Return 0 if conversion fails
+    }
+  };
+  if (pimpl->int_value) return *pimpl->int_value;
+  if (pimpl->bool_value) return *pimpl->bool_value ? 1 : 0;
+  return 0;
+}
+
+bool settings_query::key_values::get_bool() const {
+  if (!pimpl) return false;
+  if (pimpl->str_value) {
+    std::string s = *pimpl->str_value;
+    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+    return s == "true" || s == "1";
+  }
+  if (pimpl->int_value) return *pimpl->int_value == 1;
+  if (pimpl->bool_value) return *pimpl->bool_value;
+  return false;
+}
+
+settings_query::settings_query(int plugin_id) : pimpl(new settings_query_data(plugin_id)) {}
+settings_query::~settings_query() { delete pimpl; }
+
+void settings_query::set(const std::string &path, const std::string &key, const std::string &value) const {
+  auto *r = pimpl->request_message.add_payload();
+  r->set_plugin_id(pimpl->plugin_id);
+  r->mutable_update()->mutable_node()->set_path(path);
+  r->mutable_update()->mutable_node()->set_key(key);
+  r->mutable_update()->mutable_node()->set_value(value);
+}
+
+void settings_query::erase(const std::string &path, const std::string &key) const {
+  auto *r = pimpl->request_message.add_payload();
+  r->set_plugin_id(pimpl->plugin_id);
+  r->mutable_update()->mutable_node()->set_path(path);
+  r->mutable_update()->mutable_node()->set_key(key);
+}
+
+void settings_query::get(const std::string &path, const std::string &key, const std::string &def) const {
+  auto *r = pimpl->request_message.add_payload();
+  r->set_plugin_id(pimpl->plugin_id);
+  r->mutable_query()->mutable_node()->set_path(path);
+  r->mutable_query()->mutable_node()->set_key(key);
+  r->mutable_query()->set_default_value(def);
+  r->mutable_query()->set_recursive(false);
+}
+void settings_query::get(const std::string &path, const std::string &key, const char *def) const {
+  auto *r = pimpl->request_message.add_payload();
+  r->set_plugin_id(pimpl->plugin_id);
+  r->mutable_query()->mutable_node()->set_path(path);
+  r->mutable_query()->mutable_node()->set_key(key);
+  r->mutable_query()->set_default_value(def);
+  r->mutable_query()->set_recursive(false);
+}
+void settings_query::get(const std::string &path, const std::string &key, const long long def) const {
+  auto *r = pimpl->request_message.add_payload();
+  r->set_plugin_id(pimpl->plugin_id);
+  r->mutable_query()->mutable_node()->set_path(path);
+  r->mutable_query()->mutable_node()->set_key(key);
+  r->mutable_query()->set_default_value(str::xtos(def));
+  r->mutable_query()->set_recursive(false);
+}
+void settings_query::get(const std::string &path, const std::string &key, const bool def) const {
+  auto *r = pimpl->request_message.add_payload();
+  r->set_plugin_id(pimpl->plugin_id);
+  r->mutable_query()->mutable_node()->set_path(path);
+  r->mutable_query()->mutable_node()->set_key(key);
+  r->mutable_query()->set_default_value(def ? "true" : "false");
+  r->mutable_query()->set_recursive(false);
+}
+
+void settings_query::list(const std::string &path, const bool recursive) const {
+  auto *r = pimpl->request_message.add_payload();
+  r->set_plugin_id(pimpl->plugin_id);
+  r->mutable_inventory()->mutable_node()->set_path(path);
+  r->mutable_inventory()->set_fetch_keys(true);
+  r->mutable_inventory()->set_recursive_fetch(recursive);
+}
+
+void settings_query::save() const {
+  auto *r = pimpl->request_message.add_payload();
+  r->set_plugin_id(pimpl->plugin_id);
+  r->mutable_control()->set_command(PB::Settings::Command::SAVE);
+}
+void settings_query::load() const {
+  auto *r = pimpl->request_message.add_payload();
+  r->set_plugin_id(pimpl->plugin_id);
+  r->mutable_control()->set_command(PB::Settings::Command::LOAD);
+}
+void settings_query::reload() const {
+  auto *r = pimpl->request_message.add_payload();
+  r->set_plugin_id(pimpl->plugin_id);
+  r->mutable_control()->set_command(PB::Settings::Command::RELOAD);
+}
+std::string settings_query::request() const { return pimpl->request_message.SerializeAsString(); }
+
+bool settings_query::validate_response() const {
+  pimpl->response_message.ParsePartialFromString(pimpl->response_buffer);
+  bool ret = true;
+  for (int i = 0; i < pimpl->response_message.payload_size(); ++i) {
+    if (pimpl->response_message.payload(i).result().code() != PB::Common::Result_StatusCodeType_STATUS_OK) ret = false;
+  }
+  return ret;
+}
+std::string settings_query::get_response_error() const {
+  std::string ret;
+  for (int i = 0; i < pimpl->response_message.payload_size(); ++i) {
+    ret += pimpl->response_message.payload(i).result().message();
+  }
+  return ret;
+}
+std::list<settings_query::key_values> settings_query::get_query_key_response() const {
+  std::list<key_values> ret;
+  for (int i = 0; i < pimpl->response_message.payload_size(); ++i) {
+    const auto &pl = pimpl->response_message.payload(i);
+    if (pl.has_query()) {
+      const auto &q = pl.query();
+      if (!q.node().key().empty()) {
+        ret.emplace_back(q.node().path(), q.node().key(), q.node().value());
+      } else {
+        ret.emplace_back(q.node().path());
+      }
+    } else if (pl.inventory_size() > 0) {
+      for (const auto &q : pl.inventory()) {
+        if (!q.node().key().empty()) {
+          ret.emplace_back(q.node().path(), q.node().key(), q.node().value());
+        } else if (q.has_info() && !q.info().default_value().empty()) {
+          ret.emplace_back(q.node().path(), q.node().key(), q.info().default_value());
+        } else {
+          ret.emplace_back(q.node().path());
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+std::string &settings_query::response() const { return pimpl->response_buffer; }
+}  // namespace functions
+}  // namespace protobuf
+}  // namespace nscapi

@@ -18,33 +18,31 @@
  */
 
 #include <nscapi/nscapi_plugin_impl.hpp>
+#include <nscapi/protobuf/metrics.hpp>
 #include <scheduler/simple_scheduler.hpp>
+
 #include "schedules_handler.hpp"
 
 typedef schedules::schedule_handler::object_instance schedule_instance;
 class Scheduler : public schedules::task_handler, public nscapi::impl::simple_plugin {
-private:
+ private:
+  schedules::scheduler scheduler_;
+  schedules::schedule_handler schedules_;
 
-	schedules::scheduler scheduler_;
-	schedules::schedule_handler schedules_;
+ public:
+  Scheduler() { scheduler_.set_handler(this); }
+  virtual ~Scheduler() { scheduler_.set_handler(NULL); }
+  // Module calls
+  bool loadModuleEx(std::string alias, NSCAPI::moduleLoadMode mode);
+  void prepareShutdown();
+  bool unloadModule();
 
-public:
-	Scheduler() {
-		scheduler_.set_handler(this);
-	}
-	virtual ~Scheduler() {
-		scheduler_.set_handler(NULL);
-	}
-	// Module calls
-	bool loadModuleEx(std::string alias, NSCAPI::moduleLoadMode mode);
-	bool unloadModule();
+  // Metrics
+  void fetchMetrics(PB::Metrics::MetricsMessage_Response* response);
 
-	// Metrics
-	void fetchMetrics(Plugin::MetricsMessage_Response *response);
+  void add_schedule(const std::string& alias, const std::string& command);
+  bool handle_schedule(schedules::target_object task);
 
-	void add_schedule(std::string alias, std::string command);
-	bool handle_schedule(schedules::target_object task);
-
-	void on_error(const char* file, int line, std::string error);
-	void on_trace(const char* file, int line, std::string error);
+  void on_error(const char* file, int line, std::string error);
+  void on_trace(const char* file, int line, std::string error);
 };

@@ -1,14 +1,15 @@
 ﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from NSCP import Settings, Registry, Core, log, log_debug, log_error, status
-import plugin_pb2
+#import plugin_pb2
+import registry_pb2
+import settings_pb2
 from optparse import OptionParser
-from sets import Set
 import os
-import traceback
-#import string
+from functools import reduce
 from jinja2 import Template, Environment
 import hashlib
+import sys
 helper = None
 
 module_template = u"""# {{module.key}}
@@ -18,6 +19,15 @@ module_template = u"""# {{module.key}}
 {%if module.ext_desc -%}
 {{ module.ext_desc}}
 {%- endif %}
+
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `{{module.key}} = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+{{module.key}} = enabled
+```
 
 {% if module.sample %}
 ## Samples
@@ -75,17 +85,22 @@ A list of all short hand aliases for queries (check commands)
 ### {{query.key}}
 
 {{query.info.description}}
+{% if query.ext_desc %}
+{{query.ext_desc}}
+{%- endif %}
+
+**Jump to section:**
 
 {% if query.sample -%}
-* [Samples](#{{"samples"|md_prefix_lnk(query.key)}})
-{% endif %}
+* [Sample Commands](#{{"samples"|md_prefix_lnk(query.key)}})
+{% endif -%}
 * [Command-line Arguments](#{{"options"|md_prefix_lnk(query.key)}})
 {% if query.fields -%}
 * [Filter keywords](#{{"filter_keys"|md_prefix_lnk(query.key)}})
 {% endif %}
 
 {% if query.sample -%}
-<a name="{{"samples"|md_prefix_lnk(query.key)}}"/>
+<a id="{{"samples"|md_prefix_lnk(query.key)}}"></a>
 #### Sample Commands
 
 _To edit these sample please edit [this page](https://github.com/mickem/nscp-docs/blob/master/{{query.sample_source}})_
@@ -94,8 +109,8 @@ _To edit these sample please edit [this page](https://github.com/mickem/nscp-doc
 {%- endif %}
 
 {% for help in query.params -%}{%- if help.is_simple %}
-<a name="{{help.name|md_prefix_lnk(query.key)}}"/>{% endif %}{%- endfor %}
-<a name="{{"options"|md_prefix_lnk(query.key)}}"/>
+<a id="{{help.name|md_prefix_lnk(query.key)}}"></a>{% endif %}{%- endfor %}
+<a id="{{"options"|md_prefix_lnk(query.key)}}"></a>
 #### Command-line Arguments
 
 {% set table = [] -%}
@@ -120,12 +135,18 @@ _To edit these sample please edit [this page](https://github.com/mickem/nscp-doc
 {%- endif %}{%- endfor %}
 
 {% if query.fields -%}
-<a name="{{"filter_keys"|md_prefix_lnk(query.key)}}"/>
+<a id="{{"filter_keys"|md_prefix_lnk(query.key)}}"></a>
 #### Filter keywords
 
 {% set table = [] -%}
-{% for help in query.fields -%}
+{% for help in query.own_fields -%}
     {% do table.append([help.name,help.long_description|firstline]) %}
+{%- endfor %}
+{{table|rst_table('Option', 'Description')}}
+**Common options for all checks:**
+{% set table = [] -%}
+{% for help in query.generic_fields -%}
+    {% do table.append([help.name,help.long_description|replace("Common option for all checks.","")|firstline]) %}
 {%- endfor %}
 {{table|rst_table('Option', 'Description')}}
 {{'\n'}}
@@ -151,7 +172,7 @@ _To edit these sample please edit [this page](https://github.com/mickem/nscp-doc
 
 
 {% for pkey,path in module.paths|dictsort -%}
-### {% if path.info.title %}{{path.info.title}}{%else%}{{pkey}}{%endif%} <a id="{{path.key}}"/>
+### {% if path.info.title %}{{path.info.title}}{%else%}{{pkey}}{%endif%} <a id="{{path.key}}"></a>
 
 {{path.info.description}}
 
@@ -163,7 +184,7 @@ This is a section of objects. This means that you will create objects below this
 
 {% set tbl = [] -%}
 {% for k,key in path.sample.keys|dictsort  -%}
-    {% do tbl.append([k, key.info.default_value|extract_value, key.info.title|firstline]) -%}
+    {% do tbl.append([k, key.info.default_value, key.info.title|firstline]) -%}
 {%- endfor %}
 {{tbl|rst_table('Key', 'Default Value', 'Description')}}
 
@@ -173,7 +194,7 @@ This is a section of objects. This means that you will create objects below this
 # An example of a {{path.info.title}} section
 [{{path.key}}/sample]
 {% for kkey,key in path.sample.keys|dictsort -%}
-{% if key.info.default_value|extract_value %}{{kkey}}={{key.info.default_value|extract_value}}
+{% if key.info.default_value %}{{kkey}}={{key.info.default_value}}
 {% else %}#{{kkey}}=...
 {% endif %}
 {%- endfor %}
@@ -183,7 +204,7 @@ This is a section of objects. This means that you will create objects below this
 {% if path.objects %}
 **Known instances:**
 
-{% for k in path.objects %}*  {{k}}
+{% for k in path.objects|sort %}*  {{k}}
 {% endfor %}
 
 
@@ -194,7 +215,7 @@ This is a section of objects. This means that you will create objects below this
 {% set pkey = path.key|md_self_link -%}
 {% for k,key in path.keys|dictsort  -%}
     {% set kkey = key.info.title|as_text|mkref|md_self_link(k) -%}
-    {% do tbl.append([kkey, key.info.default_value|extract_value, key.info.title|firstline]) -%}
+    {% do tbl.append([kkey, key.info.default_value, key.info.title|firstline]) -%}
 {%- endfor %}
 {{tbl|rst_table('Key', 'Default Value', 'Description')}}
 
@@ -203,8 +224,8 @@ This is a section of objects. This means that you will create objects below this
 # {{path.info.description|firstline}}
 [{{path.key}}]
 {% for kkey,key in path.keys|dictsort -%}
-{% if key.info.default_value|extract_value -%}
-{{kkey}}={{key.info.default_value|extract_value}}
+{% if key.info.default_value -%}
+{{kkey}}={{key.info.default_value}}
 {% endif %}
 {%- endfor %}
 ```
@@ -224,15 +245,14 @@ This is a section of objects. This means that you will create objects below this
 {% if key.info.advanced -%}
 {% do table.append(['Advanced:', 'Yes (means it is not commonly used)']) -%}
 {%- endif %}
-{% if key.info.default_value|extract_value -%}
-{% do table.append(['Default value:', '`' + key.info.default_value|extract_value + '`']) -%}
+{% if key.info.default_value -%}
+{% do table.append(['Default value:', '`' + key.info.default_value + '`']) -%}
 {% else %}
 {% do table.append(['Default value:', '_N/A_']) -%}
 {%- endif %}
 {% if key.info.sample -%}
 {% do table.append(['Sample key:', 'Yes (This section is only to show how this key is used)']) -%}
 {%- endif %}
-{% do table.append(['Used by:', ', '.join(path.info.plugin|sort)]) -%}
 {{table|rst_table('Key', 'Description')}}
 
 **Sample:**
@@ -240,7 +260,7 @@ This is a section of objects. This means that you will create objects below this
 ```
 [{{path.key}}]
 # {{key.info.title}}
-{{kkey}}={{key.info.default_value|extract_value}}
+{{kkey}}={{key.info.default_value}}
 ```
 
 {% endfor %}
@@ -256,62 +276,26 @@ index_template = u"""
 
 {% set table = [] -%}
 {% for key,module in plugins|dictsort  -%}
-    {% do table.append([module.namespace, ('reference/' + module.namespace + '/' + module.key)|md_link(module.key), module.info.description|firstline]) -%}
-{%- endfor %}
+    {% do table.append([module.namespace, (module.namespace + '/' + module.key + '.md')|md_link(module.key), module.info.description|firstline]) -%}
+{%- endfor -%}
 {{table|rst_table('Type', 'Module', 'Description')}}
 
 # Queries
-
 {% set table = [] -%}
 {% for mk,module in plugins|dictsort  -%}
     {% for key,query in module.queries|dictsort  -%}
-        {% set desc = query.info.description|firstline %}
+        {% set desc = query.info.description|firstline -%}
         {% if desc.startswith('Alternative name for:') -%}
             {% set desc = query.info.description[22:]|rst_link('query') -%}
         {%- elif desc.startswith('Legacy version of ') -%}
             {% set desc = '**Deprecated** please use: ' + query.info.description[18:]|rst_link('query') -%}
         {%- elif query.info.description.startswith('Alias for:') -%}
             {% set desc = query.info.description[11:]|rst_link('query') -%}
-        {%- endif %}
-        {% do table.append([mk, ('reference/' + module.namespace + '/' + module.key + '#' + query.key)|md_link(query.key), desc]) -%}
-    {%- endfor %}
-{%- endfor %}
+        {%- endif -%}
+        {% do table.append([mk, (module.namespace + '/' + module.key + '.md#' + query.key)|md_link(query.key), desc]) -%}
+    {%- endfor -%}
+{%- endfor -%}
 {{table|rst_table('Module', 'Command', 'Description')}}
-"""
-
-
-samples_template = u""".. default-domain:: nscp
-
-.. default-domain:: nscp
-
-===========
-All samples
-===========
-
-A collection of all sample commands
-
-{% for mk,module in plugins|dictsort  -%}
-{% set vars = {'found': False} -%}
-{% for qk,query in module.queries|dictsort -%}
-{% if query.sample -%}
-{% if vars.update({'found': True}) -%}{%- endif %}
-{%- endif %}
-{%- endfor %}
-{% if vars.found -%}
-{{mk|rst_heading('=')}}
-
-{% for qk,query in module.queries|dictsort -%}
-{% if query.sample -%}
-{{qk|rst_heading}}
-
-{{query.info.description|firstline}}
-
-.. include:: ../samples/{{query.sample}}
-
-{% endif %}
-{%- endfor %}
-{%- endif %}
-{%- endfor %}
 """
 
 def split_argllist(name, desc):
@@ -339,10 +323,10 @@ class root_container(object):
     aliases = {}
     plugins = {}
     windows_modules = ['CheckSystem', 'CheckDisk', 'NSClientServer', 'DotnetPlugins', 'CheckEventLog',  'CheckTaskSched',  'CheckWMI']
-    unix_modules = ['CheckSystemUnix']
-    check_modules = ['CheckExternalScripts',  'CheckHelpers',  'CheckLogFile',  'CheckMKClient',  'CheckMKServer',  'CheckNSCP']
-    client_modules = ['GraphiteClient',  'NRDPClient',  'NRPEClient',  'NRPEServer',  'NSCAClient',  'NSCAServer',  'NSClientServer',  'SMTPClient',  'SyslogClient']
+    check_modules = ['CheckExternalScripts',  'CheckHelpers',  'CheckLogFile',  'CheckMKClient',  'CheckMKServer',  'CheckNSCP', 'CheckNet']
+    client_modules = ['GraphiteClient', 'IcingaClient',  'NRDPClient',  'NRPEClient',  'NRPEServer',  'NSCAClient',  'NSCANgClient', 'NSCAServer',  'NSClientServer',  'SMTPClient',  'SyslogClient']
     generic_modules = ['CommandClient',  'DotnetPlugins',  'LUAScript',  'PythonScript',  'Scheduler',  'SimpleCache',  'SimpleFileWriter', 'WEBServer']
+    ignored_modules = ['CauseCrashes', 'SamplePluginSimple']
 
     def __init__(self):
         self.paths = {}
@@ -362,10 +346,10 @@ class root_container(object):
         
     def process_paths(self):
         for k in self.subkeys.keys():
-            log("Subkey: %s"%k)
             self.paths[k].objects = self.paths[k].keys
             self.paths[k].keys = {}
-            for pk in self.paths.keys():
+            keys = list(self.paths.keys())
+            for pk in keys:
                 if pk in self.subkeys.keys():
                     continue
                 if pk.startswith(k):
@@ -373,7 +357,6 @@ class root_container(object):
                         self.paths[k].sample = self.paths[pk]
                     if pk[len(k)+1:] == "default":
                         self.paths[k].default = self.paths[pk]
-                    log("::: %s"%pk[len(k)+1:])
                     del self.paths[pk]
 
     def append_path(self, info):
@@ -396,10 +379,12 @@ class root_container(object):
 
     def append_plugin(self, info, folder):
         name = info.name
+        if name in self.ignored_modules:
+            return
         namespace = ''
-        if name in self.windows_modules:
+        if name in self.windows_modules and sys.platform == 'win32':
             namespace = 'windows'
-        elif name in self.unix_modules:
+        elif name in self.windows_modules:
             namespace = 'unix'
         elif name in self.check_modules:
             namespace = 'check'
@@ -415,14 +400,14 @@ class root_container(object):
             spath = '%s/samples/%s_samples.md'%(folder, name)
             self.plugins[name].sample = ''
             if os.path.exists(spath):
-                with open(spath) as f:
-                    self.plugins[name].sample = unicode(f.read(), 'utf8')
+                with open(spath, encoding='utf-8') as f:
+                    self.plugins[name].sample = f.read()
                     self.plugins[name].sample_source = 'samples/%s_samples.md'%(name)
             spath = '%s/samples/%s_desc.md'%(folder, name)
             self.plugins[name].ext_desc = ''
             if os.path.exists(spath):
-                with open(spath) as f:
-                    self.plugins[name].ext_desc = unicode(f.read(), 'utf8')
+                with open(spath, encoding='utf-8') as f:
+                    self.plugins[name].ext_desc = f.read().strip(" \t")
                     self.plugins[name].ext_desc_source = 'samples/%s_desc.md'%(name)
             
     def get_hash(self):
@@ -441,6 +426,8 @@ class path_container(object):
         self.info = info.info
         self.default = None
         self.sample = None
+        self.ext_desc = None
+        self.ext_desc_source = None
         self.objects = {}
         
     def append_key(self, info):
@@ -456,14 +443,14 @@ class command_container(object):
 class param_container:
     
     def __init__(self, info):
-        self.name = info.name;
-        self.default_value = info.default_value;
-        self.short_description = info.short_description;
-        self.long_description = info.long_description;
-        self.required = info.required;
-        self.repeatable = info.repeatable;
-        self.content_type = info.content_type;
-        self.keyword = info.keyword;
+        self.name = info.name
+        self.default_value = info.default_value
+        self.short_description = info.short_description
+        self.long_description = info.long_description
+        self.required = info.required
+        self.repeatable = info.repeatable
+        self.content_type = info.content_type
+        self.keyword = info.keyword
         self.is_simple = True
         if info.default_value or '\n' in info.long_description:
             self.is_simple = False
@@ -504,15 +491,6 @@ def mkref(value):
 def largest_value(a,b):
     return map(lambda n: n[0] if len(n[0])>len(n[1]) else n[1], zip(a, b))
 
-def extract_value(value):
-    if value.HasField("string_data"):
-        return value.string_data
-    if value.HasField("int_data"):
-        return '%d'%value.int_data
-    if value.HasField("bool_data"):
-        return "true" if value.bool_data else "false"
-    return ''
-
 def as_text(value):
     value = value.replace('\\', '\\\\')
     value = value.replace('`', '\\`')
@@ -535,9 +513,9 @@ def render_rst_table(table, *args):
     if not table:
         return ''
     if args:
-        table.insert(0, args)
+        table.insert(0, list(args))
     ret = ''
-    maxcol = map(lambda a:len(a), reduce(lambda a,b: largest_value(a,b), table))
+    maxcol = list(map(lambda a:len(a), reduce(lambda a,b: largest_value(a,b), table)))
     for idx, line in enumerate(table):
         ret += '|' + ''.join(map(lambda a:' ' + a[1].ljust(a[0],' ') + ' |', zip(maxcol, line))) + '\n'
         if idx == 0:
@@ -566,8 +544,11 @@ def calculate_common_head(strlist):
     return getcommonletters(strlist)
 
 def render_template(hash, template, filename):
-    data = template.render(hash).encode('utf8')
-    
+    rendered = template.render(hash)
+    # Normalize line endings to Unix (LF) for consistent output across platforms
+    rendered = rendered.replace('\r\n', '\n')
+    data = rendered.encode('utf8')
+
     path = os.path.dirname(filename)
     if not os.path.exists(path):
         os.makedirs(path)
@@ -576,15 +557,14 @@ def render_template(hash, template, filename):
         m1 = hashlib.sha256()
         m1.update(data)
         sha1 = m1.digest()
-        with open(filename) as f:
+        with open(filename, encoding='utf-8') as f:
             m2 = hashlib.sha256()
-            m2.update(f.read())
+            m2.update(f.read().encode('utf8'))
             sha2 = m2.digest()
         if sha1 == sha2:
             log_debug("no changes detected in: %s"%filename)
             return
 
-    log_debug('Writing file: %s'%filename)
     f = open(filename,"wb")
     f.write(data)
     f.close()
@@ -611,7 +591,7 @@ class DocumentationHelper(object):
         self.folder = None
         
     def build_inventory_request(self,  path = '/', recursive = True, keys = False):
-        message = plugin_pb2.SettingsRequestMessage()
+        message = settings_pb2.SettingsRequestMessage()
         payload = message.payload.add()
         payload.plugin_id = self.plugin_id
         payload.inventory.node.path = path
@@ -623,7 +603,7 @@ class DocumentationHelper(object):
         return message.SerializeToString()
     
     def build_command_request(self, type = 1):
-        message = plugin_pb2.RegistryRequestMessage()
+        message = registry_pb2.RegistryRequestMessage()
         payload = message.payload.add()
         payload.inventory.fetch_all = True
         payload.inventory.type.append(type)
@@ -632,7 +612,7 @@ class DocumentationHelper(object):
     def get_paths(self):
         (code, data) = self.conf.query(self.build_inventory_request())
         if code == 1:
-            message = plugin_pb2.SettingsResponseMessage()
+            message = settings_pb2.SettingsResponseMessage()
             message.ParseFromString(data)
             for payload in message.payload:
                 if payload.inventory:
@@ -643,7 +623,7 @@ class DocumentationHelper(object):
     def get_keys(self, path):
         (code, data) = self.conf.query(self.build_inventory_request(path, False, True))
         if code == 1:
-            message = plugin_pb2.SettingsResponseMessage()
+            message = settings_pb2.SettingsResponseMessage()
             message.ParseFromString(data)
             for payload in message.payload:
                 if payload.inventory:
@@ -655,7 +635,7 @@ class DocumentationHelper(object):
         log_debug('Fetching queries...')
         (code, data) = self.registry.query(self.build_command_request(1))
         if code == 1:
-            message = plugin_pb2.RegistryResponseMessage()
+            message = registry_pb2.RegistryResponseMessage()
             message.ParseFromString(data)
             for payload in message.payload:
                 if payload.inventory:
@@ -668,7 +648,7 @@ class DocumentationHelper(object):
         log_debug('Fetching aliases...')
         (code, data) = self.registry.query(self.build_command_request(5))
         if code == 1:
-            message = plugin_pb2.RegistryResponseMessage()
+            message = registry_pb2.RegistryResponseMessage()
             message.ParseFromString(data)
             for payload in message.payload:
                 if payload.inventory:
@@ -681,7 +661,7 @@ class DocumentationHelper(object):
         log_debug('Fetching plugins...')
         (code, data) = self.registry.query(self.build_command_request(7))
         if code == 1:
-            message = plugin_pb2.RegistryResponseMessage()
+            message = registry_pb2.RegistryResponseMessage()
             message.ParseFromString(data)
             for payload in message.payload:
                 if payload.inventory:
@@ -710,15 +690,25 @@ class DocumentationHelper(object):
         if command in self.command_cache:
             return self.command_cache[command]
         cinfo.fields = cinfo.parameters.fields
+        cinfo.generic_fields = list(filter(lambda tf: tf.long_description.endswith('Common option for all checks.'), cinfo.parameters.fields))
+        cinfo.own_fields = list(filter(lambda tf: not tf.long_description.endswith('Common option for all checks.'), cinfo.parameters.fields))
         cinfo.params = []
         for p in cinfo.parameters.parameter:
             cinfo.params.append(param_container(p))
         spath = '%s/samples/%s_%s_samples.md'%(self.folder, module, command)
         cinfo.sample = ''
         if os.path.exists(spath):
-            with open(spath) as f:
-                cinfo.sample = unicode(f.read(), 'utf8')
+            with open(spath, encoding='utf-8') as f:
+                cinfo.sample = f.read()
                 cinfo.sample_source = 'samples/%s_%s_samples.md'%(module, command)
+
+        spath = '%s/samples/%s_%s_desc.md'%(self.folder, module, command)
+        cinfo.ext_desc = ''
+        if os.path.exists(spath):
+            with open(spath, encoding='utf-8') as f:
+                cinfo.ext_desc = f.read().strip(" \t")
+                cinfo.ext_desc_source = 'samples/%s_%s_desc.md'%(module, command)
+
         self.command_cache[command] = cinfo
         return cinfo
 
@@ -736,13 +726,12 @@ class DocumentationHelper(object):
         env.filters['md_code'] = make_md_code
         env.filters['rst_table'] = render_rst_table
         env.filters['rst_heading'] = render_rst_heading
-        env.filters['extract_value'] = extract_value
         env.filters['block_pad'] = block_pad
         env.filters['common_head'] = calculate_common_head
         env.filters['as_text'] = as_text
         env.filters['mkref'] = mkref
         
-        for (module,minfo) in root.plugins.iteritems():
+        for (module,minfo) in root.plugins.items():
             out_base_path = '%s/docs/'%output_dir
             sample_base_path = '%s/docs/samples/'%output_dir
             if minfo.namespace:
@@ -757,7 +746,9 @@ class DocumentationHelper(object):
             if os.path.exists(sfile):
                 minfo.sample = os.path.basename(sfile)
 
-            for (c,cinfo) in sorted(root.commands.iteritems()):
+            for (c,cinfo) in sorted(root.commands.items()):
+                if cinfo.info.description.startswith('Legacy version of'):
+                    continue
                 if module in cinfo.info.plugin:
                     more_info = self.fetch_command(module, minfo, c,cinfo)
                     if more_info:
@@ -769,13 +760,13 @@ class DocumentationHelper(object):
                     cinfo.key = c
                     minfo.queries[c] = cinfo
             minfo.aliases = {}
-            for (c,cinfo) in sorted(root.aliases.iteritems()):
+            for (c,cinfo) in sorted(root.aliases.items()):
                 if module in cinfo.info.plugin:
                     cinfo.key = c
                     minfo.aliases[c] = cinfo
                     
             minfo.paths = {}
-            for (c,cinfo) in sorted(root.paths.iteritems()):
+            for (c,cinfo) in sorted(root.paths.items()):
                 if module in cinfo.info.plugin:
                     cinfo.key = c
                     minfo.paths[c] = cinfo
@@ -791,10 +782,6 @@ class DocumentationHelper(object):
         template = env.from_string(index_template)
         render_template(hash, template, '%s/docs/reference/index.md'%output_dir)
         
-        log_debug('%s/samples/index.rst'%output_dir)
-        template = env.from_string(samples_template)
-        render_template(hash, template, '%s/samples/index.rst'%output_dir)
-
     def main(self, args):
         parser = OptionParser(prog="")
         parser.add_option("-o", "--output", help="write report to FILE(s)")
@@ -805,7 +792,7 @@ class DocumentationHelper(object):
 
 def __main__(args):
     global helper
-    helper.main(args);
+    helper.main(args)
     return 0
     
 def init(plugin_id, plugin_alias, script_alias):

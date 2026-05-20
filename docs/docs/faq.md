@@ -27,6 +27,10 @@ The MSI is the preferred way to install NSClient++ and will work much better the
 
 For details: Microsoft KB: [http://support.microsoft.com/kb/300956](http://support.microsoft.com/kb/300956) essentially you need to use the `lodctr /R` command.
 
+For a complete walkthrough of finding, validating, averaging, and alerting on performance
+counters — including the localisation, capping, and rate-counter gotchas — see
+[Performance Counter (PDH) Monitoring](scenarios/counters.md).
+
 ### 1.4 Bind failed
 
 Usually this is due to running more then once instance of NSClient++ or possibly running another program that uses the same port.
@@ -99,6 +103,19 @@ file name = nsclient.log
 level = debug
 ```
 
+### 1.11 CPU Values are incorrect or 0
+
+The API used to get CPU values are deprecated and Microsoft seems to think Performance Data Helpers is the way to go.
+We are currently transitioning towards that solution (in version 0.7.0 we added support for this).
+To enable CPU load via PDH you need to enable the following:
+
+```ini
+[/settings/system/windows]
+use pdh for cpu=true
+```
+
+If this works out we will eventually make this default.
+
 ## 2. Escaping and Strings
 
 ### 2.1 How do I properly escape spaces in strings
@@ -121,7 +138,7 @@ Backslashes and some other control characters are handled by the shell in Nagios
 
 ### 2.4 Arguments via NRPE
 
-For details see [external script](howto/external_scripts.md#arguments)
+For details see [External Scripts](scenarios/external-scripts.md#using-arguments)
 
 ### 2.5 Nasty metacharacters
 
@@ -156,14 +173,14 @@ To not use nasty characters you can replace man y of them in built-in commands:
 
 ## 3. Versions
 
-### 3.1 I use version 0.3.9 or 0.2.7
+### 3.1 What's the difference between `CheckFoo` and `check_foo`?
 
-please upgrade to 0.4.2 and then 0.5.0 and see if the error still persist before you ask questions and/or report bugs.
-In generally do NOT fix issues in several years old versions.
+In older versions of NSClient++ (pre 0.4.2) there were only `CheckFoo`-style commands such as `CheckCPU`, `CheckMem`, `CheckProcess`, etc.
+In 0.4.2, a new set of commands was introduced with a more consistent naming style: `check_cpu`, `check_memory`, `check_process`, etc.
 
-### 3.2 I use version 0.4.0 or 0.4.1
+The old `CheckFoo` commands have been removed. **Use the `check_foo` style commands** in all new configurations.
 
-1.  good idea to upgrade to 0.5.0 and see if the issue has been resolved but please report this anyway so I can (if possible) fir it for 0.4.1
+If you are migrating from a very old (0.3.x) setup, refer to the legacy upgrade notes shipped with that release - the dedicated migration guide is no longer maintained.
 
 ## 4. Network
 
@@ -240,15 +257,9 @@ level = info
 max size = 2048000
 ```
 
-### 5.2 What's the difference between `CheckFoo` and `check_foo`
+### 5.2 What's the difference between `CheckFoo` and `check_foo`?
 
-In older version of NSClient++ (pre 0.4.1) there were only `CheckFoo` type commands so they where called `CheckCPU` `CheckMem` `CheckProcess` etc etc...
-In 0.4.2 we introduced a new set of commands which were more generic and similar and they are called `check_cpu` `check_memory` `check_process` etc etc..
-The previous ones are only for compatibility and will eventually be removed from NSClient++.
-Currently they are about 90% compatible which means some things will not work as before and some commands are not even present anymore.
-
-1.  personally think that the benefit of using the new commands makes the effort required to convert it worth it but if you have a specific command using the old syntax which no longer work please do let me know and I will see about adding support for it.
-2.  `check_nt`
+See [section 3.1 above](#31-whats-the-difference-between-checkfoo-and-check_foo).
 
 ### 5.3 I use check_nt and...
 

@@ -16,9 +16,10 @@
  * You should have received a copy of the GNU General Public License
  * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
  */
+#pragma once
 
-#include <nscapi/nscapi_protobuf.hpp>
+#include <nscapi/protobuf/command.hpp>
 
 struct check_drive {
-	static void check(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response);
+  static void check(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
 };

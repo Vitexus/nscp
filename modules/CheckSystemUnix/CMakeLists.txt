@@ -1,47 +1,90 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.10)
 
-SET(TARGET CheckSystemUnix)
-	
-PROJECT(${TARGET})
+set(TARGET CheckSystem)
+
+project(${TARGET})
 
 CREATE_MODULE(SRCS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
-SET(SRCS ${SRCS}
-	CheckSystem.cpp
-	filter.cpp
-	${NSCP_DEF_PLUGIN_CPP}
-	${NSCP_FILTER_CPP}
-
-	realtime_thread.cpp
-	realtime_data.cpp
-	filter_config_object.cpp
+set(SRCS
+    ${SRCS}
+    CheckSystem.cpp
+    ${NSCP_DEF_PLUGIN_CPP}
+    ${NSCP_FILTER_CPP}
+    ${NSCP_INCLUDEDIR}/nscapi/nscapi_metrics_helper.cpp
+    realtime_thread.cpp
+    realtime_data.cpp
+    filter_config_object.cpp
+    check_uptime.cpp
+    check_os_version.cpp
+    check_os_updates.cpp
+    check_memory.cpp
+    check_cpu.cpp
+    check_service.cpp
+    check_process.cpp
+    check_pagefile.cpp
 )
 
-ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
+add_definitions(${NSCP_GLOBAL_DEFINES})
 
-IF(WIN32)
-	SET(SRCS ${SRCS}
-		CheckSystem.h
-		filter.hpp
-
-		realtime_thread.hpp
-		realtime_data.hpp
-		filter_config_object.hpp
-
-		${NSCP_DEF_PLUGIN_HPP}
-		${NSCP_FILTER_HPP}
-	)
-ENDIF(WIN32)
+if(WIN32)
+    set(SRCS
+        ${SRCS}
+        CheckSystem.h
+        realtime_thread.hpp
+        realtime_data.hpp
+        filter_config_object.hpp
+        ${NSCP_DEF_PLUGIN_HPP}
+        ${NSCP_FILTER_HPP}
+        check_uptime.h
+        check_os_version.h
+        check_os_updates.h
+        check_memory.h
+        check_cpu.h
+        check_service.h
+        check_process.h
+        check_pagefile.h
+    )
+endif(WIN32)
 
 add_library(${TARGET} MODULE ${SRCS})
+NSCP_DEBUG_SYMBOLS(${TARGET})
 
-target_link_libraries(${TARGET}
-	${Boost_FILESYSTEM_LIBRARY}
-	${Boost_REGEX_LIBRARY}
-	${Boost_THREAD_LIBRARY}
-	${Boost_PROGRAM_OPTIONS_LIBRARY}
-	${NSCP_DEF_PLUGIN_LIB}
-	${NSCP_FILTER_LIB}
-	expression_parser
+target_link_libraries(
+    ${TARGET}
+    ${Boost_FILESYSTEM_LIBRARY}
+    ${Boost_REGEX_LIBRARY}
+    ${Boost_THREAD_LIBRARY}
+    ${Boost_PROGRAM_OPTIONS_LIBRARY}
+    ${NSCP_DEF_PLUGIN_LIB}
+    ${NSCP_FILTER_LIB}
+    expression_parser
 )
-INCLUDE(${BUILD_CMAKE_FOLDER}/module.cmake)
+include(${BUILD_CMAKE_FOLDER}/module.cmake)
+
+NSCP_CREATE_TEST(
+    check_system_unix_test
+    SOURCES
+        check_system_unix_test.cpp
+        check_os_updates_test.cpp
+        check_os_updates.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_program_options.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/helper.cpp
+        ${NSCP_INCLUDEDIR}/parsers/filter/modern_filter.cpp
+    LIBRARIES
+        GTest::gtest_main
+        nscp_protobuf
+        ${NSCP_FILTER_LIB}
+        expression_parser
+        ${PLUGIN_API_TARGET}
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_THREAD_LIBRARY}
+        ${Boost_DATE_TIME_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+        ${Boost_PROGRAM_OPTIONS_LIBRARY}
+        ${Boost_REGEX_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)

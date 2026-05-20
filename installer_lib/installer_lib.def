@@ -1,0 +1,10 @@
+EXPORTS
+	ImportConfig
+	ScheduleWriteConfig
+	ExecWriteConfig
+	TranslateSid
+	ApplyTool
+	DetectTool
+	BackupConfig
+	NeedUninstall
+	WriteArpUninstallStrings

@@ -1,8 +1,17 @@
 # NRDPClient
 
-NRDP client can be used both from command line and from queries to check remote systes via NRDP
+NRDP client can be used both from command line and from queries to check remote systems via NRDP
 
 
+
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `NRDPClient = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+NRDPClient = enabled
+```
 
 
 ## Queries
@@ -25,66 +34,84 @@ A list of all available queries (check commands)
 Submit information to the remote NRDP Server.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#submit_nrdp_options)
 
 
 
 
 
-<a name="submit_nrdp_help"/>
-<a name="submit_nrdp_help-pb"/>
-<a name="submit_nrdp_show-default"/>
-<a name="submit_nrdp_help-short"/>
-<a name="submit_nrdp_host"/>
-<a name="submit_nrdp_port"/>
-<a name="submit_nrdp_address"/>
-<a name="submit_nrdp_timeout"/>
-<a name="submit_nrdp_target"/>
-<a name="submit_nrdp_retry"/>
-<a name="submit_nrdp_retries"/>
-<a name="submit_nrdp_source-host"/>
-<a name="submit_nrdp_sender-host"/>
-<a name="submit_nrdp_command"/>
-<a name="submit_nrdp_alias"/>
-<a name="submit_nrdp_message"/>
-<a name="submit_nrdp_result"/>
-<a name="submit_nrdp_separator"/>
-<a name="submit_nrdp_batch"/>
-<a name="submit_nrdp_key"/>
-<a name="submit_nrdp_password"/>
-<a name="submit_nrdp_source-host"/>
-<a name="submit_nrdp_sender-host"/>
-<a name="submit_nrdp_token"/>
-<a name="submit_nrdp_options"/>
+<a id="submit_nrdp_help"></a>
+<a id="submit_nrdp_help-pb"></a>
+<a id="submit_nrdp_show-default"></a>
+<a id="submit_nrdp_help-short"></a>
+<a id="submit_nrdp_host"></a>
+<a id="submit_nrdp_port"></a>
+<a id="submit_nrdp_address"></a>
+<a id="submit_nrdp_timeout"></a>
+<a id="submit_nrdp_target"></a>
+<a id="submit_nrdp_retry"></a>
+<a id="submit_nrdp_retries"></a>
+<a id="submit_nrdp_source-host"></a>
+<a id="submit_nrdp_sender-host"></a>
+<a id="submit_nrdp_command"></a>
+<a id="submit_nrdp_alias"></a>
+<a id="submit_nrdp_message"></a>
+<a id="submit_nrdp_result"></a>
+<a id="submit_nrdp_separator"></a>
+<a id="submit_nrdp_batch"></a>
+<a id="submit_nrdp_key"></a>
+<a id="submit_nrdp_password"></a>
+<a id="submit_nrdp_source-host"></a>
+<a id="submit_nrdp_sender-host"></a>
+<a id="submit_nrdp_token"></a>
+<a id="submit_nrdp_tls-version"></a>
+<a id="submit_nrdp_tls version"></a>
+<a id="submit_nrdp_verify"></a>
+<a id="submit_nrdp_verify-mode"></a>
+<a id="submit_nrdp_verify mode"></a>
+<a id="submit_nrdp_ca"></a>
+<a id="submit_nrdp_proxy"></a>
+<a id="submit_nrdp_no-proxy"></a>
+<a id="submit_nrdp_options"></a>
 #### Command-line Arguments
 
 
-| Option       | Default Value | Description                                                                           |
-|--------------|---------------|---------------------------------------------------------------------------------------|
-| help         | N/A           | Show help screen (this screen)                                                        |
-| help-pb      | N/A           | Show help screen as a protocol buffer payload                                         |
-| show-default | N/A           | Show default values for a given command                                               |
-| help-short   | N/A           | Show help screen (short format).                                                      |
-| host         |               | The host of the host running the server                                               |
-| port         |               | The port of the host running the server                                               |
-| address      |               | The address (host:port) of the host running the server                                |
-| timeout      |               | Number of seconds before connection times out (default=10)                            |
-| target       |               | Target to use (lookup connection info from config)                                    |
-| retry        |               | Number of times ti retry a failed connection attempt (default=2)                      |
-| retries      |               | legacy version of retry                                                               |
-| source-host  |               | Source/sender host name (default is auto which means use the name of the actual host) |
-| sender-host  |               | Source/sender host name (default is auto which means use the name of the actual host) |
-| command      |               | The name of the command that the remote daemon should run                             |
-| alias        |               | Same as command                                                                       |
-| message      |               | Message                                                                               |
-| result       |               | Result code either a number or OK, WARN, CRIT, UNKNOWN                                |
-| separator    |               | Separator to use for the batch command (default is |)                                 |
-| batch        |               | Add multiple records using the separator format is: command|result|message            |
-| key          |               | The security token                                                                    |
-| password     |               | The security token                                                                    |
-| source-host  |               | Source/sender host name (default is auto which means use the name of the actual host) |
-| sender-host  |               | Source/sender host name (default is auto which means use the name of the actual host) |
-| token        |               | The security token                                                                    |
+| Option       | Default Value | Description                                                                                                                                                            |
+|--------------|---------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| help         | N/A           | Show help screen (this screen)                                                                                                                                         |
+| help-pb      | N/A           | Show help screen as a protocol buffer payload                                                                                                                          |
+| show-default | N/A           | Show default values for a given command                                                                                                                                |
+| help-short   | N/A           | Show help screen (short format).                                                                                                                                       |
+| host         |               | The host of the host running the server                                                                                                                                |
+| port         |               | The port of the host running the server                                                                                                                                |
+| address      |               | The address (host:port) of the host running the server                                                                                                                 |
+| timeout      |               | Number of seconds before connection times out (default=10)                                                                                                             |
+| target       |               | Target to use (lookup connection info from config)                                                                                                                     |
+| retry        |               | Number of times ti retry a failed connection attempt (default=2)                                                                                                       |
+| retries      |               | legacy version of retry                                                                                                                                                |
+| source-host  |               | Source/sender host name (default is auto which means use the name of the actual host)                                                                                  |
+| sender-host  |               | Source/sender host name (default is auto which means use the name of the actual host)                                                                                  |
+| command      |               | The name of the command that the remote daemon should run                                                                                                              |
+| alias        |               | Same as command                                                                                                                                                        |
+| message      |               | Message                                                                                                                                                                |
+| result       |               | Result code either a number or OK, WARN, CRIT, UNKNOWN                                                                                                                 |
+| separator    |               | Separator to use for the batch command (default is |)                                                                                                                  |
+| batch        |               | Add multiple records using the separator format is: command|result|message                                                                                             |
+| key          |               | The security token                                                                                                                                                     |
+| password     |               | The security token                                                                                                                                                     |
+| source-host  |               | Source/sender host name (default is auto which means use the name of the actual host)                                                                                  |
+| sender-host  |               | Source/sender host name (default is auto which means use the name of the actual host)                                                                                  |
+| token        |               | The security token                                                                                                                                                     |
+| tls-version  |               | The tls version to use 1.0, 1.1, 1.2, 1.3                                                                                                                              |
+| tls version  |               | Legacy alias for --tls-version (kept for backwards compatibility).                                                                                                     |
+| verify       |               | Coma separated list of option none, peer, peer-cert, client-once, fail-if-no-cert, workarounds, single. In general use peer-cert or none for self signed certificates. |
+| verify-mode  |               | Alias for --verify.                                                                                                                                                    |
+| verify mode  |               | Legacy alias for --verify (kept for backwards compatibility).                                                                                                          |
+| ca           |               | Certificate authority to use when verifying certificates.                                                                                                              |
+| proxy        |               | HTTP proxy URL to route requests through (e.g. http://user:pass@proxy:3128/).                                                                                          |
+| no-proxy     |               | Comma-separated list of hostnames that bypass the proxy.                                                                                                               |
 
 
 
@@ -103,7 +130,7 @@ Submit information to the remote NRDP Server.
 
 
 
-### SMTP CLIENT SECTION <a id="/settings/NRDP/client"/>
+### SMTP CLIENT SECTION <a id="/settings/NRDP/client"></a>
 
 Section for SMTP passive check module.
 
@@ -142,7 +169,6 @@ The channel to listen to.
 | Path:          | [/settings/NRDP/client](#/settings/NRDP/client) |
 | Key:           | channel                                         |
 | Default value: | `NRDP`                                          |
-| Used by:       | NRDPClient                                      |
 
 
 **Sample:**
@@ -179,7 +205,6 @@ ${domain_uc}	Domainname in uppercase
 | Path:          | [/settings/NRDP/client](#/settings/NRDP/client) |
 | Key:           | hostname                                        |
 | Default value: | `auto`                                          |
-| Used by:       | NRDPClient                                      |
 
 
 **Sample:**
@@ -191,7 +216,7 @@ hostname=auto
 ```
 
 
-### CLIENT HANDLER SECTION <a id="/settings/NRDP/client/handlers"/>
+### CLIENT HANDLER SECTION <a id="/settings/NRDP/client/handlers"></a>
 
 
 
@@ -203,7 +228,7 @@ This is a section of objects. This means that you will create objects below this
 
 
 
-### REMOTE TARGET DEFINITIONS <a id="/settings/NRDP/client/targets"/>
+### REMOTE TARGET DEFINITIONS <a id="/settings/NRDP/client/targets"></a>
 
 
 
@@ -214,16 +239,21 @@ This is a section of objects. This means that you will create objects below this
 **Keys:**
 
 
-| Key      | Default Value | Description    |
-|----------|---------------|----------------|
-| address  |               | TARGET ADDRESS |
-| host     |               | TARGET HOST    |
-| key      |               | SECURITY TOKEN |
-| password |               | SECURITY TOKEN |
-| port     |               | TARGET PORT    |
-| retries  | 3             | RETRIES        |
-| timeout  | 30            | TIMEOUT        |
-| token    |               | SECURITY TOKEN |
+| Key         | Default Value | Description           |
+|-------------|---------------|-----------------------|
+| address     |               | TARGET ADDRESS        |
+| ca          | ${ca-path}    | Certificate Authority |
+| host        |               | TARGET HOST           |
+| key         |               | SECURITY TOKEN        |
+| no proxy    |               | No-proxy list         |
+| password    |               | SECURITY TOKEN        |
+| port        |               | TARGET PORT           |
+| proxy       |               | HTTP proxy URL        |
+| retries     | 3             | RETRIES               |
+| timeout     | 30            | TIMEOUT               |
+| tls version | 1.3           | Tls version           |
+| token       |               | SECURITY TOKEN        |
+| verify mode | peer          | TLS peer verify mode  |
 
 
 **Sample:**
@@ -232,13 +262,18 @@ This is a section of objects. This means that you will create objects below this
 # An example of a REMOTE TARGET DEFINITIONS section
 [/settings/NRDP/client/targets/sample]
 #address=...
+ca=${ca-path}
 #host=...
 #key=...
+#no proxy=...
 #password=...
 #port=...
+#proxy=...
 retries=3
 timeout=30
+tls version=1.3
 #token=...
+verify mode=peer
 
 ```
 

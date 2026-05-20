@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2016 Michael Medin
+ * Copyright (C) 2004-2026 Michael Medin
  *
  * This file is part of NSClient++ - https://nsclient.org
  *
@@ -19,23 +19,21 @@
 
 #pragma once
 
+#include <exception>
 #include <string>
+#include <utility>
 
 namespace nsclient {
 
-	class nsclient_exception : public std::exception {
-	private:
-		std::string error;
-	public:
-		nsclient_exception(std::string error) : error(error) {};
-		~nsclient_exception() throw() {}
+class nsclient_exception final : public std::exception {
+  std::string error_;
 
-		const char* what() const throw() {
-			return error.c_str();
-		}
-		std::string reason() const throw() {
-			return error;
-		}
-	};
-}
+ public:
+  explicit nsclient_exception(std::string error) noexcept : error_(std::move(error)) {};
+  nsclient_exception(const nsclient_exception &other) noexcept : error_(other.error_) {}
+  ~nsclient_exception() noexcept override = default;
 
+  std::string reason() const noexcept { return error_; }
+  const char *what() const noexcept override { return error_.c_str(); }
+};
+}  // namespace nsclient

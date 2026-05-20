@@ -1,0 +1,14 @@
+# Gersemi configuration file for CMake formatting
+# https://github.com/BlankSpruce/gersemi
+
+# Line width for formatting
+line_length: 80
+
+# Use tabs or spaces for indentation
+indent: 4
+
+# Formatting for list expansion
+list_expansion: favour-expansion
+
+# Unsafe mode allows formatting of files that might have issues
+unsafe: false

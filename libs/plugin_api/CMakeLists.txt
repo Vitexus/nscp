@@ -1,77 +1,92 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.10)
+set(TARGET ${PLUGIN_API_TARGET})
 
-SET(TARGET plugin_api)
+include_directories(${BOOST_INCLUDE_DIRS})
+link_directories(${BOOST_LIB_DIRS})
 
-INCLUDE_DIRECTORIES(${BOOST_INCLUDE_DIRS})
-LINK_DIRECTORIES(${BOOST_LIB_DIRS})
-
-SET(SRCS
-	${NSCP_INCLUDEDIR}/nscapi/nscapi_core_wrapper.cpp
-	${NSCP_INCLUDEDIR}/nscapi/nscapi_core_helper.cpp
-	${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.cpp
-	${NSCP_INCLUDEDIR}/nscapi/nscapi_helper_singleton.cpp
-	${NSCP_INCLUDEDIR}/nscapi/nscapi_protobuf_functions.cpp
-	${NSCP_INCLUDEDIR}/nscapi/nscapi_targets.cpp
-	${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_filter.cpp
-	${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_proxy.cpp
-	${NSCP_INCLUDEDIR}/nscapi/command_client.cpp
-	${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_object.cpp
-  ${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_helper.cpp
+set(SRCS
+    ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/nscapi_core_wrapper.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/nscapi_core_helper.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper_singleton.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_convert.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_copy.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_perfdata.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_query.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_exec.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_response.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_submit.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_status.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/protobuf/settings_functions.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/nscapi_targets.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/command_client.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/settings/filter.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/settings/proxy.cpp
+    ${NSCP_INCLUDEDIR}/nscapi/settings/helper.cpp
 )
-	
-IF(WIN32)
-	SET(SRCS ${SRCS}
-		${NSCP_INCLUDEDIR}/config.h
-		${NSCP_INCLUDEDIR}/NSCAPI.h
-		
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_core_wrapper.hpp
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_core_helper.hpp
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.hpp
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_helper_singleton.hpp
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_protobuf_functions.hpp
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_targets.hpp
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_filter.hpp
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_proxy.hpp
-		${NSCP_INCLUDEDIR}/nscapi/macros.hpp
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_object.hpp
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_settings_helper.hpp
-	)
-ENDIF(WIN32)
 
-SET(EXTRA_LIBS)
-IF(APPLE)
-	SET(EXTRA_LIBS ${ICONV_LIBRARIES})
-ENDIF()
+if(WIN32)
+    set(SRCS
+        ${SRCS}
+        ${NSCP_INCLUDEDIR}/str/utf8.hpp
+        # ${NSCP_INCLUDEDIR}/config.h
+        ${NSCP_INCLUDEDIR}/NSCAPI.h
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_core_wrapper.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_core_helper.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper_singleton.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/settings_functions.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_targets.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/filter.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/proxy.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/object.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/helper.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/macros.hpp
+    )
+endif(WIN32)
 
-ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
+set(EXTRA_LIBS)
+if(APPLE)
+    set(EXTRA_LIBS ${ICONV_LIBRARIES})
+endif()
+
+add_definitions(${NSCP_GLOBAL_DEFINES})
 NSCP_MAKE_LIBRARY(${TARGET} "${SRCS}")
-NSCP_FORCE_INCLUDE(${TARGET} "${BUILD_ROOT_FOLDER}/include/nscapi/dll_defines_protobuf.hpp")
+NSCP_FORCE_INCLUDE(
+    ${TARGET}
+    "${BUILD_ROOT_FOLDER}/include/nscapi/dll_defines_protobuf.hpp"
+)
 
-SET_TARGET_PROPERTIES(${TARGET} PROPERTIES FOLDER "libraries")
-TARGET_LINK_LIBRARIES(${TARGET}
-	${Boost_SYSTEM_LIBRARY}
-	${Boost_FILESYSTEM_LIBRARY}
-	${Boost_PROGRAM_OPTIONS_LIBRARY}
-	nscp_protobuf
-	${EXTRA_LIBS})
-ADD_DEPENDENCIES(${TARGET} nscp_protobuf)
+set_target_properties(
+    ${TARGET}
+    PROPERTIES
+        FOLDER
+            "libraries"
+)
+target_link_libraries(
+    ${TARGET}
+    ${Boost_SYSTEM_LIBRARY}
+    ${Boost_FILESYSTEM_LIBRARY}
+    ${Boost_PROGRAM_OPTIONS_LIBRARY}
+    nscp_protobuf
+    ${EXTRA_LIBS}
+)
+add_dependencies(${TARGET} nscp_protobuf)
 
-
-IF(GTEST_FOUND)
-	INCLUDE_DIRECTORIES(${GTEST_INCLUDE_DIR})
-	SET(TEST_SRCS
-		nscapi_helper_test.cpp
-		
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.cpp
-		${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.hpp
-	)
-	NSCP_MAKE_EXE_TEST(${TARGET}_test "${TEST_SRCS}")
-	NSCP_ADD_TEST(${TARGET}_test ${TARGET}_test)
-	TARGET_LINK_LIBRARIES(${TARGET}_test
-		${GTEST_GTEST_LIBRARY}
-		${GTEST_GTEST_MAIN_LIBRARY}
-		${NSCP_DEF_PLUGIN_LIB}
-		${EXTRA_LIBS}
-		${Boost_DATE_TIME_LIBRARY}
-	)
-ENDIF(GTEST_FOUND)
+NSCP_CREATE_TEST(
+    ${TARGET}_test
+    SOURCES
+        nscapi_helper_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_core_helper_test.cpp
+    LIBRARIES
+        GTest::gtest
+        GTest::gtest_main
+        ${NSCP_DEF_PLUGIN_LIB}
+        ${EXTRA_LIBS}
+        ${Boost_DATE_TIME_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)

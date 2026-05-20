@@ -19,82 +19,106 @@
 
 #pragma once
 
-#include <utils.h>
-#include <str/xtos.hpp>
-
-#include <socket/client.hpp>
-
-#include <nscapi/nscapi_settings_helper.hpp>
-#include <nscapi/nscapi_protobuf_functions.hpp>
-#include <nscapi/nscapi_core_helper.hpp>
-
-#include <boost/make_shared.hpp>
+#include <memory>
+#include <nscapi/settings/helper.hpp>
 
 namespace smtp_handler {
-	namespace sh = nscapi::settings_helper;
+namespace sh = nscapi::settings_helper;
 
-	struct smtp_target_object : public nscapi::targets::target_object {
-		typedef nscapi::targets::target_object parent;
+struct smtp_target_object : nscapi::targets::target_object {
+  typedef target_object parent;
 
-		smtp_target_object(std::string alias, std::string path) : parent(alias, path) {
-			set_property_int("timeout", 30);
-			set_property_string("sender", "nscp@localhost");
-			set_property_string("recipient", "nscp@localhost");
-			set_property_string("template", "Hello, this is %source% reporting %message%!");
-		}
-		smtp_target_object(const nscapi::settings_objects::object_instance other, std::string alias, std::string path) : parent(other, alias, path) {}
+  smtp_target_object(const std::string& alias, const std::string& path) : parent(alias, path) {
+    set_property_int("timeout", 30);
+    set_property_string("address", "smtp://smtp.example.com:587");
+    set_property_string("security", "starttls");
+    set_property_string("sender", "nscp@localhost");
+    set_property_string("recipient", "nscp@localhost");
+    set_property_string("subject", "[NSClient++] %source%");
+    set_property_string("template", "Hello, this is %source% reporting %message%!");
+  }
+  smtp_target_object(const nscapi::settings_objects::object_instance& other, const std::string& alias, const std::string& path) : parent(other, alias, path) {}
 
-		virtual void read(boost::shared_ptr<nscapi::settings_proxy> proxy, bool oneliner, bool is_sample) {
-			parent::read(proxy, oneliner, is_sample);
+  void read(const nscapi::settings_helper::settings_impl_interface_ptr proxy, const bool oneliner, const bool is_sample) override {
+    parent::read(proxy, oneliner, is_sample);
 
-			nscapi::settings_helper::settings_registry settings(proxy);
+    nscapi::settings_helper::settings_registry settings(proxy);
 
-			nscapi::settings_helper::path_extension root_path = settings.path(get_path());
-			if (is_sample)
-				root_path.set_sample();
+    nscapi::settings_helper::path_extension root_path = settings.path(get_path());
+    if (is_sample) root_path.set_sample();
 
-			root_path.add_key()
+    root_path
+        .add_key()
 
-				("sender", sh::string_fun_key(boost::bind(&parent::set_property_string, this, "sender", _1), "nscp@localhost"),
-					"SENDER", "Sender of email message")
+        .add_string("sender", sh::string_fun_key([this](auto value) { this->set_property_string("sender", value); }, "nscp@localhost"), "SENDER",
+                    "Envelope sender / From: header. Use a real address (e.g. alerts@example.com) - public providers like Gmail and Microsoft 365 reject "
+                    "submissions where From: differs from the authenticated mailbox.")
 
-				("recipient", sh::string_fun_key(boost::bind(&parent::set_property_string, this, "recipient", _1), "nscp@localhost"),
-					"RECIPIENT", "Recipient of email message")
+        .add_string("recipient", sh::string_fun_key([this](auto value) { this->set_property_string("recipient", value); }, "nscp@localhost"), "RECIPIENT",
+                    "Recipient (RCPT TO and To: header). Single recipient per submission.")
 
-				("template", sh::string_fun_key(boost::bind(&parent::set_property_string, this, "template", _1), "Hello, this is %source% reporting %message%!"),
-					"TEMPLATE", "Template for message data")
+        .add_string("subject", sh::string_fun_key([this](auto value) { this->set_property_string("subject", value); }, "[NSClient++] %source%"), "SUBJECT",
+                    "Subject template. %source% is replaced with the originating check name, %message% with the plugin output.")
 
-				;
-		}
-	};
+        .add_string("template",
+                    sh::string_fun_key([this](auto value) { this->set_property_string("template", value); }, "Hello, this is %source% reporting %message%!"),
+                    "TEMPLATE", "Body template. Same %source% / %message% substitution as `subject`.")
 
-	struct options_reader_impl : public client::options_reader_interface {
-		virtual nscapi::settings_objects::object_instance create(std::string alias, std::string path) {
-			return boost::make_shared<smtp_target_object>(alias, path);
-		}
-		virtual nscapi::settings_objects::object_instance clone(nscapi::settings_objects::object_instance parent, const std::string alias, const std::string path) {
-			return boost::make_shared<smtp_target_object>(parent, alias, path);
-		}
+        .add_string("username", sh::string_fun_key([this](auto value) { this->set_property_string("username", value); }, ""), "AUTH USERNAME",
+                    "SMTP AUTH username. Empty disables auth (only valid for unauthenticated relays). For Gmail use the full Google account address; for "
+                    "Microsoft 365 use the UPN. App passwords work for both.")
 
-		void process(boost::program_options::options_description &desc, client::destination_container &source, client::destination_container &data) {
-			desc.add_options()
+        .add_password("password", sh::string_fun_key([this](auto value) { this->set_property_string("password", value); }, ""), "AUTH PASSWORD",
+                      "SMTP AUTH password. Stored sensitive. Credentials are only sent over a TLS / STARTTLS-secured connection; configuring a password "
+                      "with security=none refuses to start.")
 
-				("sender", po::value<std::string>()->notifier(boost::bind(&client::destination_container::set_string_data, source, "sender", _1)),
-					"Length of payload (has to be same as on the server)")
+        .add_string("security", sh::string_fun_key([this](auto value) { this->set_property_string("security", value); }, "starttls"), "TRANSPORT SECURITY",
+                    "Connection security. `starttls` (default, port 587) connects in clear and upgrades to TLS before AUTH; `tls` connects with TLS "
+                    "immediately (port 465); `none` is plain SMTP and is only safe for trusted internal relays.")
 
-				("recipient", po::value<std::string>()->notifier(boost::bind(&client::destination_container::set_string_data, data, "recipient", _1)),
-					"Length of payload (has to be same as on the server)")
+        .add_string("ehlo-hostname", sh::string_fun_key([this](auto value) { this->set_property_string("ehlo-hostname", value); }, ""), "EHLO HOSTNAME",
+                    "Hostname to advertise in EHLO. Defaults to the agent's hostname; some submission services require a real FQDN here.")
 
-				("template", po::value<std::string>()->notifier(boost::bind(&client::destination_container::set_string_data, data, "template", _1)),
-					"Do not initial an ssl handshake with the server, talk in plain text.")
+        .add_string("insecure-skip-verify", sh::bool_fun_key([this](auto value) { this->set_property_bool("insecure-skip-verify", value); }, false),
+                    "SKIP TLS CERT VERIFY",
+                    "When true, skip certificate validation on the server. Only safe for self-signed test environments; never set this on a production "
+                    "submission service.");
+  }
+};
 
-				("source-host", po::value<std::string>()->notifier(boost::bind(&client::destination_container::set_string_data, &source, "host", _1)),
-					"Source/sender host name (default is auto which means use the name of the actual host)")
+struct options_reader_impl : client::options_reader_interface {
+  nscapi::settings_objects::object_instance create(std::string alias, std::string path) override { return std::make_shared<smtp_target_object>(alias, path); }
+  nscapi::settings_objects::object_instance clone(nscapi::settings_objects::object_instance parent, const std::string alias, const std::string path) override {
+    return std::make_shared<smtp_target_object>(parent, alias, path);
+  }
 
-				("sender-host", po::value<std::string>()->notifier(boost::bind(&client::destination_container::set_string_data, &source, "host", _1)),
-					"Source/sender host name (default is auto which means use the name of the actual host)")
-
-				;
-		}
-	};
-}
+  void process(boost::program_options::options_description& desc, client::destination_container& source, client::destination_container& data) override {
+    // clang-format off
+    desc.add_options()
+      ("sender", po::value<std::string>()->notifier([&data] (auto value) { data.set_string_data("sender", value); }),
+       "Envelope sender / From: header.")
+      ("recipient", po::value<std::string>()->notifier([&data] (auto value) { data.set_string_data("recipient", value); }),
+       "Recipient address (one per submission).")
+      ("subject", po::value<std::string>()->notifier([&data] (auto value) { data.set_string_data("subject", value); }),
+       "Subject template; %source% / %message% are substituted.")
+      ("template", po::value<std::string>()->notifier([&data] (auto value) { data.set_string_data("template", value); }),
+       "Body template; %source% / %message% are substituted.")
+      ("username", po::value<std::string>()->notifier([&data] (auto value) { data.set_string_data("username", value); }),
+       "SMTP AUTH username.")
+      ("password", po::value<std::string>()->notifier([&data] (auto value) { data.set_string_data("password", value); }),
+       "SMTP AUTH password.")
+      ("security", po::value<std::string>()->notifier([&data] (auto value) { data.set_string_data("security", value); }),
+       "Transport security: none | starttls (default) | tls.")
+      ("ehlo-hostname", po::value<std::string>()->notifier([&data] (auto value) { data.set_string_data("ehlo-hostname", value); }),
+       "Hostname to send in EHLO.")
+      ("insecure-skip-verify", po::bool_switch()->notifier([&data] (auto value) { data.set_bool_data("insecure-skip-verify", value); }),
+       "Skip TLS certificate validation (test environments only).")
+      ("source-host", po::value<std::string>()->notifier([&source] (auto value) { source.set_string_data("host", value); }),
+       "Source/sender host name (default is auto which means use the name of the actual host).")
+      ("sender-host", po::value<std::string>()->notifier([&source] (auto value) { source.set_string_data("host", value); }),
+       "Source/sender host name (alias for --source-host).")
+      ;
+    // clang-format on
+  }
+};
+}  // namespace smtp_handler

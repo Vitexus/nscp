@@ -1,29 +1,76 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.10)
 
-SET(TARGET CauseCrashes)
+set(TARGET CauseCrashes)
 
-PROJECT(${TARGET})
+project(${TARGET})
 
 CREATE_MODULE(SRCS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
-SET(SRCS ${SRCS}
-	"${TARGET}.cpp"
-	${NSCP_DEF_PLUGIN_CPP}
+set(SRCS
+    ${SRCS}
+    "${TARGET}.cpp"
+    ${NSCP_DEF_PLUGIN_CPP}
 )
 
-ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
+add_definitions(${NSCP_GLOBAL_DEFINES})
 
-IF(WIN32)
-	SET(SRCS ${SRCS}
-		"${TARGET}.h"
+if(WIN32)
+    set(SRCS
+        ${SRCS}
+        "${TARGET}.h"
+        ${NSCP_DEF_PLUGIN_HPP}
+    )
+endif(WIN32)
 
-		${NSCP_DEF_PLUGIN_HPP}
-	)
-ENDIF(WIN32)
+add_library(${TARGET} MODULE ${SRCS})
+NSCP_DEBUG_SYMBOLS(${TARGET})
 
-ADD_LIBRARY(${TARGET} MODULE ${SRCS})
+target_link_libraries(${TARGET} ${NSCP_DEF_PLUGIN_LIB})
 
-target_link_libraries(${TARGET}
-	${NSCP_DEF_PLUGIN_LIB}
+source_group("Common Files" REGULAR_EXPRESSION .*include/.*)
+source_group("Parser" REGULAR_EXPRESSION .*include/parser/.*)
+source_group("NSCP API" REGULAR_EXPRESSION .*include/nscapi/.*)
+source_group("Filter" REGULAR_EXPRESSION .*include/parsers/.*)
+source_group("Socket" REGULAR_EXPRESSION .*include/socket/.*)
+
+set_target_properties(
+    ${TARGET}
+    PROPERTIES
+        FOLDER
+            ${MODULE_SUBFOLDER}
 )
-INCLUDE(${BUILD_CMAKE_FOLDER}/module.cmake)
+NSCP_INSTALL_MODULE(${TARGET})
+
+if(WIN32)
+    set(_FOLDER "${MODULE_SUBFOLDER}")
+elseif(APPLE)
+    set(_FOLDER ${MODULE_SUBFOLDER})
+else()
+    set(_FOLDER ${MODULE_TARGET_FOLDER})
+endif()
+if(MSVC11 OR MSVC12 OR MSVC13 OR MSVC14 OR APPLE)
+    set_target_properties(
+        ${TARGET}
+        PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY
+                ${BUILD_TARGET_ROOT_PATH}/${_FOLDER}
+    )
+    set_target_properties(
+        ${TARGET}
+        PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY_DEBUG
+                ${BUILD_TARGET_ROOT_PATH}/${_FOLDER}
+    )
+    set_target_properties(
+        ${TARGET}
+        PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY_RELEASE
+                ${BUILD_TARGET_ROOT_PATH}/${_FOLDER}
+    )
+    set_target_properties(
+        ${TARGET}
+        PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO
+                ${BUILD_TARGET_ROOT_PATH}/${_FOLDER}
+    )
+endif()

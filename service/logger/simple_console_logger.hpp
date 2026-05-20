@@ -19,27 +19,29 @@
 
 #pragma once
 
-#include <nsclient/logger/base_logger_impl.hpp>
-
-#include <vector>
+#include <nsclient/logger/log_driver_interface_impl.hpp>
 #include <string>
+#include <vector>
 
 namespace nsclient {
-	namespace logging {
-		namespace impl {
-			class simple_console_logger : public nsclient::logging::log_driver_interface_impl {
-				std::string format_;
-				std::vector<char> buf_;
-			public:
-				simple_console_logger();
-				void do_log(const std::string data);
-				struct config_data {
-					std::string format;
-				};
-				config_data do_config();
-				void synch_configure();
-				void asynch_configure();
-			};
-		}
-	}
-}
+namespace logging {
+namespace impl {
+class simple_console_logger : public log_driver_interface_impl {
+  std::string format_;
+  std::vector<char> buf_;
+  logging_subscriber *subscriber_manager_;
+
+ public:
+  simple_console_logger(logging_subscriber *subscriber_manager);
+  ~simple_console_logger() override;
+  void do_log(std::string data) override;
+  struct config_data {
+    std::string format;
+  };
+  config_data do_config();
+  void synch_configure() override;
+  void asynch_configure() override;
+};
+}  // namespace impl
+}  // namespace logging
+}  // namespace nsclient

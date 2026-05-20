@@ -1,309 +1,258 @@
 #include "ServerImpl.h"
 
-#include "StreamResponse.h"
-#include "mcp_exception.hpp"
-
-#include <boost/foreach.hpp>
+#include <boost/algorithm/string.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/thread/thread.hpp>
-
+#include <fstream>
+#include <memory>
+#include <nsclient/nsclient_exception.hpp>
+#include <sstream>
 #include <string>
+#include <utility>
 
 using namespace std;
 using namespace Mongoose;
 
-struct oubound_frame {
-	job_id id;
-	ServerImpl *server;
-	char *data;
-	int len;
-};
-
-struct udt {
-	ServerImpl *server;
-	unsigned long job_id;
-	unsigned long magic;
-
-	udt(ServerImpl *server)
-		: server(server)
-		, job_id(0)
-		, magic(123456789) 
-	{}
-	~udt() {
-		server = NULL;
-		job_id = 0;
-		magic = 0;
-	}
-};
-
-void sendStockResponse(struct mg_connection *connection, int code, std::string msg) {
-	StreamResponse response;
-	response.setCode(code);
-	response.append(msg);
-	std::string buffer = response.getData();
-	mg_send(connection, buffer.c_str(), buffer.size());
-	connection->flags |= MG_F_SEND_AND_CLOSE;
+std::string load_file(const std::string &path, const std::string &hint) {
+  try {
+    const std::ifstream file(path);
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
+  } catch (const std::exception &e) {
+    throw nsclient::nsclient_exception("Failed to load " + hint + " from " + path + ": " + e.what());
+  }
 }
 
-
-void on_wake_up(struct mg_connection *connection, int ev, void *ev_data) {
-	if (ev_data == NULL || connection->user_data == NULL) {
-		return;
-	}
-	oubound_frame *frame = reinterpret_cast<oubound_frame*>(ev_data);
-	if (frame->server->execute_reply_async(frame->id, frame->data, frame->len)) {
-		char *tmp = frame->data;
-		frame->data = NULL;
-		delete[] tmp;
-	}
-}
-job_id job_index = 1;
-
-static void *server_poll(void *param)
-{
-    ServerImpl *server = (ServerImpl*)param;
-	if (server != NULL) {
-		server->poll();
-	}
-    return NULL;
+std::pair<std::string, std::string> load_certificates(const std::string &cert_path, const std::string &key_path) {
+  auto cert = load_file(cert_path, "certificate");
+  if (key_path.empty()) {
+    return {cert, cert};
+  }
+  auto key = load_file(key_path, "private key");
+  return {cert, key};
 }
 
-boost::posix_time::ptime now() {
-	return boost::get_system_time();
-}
+boost::posix_time::ptime now() { return boost::get_system_time(); }
 
-void ServerImpl::request_thread_proc(int id) {
-	try {
-		job_queue_type::value_type instance;
-		while (!stopped) {
-			instance = job_queue_.pop();
-			if (!instance) {
-				boost::unique_lock<boost::mutex> lock(idle_thread_mutex_);
-				idle_thread_cond_.wait(lock);
-				continue;
-			}
-
-			try {
-				if (instance->is_late(now())) {
-					instance->toLate();
-				} else {
-					instance->run();
-				}
-			} catch (const boost::thread_interrupted &) {
-				if (stopped) {
-					return;
-				}
-				continue;
-			} catch (...) {
-				// Log error
-				continue;
-			}
-		}
-	} catch (const boost::thread_interrupted &e) {
-	} catch (const std::exception &e) {
-	} catch (...) {
-	}
-}
-
-namespace Mongoose
-{
-	ServerImpl::ServerImpl(std::string port_)
-        : stopped(false)
-		, destroyed(true)
-		, port(port_)
-    {
-		memset(&mgr, 0, sizeof(struct mg_mgr));
-		mg_mgr_init(&mgr, NULL);
-		memset(&opts, 0, sizeof(struct mg_bind_opts));
+std::string tmp_log;
+bool logged_cert_issue = false;
+void log_wrapper(char c, void *ptr) {
+  if (ptr == nullptr) {
+    return;
+  }
+  if (c == '\n' || c == '\r') {
+    if (tmp_log.empty()) {
+      return;
+    }
+    auto *logger = static_cast<WebLogger *>(ptr);
+    if (boost::algorithm::contains(tmp_log, "alert certificate unknown")) {
+      if (!logged_cert_issue) {
+        logger->log_error("This could be due to self-signed certificates: " + tmp_log);
+        logged_cert_issue = true;
+      }
+    } else if (boost::algorithm::contains(tmp_log, ":error:")) {
+      logger->log_error(tmp_log);
+    } else {
+      logger->log_info(tmp_log);
     }
 
-	ServerImpl::~ServerImpl() {
-        stop();
-		vector<Controller *>::iterator it;
-		for (it = controllers.begin(); it != controllers.end(); it++) {
-			delete (*it);
-		}
-		controllers.clear();
+    tmp_log = "";
+  } else {
+    tmp_log += c;
+  }
+}
+
+namespace Mongoose {
+ServerImpl::ServerImpl(WebLoggerPtr logger) : logger_(std::move(logger)), stop_thread_(false) {
+  mg_log_set_fn(&log_wrapper, logger_.get());
+  mg_log_set(MG_LL_ERROR);
+  memset(&mgr, 0, sizeof(mg_mgr));
+  mg_mgr_init(&mgr);
+}
+
+ServerImpl::~ServerImpl() {
+  ServerImpl::stop();
+  mg_log_set_fn(&log_wrapper, nullptr);
+
+  for (const auto &controller : controllers) {
+    delete controller;
+  }
+  controllers.clear();
+}
+
+void ServerImpl::setSsl(std::string &new_certificate, std::string &new_key) {
+#if MG_ENABLE_OPENSSL
+  try {
+    auto cert_and_key = load_certificates(new_certificate, new_key);
+    certificate = cert_and_key.first;
+    key = cert_and_key.second;
+  } catch (const nsclient::nsclient_exception &e) {
+    logger_->log_error("Failed to load certificates: " + e.reason());
+  }
+#else
+  logger_->log_error("Not compiled with TLS");
+#endif
+}
+
+void ServerImpl::thread_proc() {
+  try {
+    while (true) {
+      mg_mgr_poll(&mgr, 1000);
+      if (stop_thread_) {
+        mg_mgr_free(&mgr);
+        return;
+      }
     }
+  } catch (...) {
+    logger_->log_error("Mongoose error");
+  }
+}
 
-	void ServerImpl::request_reply_async(job_id id, std::string data) {
-		oubound_frame frame;
-		frame.server = this;
-		frame.id = id;
-		frame.len = data.size();
-		frame.data = new char[frame.len + 10];
-		memcpy(frame.data, data.c_str(), frame.len);
-		mg_broadcast(&mgr, on_wake_up, (void*)&frame, sizeof(frame));
-	}
+void ServerImpl::start(const std::string &bind) {
+  mg_http_listen(&mgr, bind.c_str(), event_handler, this);
+  thread_ = std::make_shared<boost::thread>([this] { thread_proc(); });
+}
 
-	bool ServerImpl::execute_reply_async(job_id id, const void *buf, int len) {
-		struct mg_connection *c;
-		if (buf == NULL) {
-			return false;
-		}
-		for (c = mg_next(&mgr, NULL); c != NULL; c = mg_next(&mgr, c)) {
-			if (c->user_data != NULL && ((udt*)c->user_data)->job_id == id) {
-				mg_send(c, buf, len);
-				c->flags |= MG_F_SEND_AND_CLOSE;
-				return true;
-			}
-		}
-		return false;
-	}
+void ServerImpl::stop() {
+  if (thread_) {
+    stop_thread_ = true;
+    thread_->interrupt();
+    thread_->join();
+  }
+  thread_.reset();
+}
 
-	void ServerImpl::setSsl(const char *certificate) {
-		opts.ssl_cert = certificate;
-	}
+void ServerImpl::registerController(Controller *controller) { controllers.push_back(controller); }
 
-
-    void ServerImpl::start(int thread_count) {
-		const char *err = "";
-		opts.error_string = &err;
-		opts.user_data = this;
-		server_connection = mg_bind_opt(&mgr, port.c_str(), ServerImpl::event_handler, opts);
-		if (server_connection == NULL) {
-			throw mcp::mcp_exception(err);
-		}
-		stopped = false;
-		mg_set_protocol_http_websocket(server_connection);
-
-		int thread_count_ = 10;
-
-		for (std::size_t i = 0; i < thread_count; i++) {
-			boost::function<void()> f = boost::bind(&ServerImpl::request_thread_proc, this, 100 + i);
-			threads_.createThread(f);
-		}
-		mg_start_thread(server_poll, this);
+void ServerImpl::event_handler(mg_connection *connection, int ev, void *ev_data) {
+  if (connection->fn_data != nullptr) {
+    const auto *impl = static_cast<ServerImpl *>(connection->fn_data);
+    if (ev == MG_EV_ACCEPT) {
+#if MG_ENABLE_OPENSSL
+      impl->initTls(connection);
+#else
+      impl->logger_->log_error("Not compiled with TLS support");
+#endif
     }
+    if (ev == MG_EV_HTTP_MSG) {
+      auto message = static_cast<struct mg_http_message *>(ev_data);
+      impl->onHttpRequest(connection, message);
+    }
+  }
+}
+#if MG_ENABLE_OPENSSL
+void ServerImpl::initTls(mg_connection *connection) const {
+  if (certificate.empty() || key.empty()) {
+    return;
+  }
+  mg_tls_opts opts{};
+  memset(&opts, 0, sizeof(mg_tls_opts));
+  // TODO: Should we add name?
+  opts.cert = mg_str(certificate.c_str());
+  opts.key = mg_str(key.c_str());
+  mg_tls_init(connection, &opts);
+}
+#endif
 
-    void ServerImpl::poll()
-    {
-		if (!stopped)
-			destroyed = false;
-        while (!stopped) {
-			mg_mgr_poll(&mgr, 1000);
+Request build_request(const std::string &ip, const mg_http_message *message, const bool is_ssl, const std::string &method) {
+  const auto url = std::string(message->uri.buf, message->uri.len);
+  std::string query;
+  if (message->query.buf != nullptr) {
+    query = std::string(message->query.buf, message->query.len);
+  }
+
+  Request::headers_type headers;
+  const size_t max = std::size(message->headers);
+  for (size_t i = 0; i < max && message->headers[i].name.len > 0; i++) {
+    auto key = std::string(message->headers[i].name.buf, message->headers[i].name.len);
+    const auto value = std::string(message->headers[i].value.buf, message->headers[i].value.len);
+    headers[key] = value;
+  }
+
+  // Downloading POST data
+  ostringstream postData;
+  postData.write(message->body.buf, message->body.len);
+  const std::string data = postData.str();
+  return {ip, is_ssl, method, url, query, headers, data};
+}
+
+void ServerImpl::onHttpRequest(mg_connection *connection, mg_http_message *message) const {
+  bool is_ssl = connection->is_tls;
+  auto url = std::string(message->uri.buf, message->uri.len);
+  auto method = std::string(message->method.buf, message->method.len);
+
+  size_t max = std::size(message->headers);
+  for (size_t i = 0; i < max && message->headers[i].name.len > 0; i++) {
+    if (message->headers[i].value.len > 0 && strncmp(message->headers[i].name.buf, "X-HTTP-Method-Override", message->headers[i].name.len) == 0) {
+      method = std::string(message->headers[i].value.buf, message->headers[i].value.len);
+    }
+  }
+
+  for (Controller *ctrl : controllers) {
+    if (ctrl->handles(method, url)) {
+      char buf[100];
+      mg_snprintf(buf, sizeof(buf), "%M", mg_print_ip, &connection->rem);
+      auto ip = std::string(buf);
+      Request request = build_request(ip, message, is_ssl, method);
+
+      std::unique_ptr<Response> response(ctrl->handleRequest(request));
+      std::stringstream headers;
+      bool has_content_type = false;
+      for (const Response::header_type::value_type &v : response->get_headers()) {
+        headers << v.first << ": " << v.second << "\r\n";
+        if (v.first == "Content-Type") {
+          has_content_type = true;
         }
-
-        destroyed = true;
-		mg_mgr_free(&mgr);
-    }
-
-    void ServerImpl::stop()
-    {
-		threads_.interruptThreads();
-		threads_.waitForThreads();
-        stopped = true;
-        while (!destroyed) {
-			boost::this_thread::sleep(boost::posix_time::milliseconds(100));
+      }
+      for (const auto &c : response->get_cookies()) {
+        const std::string &name = c.first;
+        const std::string &value = c.second.first;
+        const Response::cookie_attrs &a = c.second.second;
+        if (name.empty() || name.find_first_of("\r\n;= \t") != std::string::npos) {
+          continue;
         }
+        if (value.find_first_of("\r\n;") != std::string::npos) {
+          continue;
+        }
+        // SameSite=None requires Secure per RFC 6265bis §5.4.7. Browsers will
+        // drop a SameSite=None cookie that lacks Secure, so emitting it would
+        // silently lose the session. Skip the cookie instead.
+        if (boost::algorithm::iequals(a.same_site, "None") && !(a.secure && is_ssl)) {
+          continue;
+        }
+        headers << "Set-Cookie: " << name << "=" << value << "; Path=" << (a.path.empty() ? "/" : a.path);
+        if (a.max_age >= 0) {
+          headers << "; Max-Age=" << a.max_age;
+        }
+        if (a.http_only) {
+          headers << "; HttpOnly";
+        }
+        if (a.secure && is_ssl) {
+          headers << "; Secure";
+        }
+        if (!a.same_site.empty()) {
+          headers << "; SameSite=" << a.same_site;
+        }
+        headers << "\r\n";
+      }
+      // No wildcard Access-Control-Allow-Origin. The bundled SPA is served
+      // from the same origin so it does not need CORS, and the wildcard meant
+      // any cross-origin page could read responses to authenticated requests
+      // that did not require credentials. Operators who need cross-origin
+      // access should put a reverse proxy in front and pin Origin there.
+      if (response->getCode() == 200 && !has_content_type) {
+        headers << "Content-Type: application/json\r\n";
+      }
+      if (response->getCode() > 299 && !has_content_type) {
+        headers << "Content-Type: text/plain\r\n";
+      }
+
+      mg_http_reply(connection, response->getCode(), headers.str().c_str(), "%s", response->getBody().c_str());
+
+      return;
     }
-
-    void ServerImpl::registerController(Controller *controller) {
-        controllers.push_back(controller);
-    }
-
-	void ServerImpl::event_handler(struct mg_connection *connection, int ev, void *ev_data) {
-		if (connection->user_data != NULL) {
-			if (ev == MG_EV_CLOSE) {
-				udt *data = (udt*)connection->user_data;
-				connection->user_data = NULL;
-				if (data->magic == 123456789) {
-					delete data;
-				}
-			} else if (ev == MG_EV_HTTP_REQUEST) {
-				udt *data = new udt((ServerImpl*)connection->user_data);
-				connection->user_data = data;
-				if (job_index < 100 || job_index > 1000000) {
-					job_index = 100;
-				} else {
-					job_index++;
-				}
-				data->job_id = job_index;
-				struct http_message *message = (struct http_message *) ev_data;
-				data->server->onHttpRequest(connection, message, data->job_id);
-			}
-		}
-	}
-
-
-	Request build_request(const std::string ip, struct http_message *message, bool is_ssl, const std::string method) {
-		std::string url = std::string(message->uri.p, message->uri.len);
-		std::string query;
-		if (message->query_string.p != NULL) {
-			query = std::string(message->query_string.p, message->query_string.len);
-		}
-
-		Request::headers_type headers;
-		for (int i = 0; i < ARRAY_SIZE(message->header_names); i++) {
-			std::string key = std::string(message->header_names[i].p, message->header_names[i].len);
-			std::string value = std::string(message->header_values[i].p, message->header_values[i].len);
-			headers[key] = value;
-		}
-
-		// Downloading POST data
-		ostringstream postData;
-		postData.write(message->body.p, message->body.len);
-		std::string data = postData.str();
-		return Request(ip, is_ssl, method, url, query, headers, data);
-
-	}
-
-    void ServerImpl::onHttpRequest(struct mg_connection *connection, struct http_message *message, job_id job_id) {
-
-		bool is_ssl = (connection->flags&MG_F_SSL) == MG_F_SSL;
-		std::string url = std::string(message->uri.p, message->uri.len);
-		std::string method = std::string(message->method.p, message->method.len);
-
-		for (int i = 0; i < ARRAY_SIZE(message->header_names); i++) {
-			if (message->header_names[i].p != NULL && message->header_names[i].len > 0 &&
-				strncmp(message->header_names[i].p, "X-HTTP-Method-Override", message->header_names[i].len) == 0) {
-				method = std::string(message->header_values[i].p, message->header_values[i].len);
-			}
-		}
-
-		BOOST_FOREACH(Controller *ctrl, controllers) {
-			if (ctrl->handles(method, url)) {
-
-				std::string ip = std::string(inet_ntoa(connection->sa.sin.sin_addr));
-				Request request = build_request(ip, message, is_ssl, method);
-				request_job job(this, ctrl, request, now(), job_id);
-
-				if (!job_queue_.push(job)) {
-					sendStockResponse(connection, HTTP_SERVER_ERROR, "Failed to process request");
-				}
-				idle_thread_cond_.notify_one();
-				return;
-			}
-		}
-		sendStockResponse(connection, HTTP_NOT_FOUND, "Document not found");
-    }
-
-
-	bool request_job::is_late(boost::posix_time::ptime now) {
-		boost::posix_time::time_duration off = now - time;
-		return off.total_seconds() > 30; // TODO: Should not be hard-coded
-	}
-
-	void request_job::run() {
-		if (server != NULL && controller != NULL) {
-			Response *resp = controller->handleRequest(request);
-			if (resp) {
-				server->request_reply_async(id, resp->getData());
-				delete resp;
-			} else {
-				StreamResponse response;
-				response.setCode(HTTP_SERVER_ERROR);
-				response.append("No response from command");
-				server->request_reply_async(id, response.getData());
-			}
-		}
-	}
-
-	void request_job::toLate() {
-		StreamResponse response;
-		response.setCode(HTTP_SERVICE_UNAVALIBLE);
-		response.append("Server is overloaded, please try later");
-		server->request_reply_async(id, response.getData());
-	}
-
+  }
+  mg_http_reply(connection, HTTP_NOT_FOUND, "", "Document not found");
 }
+
+}  // namespace Mongoose

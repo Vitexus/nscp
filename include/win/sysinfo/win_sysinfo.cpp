@@ -1,0 +1,569 @@
+/*
+ * Copyright (C) 2004-2016 Michael Medin
+ *
+ * This file is part of NSClient++ - https://nsclient.org
+ *
+ * NSClient++ is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * NSClient++ is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#define WIN32_LEAN_AND_MEAN  // Exclude rarely-used stuff from Windows headers
+#include <windows.h>
+
+#include <boost/scoped_array.hpp>
+#include <bytes/buffer.hpp>
+#include <error/error.hpp>
+#include <nsclient/nsclient_exception.hpp>
+#include <str/utf8.hpp>
+#include <win/sysinfo/win_sysinfo.hpp>
+#include <win/win_defines.hpp>
+
+namespace windows {
+#define STATUS_SUCCESS ((windows::winapi::NTSTATUS)0x00000000L)
+#define STATUS_INFO_LENGTH_MISMATCH ((windows::winapi::NTSTATUS)0xC0000004L)
+#define STATUS_BUFFER_OVERFLOW ((windows::winapi::NTSTATUS)0x80000005L)
+#ifndef STATUS_ACCESS_VIOLATION
+#define STATUS_ACCESS_VIOLATION ((windows::winapi::NTSTATUS)0xC0000005L)
+#endif
+
+//////////////////////////////////////////////////////////////////////////
+namespace winapi {
+typedef BOOL(WINAPI *tEnumServicesStatusEx)(SC_HANDLE hSCManager, SC_ENUM_TYPE InfoLevel, DWORD dwServiceType, DWORD dwServiceState, LPBYTE lpServices,
+                                            DWORD cbBufSize, LPDWORD pcbBytesNeeded, LPDWORD lpServicesReturned, LPDWORD lpResumeHandle, LPCTSTR pszGroupName);
+typedef BOOL(WINAPI *tQueryServiceConfig2)(SC_HANDLE hService, DWORD dwInfoLevel, LPBYTE lpBuffer, DWORD cbBufSize, LPDWORD pcbBytesNeeded);
+typedef BOOL(WINAPI *tQueryServiceStatusEx)(SC_HANDLE hService, SC_STATUS_TYPE InfoLevel, LPBYTE lpBuffer, DWORD cbBufSize, LPDWORD pcbBytesNeeded);
+typedef INT(WINAPI *tVDMEnumTaskWOWEx)(DWORD dwProcessId, tTASKENUMPROCEX fp, LPARAM lparam);
+typedef LONG(NTAPI *tNtQueryInformationProcess)(HANDLE ProcessHandle, DWORD ProcessInformationClass, PVOID ProcessInformation, DWORD ProcessInformationLength,
+                                                PDWORD ReturnLength);
+typedef BOOL(WINAPI *tIsWow64Process)(HANDLE ProcessHandle, PBOOL);
+typedef DWORD(WINAPI *tGetProcessImageFileName)(HANDLE hProcess, LPWSTR lpImageFileName, DWORD nSize);
+typedef BOOL(WINAPI *tQueryFullProcessImageName)(HANDLE hProcess, DWORD dwFlags, LPWSTR lpExeName, PDWORD lpdwSize);
+typedef LONG(NTAPI *tNtQuerySystemInformation)(SYSTEM_INFORMATION_CLASS SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength,
+                                               PULONG ReturnLength);
+typedef DWORD(WINAPI *tWTSGetActiveConsoleSessionId)();
+
+typedef BOOL (*tWTSQueryUserToken)(ULONG SessionId, PHANDLE phToken);
+
+tEnumServicesStatusEx pEnumServicesStatusEx = nullptr;
+tQueryServiceConfig2 pQueryServiceConfig2 = nullptr;
+tQueryServiceStatusEx pQueryServiceStatusEx = nullptr;
+tVDMEnumTaskWOWEx pVDMEnumTaskWOWEx = nullptr;
+tNtQueryInformationProcess pNtQueryInformationProcess = nullptr;
+tIsWow64Process pIsWow64Process = nullptr;
+tGetProcessImageFileName pGetProcessImageFileName = nullptr;
+tQueryFullProcessImageName pQueryFullProcessImageName = nullptr;
+// Cache the unavailable state too — on XP/2003 the GetProcAddress lookup
+// returns NULL and we want to remember that without retrying every call.
+bool gQueryFullProcessImageNameResolved = false;
+tNtQuerySystemInformation pNtQuerySystemInformation = nullptr;
+tWTSQueryUserToken pWTSQueryUserToken = nullptr;
+tWTSGetActiveConsoleSessionId pWTSGetActiveConsoleSessionId = nullptr;
+
+BOOL WTSQueryUserToken(ULONG SessionId, PHANDLE phToken) {
+  if (pWTSQueryUserToken == nullptr) {
+    HMODULE hMod = ::LoadLibrary(L"Wtsapi32.dll");
+    if (hMod == nullptr) throw nsclient::nsclient_exception("Failed to load: Wtsapi32: " + error::lookup::last_error());
+    pWTSQueryUserToken = reinterpret_cast<tWTSQueryUserToken>(GetProcAddress(hMod, "WTSQueryUserToken"));
+    if (pWTSQueryUserToken == nullptr) throw nsclient::nsclient_exception("Failed to load: WTSQueryUserToken: " + error::lookup::last_error());
+  }
+  return pWTSQueryUserToken(SessionId, phToken);
+}
+
+DWORD WTSGetActiveConsoleSessionId() {
+  if (pWTSGetActiveConsoleSessionId == NULL) {
+    HMODULE hMod = ::LoadLibrary(L"Kernel32.dll");
+    if (hMod == NULL) throw nsclient::nsclient_exception("Failed to load: Kernel32: " + error::lookup::last_error());
+    pWTSGetActiveConsoleSessionId = reinterpret_cast<tWTSGetActiveConsoleSessionId>(GetProcAddress(hMod, "WTSGetActiveConsoleSessionId"));
+    if (pWTSGetActiveConsoleSessionId == NULL)
+      throw nsclient::nsclient_exception("Failed to load: WTSGetActiveConsoleSessionId: " + error::lookup::last_error());
+  }
+  return pWTSGetActiveConsoleSessionId();
+}
+
+BOOL EnumServicesStatusEx(SC_HANDLE hSCManager, SC_ENUM_TYPE InfoLevel, DWORD dwServiceType, DWORD dwServiceState, LPBYTE lpServices, DWORD cbBufSize,
+                          LPDWORD pcbBytesNeeded, LPDWORD lpServicesReturned, LPDWORD lpResumeHandle, LPCTSTR pszGroupName) {
+  if (pEnumServicesStatusEx == NULL) {
+    HMODULE hMod = ::LoadLibrary(L"Advapi32.dll");
+    if (hMod == NULL) throw nsclient::nsclient_exception("Failed to load: Advapi32: " + error::lookup::last_error());
+    pEnumServicesStatusEx = reinterpret_cast<tEnumServicesStatusEx>(GetProcAddress(hMod, "EnumServicesStatusExW"));
+    if (pEnumServicesStatusEx == NULL) throw nsclient::nsclient_exception("Failed to load: EnumServicesStatusEx: " + error::lookup::last_error());
+  }
+  return pEnumServicesStatusEx(hSCManager, InfoLevel, dwServiceType, dwServiceState, lpServices, cbBufSize, pcbBytesNeeded, lpServicesReturned, lpResumeHandle,
+                               pszGroupName);
+}
+BOOL QueryServiceConfig2(SC_HANDLE hService, DWORD dwInfoLevel, LPBYTE lpBuffer, DWORD cbBufSize, LPDWORD pcbBytesNeeded) {
+  if (pQueryServiceConfig2 == NULL) {
+    HMODULE hMod = ::LoadLibrary(L"Advapi32.dll");
+    if (hMod == NULL) throw nsclient::nsclient_exception("Failed to load: Advapi32: " + error::lookup::last_error());
+    pQueryServiceConfig2 = reinterpret_cast<tQueryServiceConfig2>(GetProcAddress(hMod, "QueryServiceConfig2W"));
+    if (pQueryServiceConfig2 == NULL) throw nsclient::nsclient_exception("Failed to load: QueryServiceConfig2: " + error::lookup::last_error());
+  }
+  return pQueryServiceConfig2(hService, dwInfoLevel, lpBuffer, cbBufSize, pcbBytesNeeded);
+}
+BOOL QueryServiceStatusEx(SC_HANDLE hService, SC_STATUS_TYPE InfoLevel, LPBYTE lpBuffer, DWORD cbBufSize, LPDWORD pcbBytesNeeded) {
+  if (pQueryServiceStatusEx == NULL) {
+    HMODULE hMod = ::LoadLibrary(L"Advapi32.dll");
+    if (hMod == NULL) throw nsclient::nsclient_exception("Failed to load: Advapi32: " + error::lookup::last_error());
+    pQueryServiceStatusEx = reinterpret_cast<tQueryServiceStatusEx>(GetProcAddress(hMod, "QueryServiceStatusEx"));
+    if (pQueryServiceStatusEx == NULL) throw nsclient::nsclient_exception("Failed to load: QueryServiceStatusEx: " + error::lookup::last_error());
+  }
+  return pQueryServiceStatusEx(hService, InfoLevel, lpBuffer, cbBufSize, pcbBytesNeeded);
+}
+
+bool IsWow64(HANDLE hProcess, bool def) {
+  if (pIsWow64Process == NULL) pIsWow64Process = reinterpret_cast<tIsWow64Process>(GetProcAddress(GetModuleHandle(L"kernel32"), "IsWow64Process"));
+  if (pIsWow64Process == NULL) return def;
+  BOOL bIsWow64 = FALSE;
+  if (!pIsWow64Process(hProcess, &bIsWow64)) return def;
+  return bIsWow64 ? true : false;
+}
+
+DWORD GetProcessImageFileName(HANDLE hProcess, LPWSTR lpImageFileName, DWORD nSize) {
+  if (pGetProcessImageFileName == nullptr)
+    pGetProcessImageFileName = reinterpret_cast<tGetProcessImageFileName>(GetProcAddress(GetModuleHandleA("PSAPI"), "GetProcessImageFileNameW"));
+  if (pGetProcessImageFileName == nullptr) throw nsclient::nsclient_exception("Failed to load GetProcessImageFileName: " + error::lookup::last_error());
+  return pGetProcessImageFileName(hProcess, lpImageFileName, nSize);
+}
+
+BOOL QueryFullProcessImageName(HANDLE hProcess, DWORD dwFlags, LPWSTR lpExeName, PDWORD lpdwSize) {
+  // QueryFullProcessImageNameW is exported by kernel32 starting with Vista
+  // (NT 6.0). The agent still targets XP/Server 2003 (NT 5.x) where it is
+  // not present — resolve dynamically and gracefully fall back. Unlike the
+  // other wrappers above, we do NOT throw when the symbol is missing: this
+  // wrapper is used as one of several fallbacks in describe_pid() and the
+  // caller relies on a FALSE return to mean "not available, try the next
+  // option." Throwing would force every caller to wrap with try/catch.
+  if (!gQueryFullProcessImageNameResolved) {
+    HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
+    if (hMod != nullptr) {
+      pQueryFullProcessImageName = reinterpret_cast<tQueryFullProcessImageName>(GetProcAddress(hMod, "QueryFullProcessImageNameW"));
+    }
+    gQueryFullProcessImageNameResolved = true;
+  }
+  if (pQueryFullProcessImageName == nullptr) {
+    SetLastError(ERROR_PROC_NOT_FOUND);
+    return FALSE;
+  }
+  return pQueryFullProcessImageName(hProcess, dwFlags, lpExeName, lpdwSize);
+}
+LONG NtQueryInformationProcess(HANDLE ProcessHandle, DWORD ProcessInformationClass, PVOID ProcessInformation, DWORD ProcessInformationLength,
+                               PDWORD ReturnLength) {
+  if (pNtQueryInformationProcess == nullptr)
+    pNtQueryInformationProcess = reinterpret_cast<tNtQueryInformationProcess>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess"));
+  if (pNtQueryInformationProcess == nullptr) throw nsclient::nsclient_exception("Failed to load NtQueryInformationProcess");
+  return pNtQueryInformationProcess(ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength, ReturnLength);
+}
+INT VDMEnumTaskWOWEx(DWORD dwProcessId, tTASKENUMPROCEX fp, LPARAM lparam) {
+  if (pVDMEnumTaskWOWEx == nullptr) pVDMEnumTaskWOWEx = reinterpret_cast<tVDMEnumTaskWOWEx>(GetProcAddress(GetModuleHandleA("VDMDBG"), "VDMEnumTaskWOWEx"));
+  if (pVDMEnumTaskWOWEx == nullptr) throw nsclient::nsclient_exception("Failed to load NtQueryInformationProcess");
+  return pVDMEnumTaskWOWEx(dwProcessId, fp, lparam);
+}
+
+LONG NtQuerySystemInformation(SYSTEM_INFORMATION_CLASS SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength) {
+  if (pNtQuerySystemInformation == NULL)
+    pNtQuerySystemInformation = reinterpret_cast<tNtQuerySystemInformation>(GetProcAddress(LoadLibrary(L"Ntdll"), "NtQuerySystemInformation"));
+  if (pNtQuerySystemInformation == NULL) throw nsclient::nsclient_exception("Failed to load: NtQuerySystemInformation: " + error::lookup::last_error());
+  return pNtQuerySystemInformation(SystemInformationClass, SystemInformation, SystemInformationLength, ReturnLength);
+}
+}  // namespace winapi
+
+winapi::SYSTEM_BASIC_INFORMATION g_systemBasicInformation;
+unsigned long g_windowsVersion;
+// ACCESS_MASK ProcessQueryAccess;
+// ACCESS_MASK ProcessAllAccess;
+// ACCESS_MASK ThreadQueryAccess;
+// ACCESS_MASK ThreadSetAccess;
+// ACCESS_MASK ThreadAllAccess;
+// RTL_OSVERSIONINFOEXW g_versionInfo;
+RTL_OSVERSIONINFOEXW g_versionInfo;
+void QuerySystemInformation() {
+  winapi::NtQuerySystemInformation(winapi::SystemBasicInformation, &g_systemBasicInformation, sizeof(winapi::SYSTEM_BASIC_INFORMATION), NULL);
+}
+
+// RTL_OSVERSIONINFOEXW is defined in winnt.h
+bool GetOsVersion(RTL_OSVERSIONINFOEXW *pk_OsVer) {
+  typedef LONG(WINAPI * tRtlGetVersion)(RTL_OSVERSIONINFOEXW *);
+
+  memset(pk_OsVer, 0, sizeof(RTL_OSVERSIONINFOEXW));
+  pk_OsVer->dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOEXW);
+
+  HMODULE h_NtDll = GetModuleHandleW(L"ntdll.dll");
+  tRtlGetVersion f_RtlGetVersion = (tRtlGetVersion)GetProcAddress(h_NtDll, "RtlGetVersion");
+
+  if (!f_RtlGetVersion) return FALSE;  // This will never happen (all processes load ntdll.dll)
+
+  LONG Status = f_RtlGetVersion(pk_OsVer);
+  return Status == 0;  // STATUS_SUCCESS;
+}
+
+void GetVersion() {
+  if (GetOsVersion(&g_versionInfo)) {
+    auto majorVersion = g_versionInfo.dwMajorVersion;
+    auto minorVersion = g_versionInfo.dwMinorVersion;
+    auto productType = g_versionInfo.wProductType;
+    auto buildNumber = g_versionInfo.dwBuildNumber;
+
+    if (majorVersion == 5 && minorVersion < 1 || majorVersion < 5) {
+      g_windowsVersion = WINDOWS_ANCIENT;
+      /* Windows XP */
+    } else if (majorVersion == 5 && minorVersion == 1) {
+      g_windowsVersion = WINDOWS_XP;
+      /* Windows Server 2003 */
+    } else if (majorVersion == 5 && minorVersion == 2) {
+      g_windowsVersion = WINDOWS_SERVER_2003;
+      /* Windows Vista, Windows Server 2008 */
+    } else if (majorVersion == 6 && minorVersion == 0 && productType == VER_NT_WORKSTATION) {
+      g_windowsVersion = WINDOWS_VISTA;
+    } else if (majorVersion == 6 && minorVersion == 0 && productType == VER_NT_WORKSTATION) {
+      g_windowsVersion = WINDOWS_VISTA;
+    }
+    /* Windows 7, Windows Server 2008 R2 */
+    else if (majorVersion == 6 && minorVersion == 1) {
+      g_windowsVersion = WINDOWS_7;
+      /* Windows 8 */
+    } else if (majorVersion == 6 && minorVersion == 2) {
+      g_windowsVersion = WINDOWS_8;
+      /* Windows 8.1 */
+    } else if (majorVersion == 6 && minorVersion == 3) {
+      g_windowsVersion = WINDOWS_81;
+      /* Windows 10 */
+    } else if (majorVersion == 10 && minorVersion == 0) {
+      if (buildNumber > 22000) {
+        g_windowsVersion = WINDOWS_11;
+      }
+      g_windowsVersion = WINDOWS_10;
+    } else if (majorVersion == 10 && minorVersion > 0 || majorVersion > 10) {
+      g_windowsVersion = WINDOWS_NEW;
+    }
+  }
+}
+
+bool g_hasVersion = false;
+bool g_hasBasicInfo = false;
+
+boost::scoped_array<unsigned long long> g_CPUIdleTimeOld;
+boost::scoped_array<unsigned long long> g_CPUUserTimeOld;
+boost::scoped_array<unsigned long long> g_CPUKernelTimeOld;
+
+unsigned long long g_CPUIdleTimeTotalOld = 0;
+unsigned long long g_CPUUserTimeTotalOld = 0;
+unsigned long long g_CPUKernelTimeTotalOld = 0;
+
+void init_old_buffer(boost::scoped_array<unsigned long long> &array, const std::size_t size) {
+  if (!array) {
+    array.reset(new unsigned long long[size]);
+    for (std::size_t i = 0; i < size; i++) {
+      array[i] = 0;
+    }
+  }
+}
+unsigned long system_info::get_version() {
+  if (!g_hasVersion) {
+    GetVersion();
+    g_hasVersion = true;
+  }
+  return g_windowsVersion;
+}
+
+OSVERSIONINFOEX *system_info::get_versioninfo() {
+  if (!g_hasVersion) {
+    GetVersion();
+    g_hasVersion = true;
+  }
+  return &g_versionInfo;
+}
+
+std::string system_info::get_version_string() {
+  if (!g_hasVersion) {
+    GetVersion();
+    g_hasVersion = true;
+  }
+  auto majorVersion = g_versionInfo.dwMajorVersion;
+  auto minorVersion = g_versionInfo.dwMinorVersion;
+  auto type = g_versionInfo.wProductType;
+  auto buildNumber = g_versionInfo.dwBuildNumber;
+  if (majorVersion == 5 && minorVersion < 1 || majorVersion < 5) return "Pre XP";
+  if (majorVersion == 5 && minorVersion == 1) return "Windows XP";
+  if (majorVersion == 5 && minorVersion == 2) return "Windows Server 2003";
+  if (majorVersion == 6 && minorVersion == 0 && type == VER_NT_WORKSTATION) return "Windows Vista";
+  if (majorVersion == 6 && minorVersion == 0) return "Windows Server 2008";
+  if (majorVersion == 6 && minorVersion == 1 && type == VER_NT_WORKSTATION) return "Windows Server 2008 R2";
+  if (majorVersion == 6 && minorVersion == 1) return "Windows 7";
+  if (majorVersion == 6 && minorVersion == 2 && type == VER_NT_WORKSTATION) return "Windows 8";
+  if (majorVersion == 6 && minorVersion == 2) return "Windows Server 2012";
+  if (majorVersion == 6 && minorVersion == 3 && type == VER_NT_WORKSTATION) return "Windows 8.1";
+  if (majorVersion == 6 && minorVersion == 3) return "Windows Server 2012 R2";
+  if (majorVersion == 10 && minorVersion == 0 && type == VER_NT_WORKSTATION) {
+    if (buildNumber >= 26100) {
+      return "Windows 11 24H2";
+    }
+    if (buildNumber >= 22631) {
+      return "Windows 11 23H2";
+    }
+    if (buildNumber >= 22621) {
+      return "Windows 11 22H2";
+    }
+    if (buildNumber >= 22000) {
+      return "Windows 11 21H2";
+    }
+    return "Windows 10";
+  }
+  if (majorVersion == 10 && minorVersion == 0) {
+    if (buildNumber >= 26100) {
+      return "Windows Server 2025";
+    }
+    if (buildNumber >= 20348) {
+      return "Windows Server 2022";
+    }
+    if (buildNumber >= 17763) {
+      return "Windows Server 2019";
+    }
+    return "Windows Server 2016";
+  }
+  if (type != VER_NT_WORKSTATION) return "Post Windows 2016";
+  return "Post Windows 10";
+}
+std::vector<std::string> system_info::get_suite_list() {
+  if (!g_hasVersion) {
+    GetVersion();
+    g_hasVersion = true;
+  }
+  std::vector<std::string> ret;
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_BACKOFFICE) == VER_SUITE_BACKOFFICE) ret.push_back("Microsoft BackOffice");
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_BLADE) == VER_SUITE_BLADE) ret.push_back("Web Edition");
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_COMPUTE_SERVER) == VER_SUITE_COMPUTE_SERVER) ret.push_back("Compute Cluster Edition");
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_DATACENTER) == VER_SUITE_DATACENTER) ret.push_back("Datacenter Edition");
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_ENTERPRISE) == VER_SUITE_ENTERPRISE) ret.push_back("Enterprise Edition");
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_EMBEDDEDNT) == VER_SUITE_EMBEDDEDNT) ret.push_back("Embedded");
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_PERSONAL) == VER_SUITE_PERSONAL) ret.push_back("Home Edition");
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_SINGLEUSERTS) == VER_SUITE_SINGLEUSERTS) ret.push_back("Remote Desktop Support");
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_SMALLBUSINESS) == VER_SUITE_SMALLBUSINESS) ret.push_back("Small Business Server");
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_STORAGE_SERVER) == VER_SUITE_STORAGE_SERVER) ret.push_back("Storage Server");
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_TERMINAL) == VER_SUITE_TERMINAL) ret.push_back("Terminal Services");
+  if ((g_versionInfo.wSuiteMask & VER_SUITE_WH_SERVER) == VER_SUITE_WH_SERVER) ret.push_back("Home Server");
+  return ret;
+}
+
+long long system_info::get_suite_i() {
+  if (!g_hasVersion) {
+    GetVersion();
+    g_hasVersion = true;
+  }
+  return g_versionInfo.wSuiteMask;
+}
+
+long system_info::get_numberOfProcessorscores() {
+  if (!g_hasBasicInfo) {
+    QuerySystemInformation();
+    g_hasBasicInfo = true;
+  }
+  return g_systemBasicInformation.NumberOfProcessors;
+}
+
+hlp::buffer<BYTE, winapi::SYSTEM_PROCESS_INFORMATION *> system_info::get_system_process_information(int size) {
+  hlp::buffer<BYTE, winapi::SYSTEM_PROCESS_INFORMATION *> buffer(size);
+  unsigned long bufferSize;
+  LONG r = winapi::NtQuerySystemInformation(winapi::SystemProcessInformation, (BYTE *)buffer, static_cast<unsigned long>(buffer.size()), &bufferSize);
+  if (r == 0) return buffer;
+  if (r == STATUS_INFO_LENGTH_MISMATCH) return get_system_process_information(bufferSize * 10);
+  if (r == STATUS_ACCESS_VIOLATION) throw nsclient::nsclient_exception("Access violation");
+  throw nsclient::nsclient_exception("Failed to enumerate processes: unknown error");
+}
+
+double get_rate(unsigned long long part, unsigned long long total) {
+  auto part_d = static_cast<double>(part);
+  auto total_d = static_cast<double>(total);
+  if (total == 0 || total_d == 0) return 0;
+  return (part_d * 100.0) / total_d;
+}
+
+unsigned long long large_integer_to_ull(const LARGE_INTEGER &ft) {
+  unsigned long long hw = static_cast<unsigned long long>(ft.HighPart);
+  unsigned long long lw = static_cast<unsigned long long>(ft.LowPart);
+  return (hw << 32) | lw;
+}
+unsigned long long get_delta(unsigned long long new_value, unsigned long long old_value) {
+  if (new_value < old_value) return 0;
+  return new_value - old_value;
+}
+
+system_info::cpu_load system_info::get_cpu_load_per_core() {
+  int cores = get_numberOfProcessorscores();
+  init_old_buffer(g_CPUIdleTimeOld, cores);
+  init_old_buffer(g_CPUUserTimeOld, cores);
+  init_old_buffer(g_CPUKernelTimeOld, cores);
+
+  boost::scoped_array<winapi::SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION> buffer(new winapi::SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION[cores]);
+  if (winapi::NtQuerySystemInformation(winapi::SystemProcessorPerformanceInformation, &buffer[0],
+                                       sizeof(winapi::SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION) * cores, NULL) != 0) {
+    throw nsclient::nsclient_exception("Failed to fetch cpu load");
+  }
+
+  cpu_load result;
+  result.cores = cores;
+  result.core.resize(cores);
+  result.total.idle = result.total.kernel = result.total.user = 0.0;
+
+  for (int i = 0; i < cores; i++) {
+    unsigned long long CPUIdleTime = large_integer_to_ull(buffer[i].IdleTime);
+    unsigned long long CPUKernelPlusIdleTime = large_integer_to_ull(buffer[i].KernelTime);
+    unsigned long long CPUUserTime = large_integer_to_ull(buffer[i].UserTime);
+
+    unsigned long long CPUIdleTimeDiff = get_delta(CPUIdleTime, g_CPUIdleTimeOld[i]);
+    unsigned long long CPUKernelPlusIdleTimeDiff = get_delta(CPUKernelPlusIdleTime, g_CPUKernelTimeOld[i]);
+    unsigned long long CPUUserTimeDiff = get_delta(CPUUserTime, g_CPUUserTimeOld[i]);
+
+    // Kernel also includes idle time so we need to subtract that
+    unsigned long long kernel_time_diff = CPUKernelPlusIdleTimeDiff > CPUIdleTimeDiff ? CPUKernelPlusIdleTimeDiff - CPUIdleTimeDiff : 0;
+    unsigned long long total_time_diff = CPUKernelPlusIdleTimeDiff + CPUUserTimeDiff;
+    result.core[i].core = i;
+    result.core[i].idle = get_rate(CPUIdleTimeDiff, total_time_diff);
+    result.core[i].kernel = get_rate(kernel_time_diff, total_time_diff);
+    result.core[i].user = get_rate(CPUUserTimeDiff, total_time_diff);
+
+    g_CPUIdleTimeOld[i] = CPUIdleTime;
+    g_CPUKernelTimeOld[i] = CPUKernelPlusIdleTime;
+    g_CPUUserTimeOld[i] = CPUUserTime;
+  }
+  auto total = get_cpu_load_total();
+  result.total.idle = total.total.idle;
+  result.total.kernel = total.total.kernel;
+  result.total.user = total.total.user;
+  return result;
+}
+
+unsigned long long file_time_to_ull(const FILETIME &ft) {
+  unsigned long long hw = static_cast<unsigned long long>(ft.dwHighDateTime);
+  unsigned long long lw = static_cast<unsigned long long>(ft.dwLowDateTime);
+  return (hw << 32) | lw;
+}
+
+system_info::cpu_load system_info::get_cpu_load_total() {
+  FILETIME lpIdleTime;
+  FILETIME lpKernelTime;
+  FILETIME lpUserTime;
+
+  if (GetSystemTimes(&lpIdleTime, &lpKernelTime, &lpUserTime) == 0) {
+    throw nsclient::nsclient_exception("Failed to fetch cpu load");
+  }
+  unsigned long long CPUIdleTime = file_time_to_ull(lpIdleTime);
+  unsigned long long CPUKernelTime = file_time_to_ull(lpKernelTime);
+  unsigned long long CPUUserTime = file_time_to_ull(lpUserTime);
+
+  cpu_load result;
+  result.cores = 0;
+  result.core.resize(0);
+
+  unsigned long long CPUIdleTimeDiff = get_delta(CPUIdleTime, g_CPUIdleTimeTotalOld);
+  unsigned long long CPUKernelPlusIdleTimeDiff = get_delta(CPUKernelTime, g_CPUKernelTimeTotalOld);
+  unsigned long long CPUUserTimeDiff = get_delta(CPUUserTime, g_CPUUserTimeTotalOld);
+
+  unsigned long long kernel_time_diff = CPUKernelPlusIdleTimeDiff > CPUIdleTimeDiff ? CPUKernelPlusIdleTimeDiff - CPUIdleTimeDiff : 0;
+  // Kernel also includes idle time so we need to subtract that
+  unsigned long long total_time_diff = CPUKernelPlusIdleTimeDiff + CPUUserTimeDiff;
+
+  result.total.idle = get_rate(CPUIdleTimeDiff, total_time_diff);
+  result.total.kernel = get_rate(kernel_time_diff, total_time_diff);
+  result.total.user = get_rate(CPUUserTimeDiff, total_time_diff);
+
+  g_CPUIdleTimeTotalOld = CPUIdleTime;
+  g_CPUKernelTimeTotalOld = CPUKernelTime;
+  g_CPUUserTimeTotalOld = CPUUserTime;
+  return result;
+}
+
+class CheckMemory {
+ public:
+  CheckMemory() : hKernel32(NULL), FEGlobalMemoryStatusEx(NULL), FEGlobalMemoryStatus(NULL) {
+    hKernel32 = ::LoadLibrary(L"Kernel32");
+    if (hKernel32) {
+      FEGlobalMemoryStatusEx = (PFGlobalMemoryStatusEx)::GetProcAddress(hKernel32, "GlobalMemoryStatusEx");
+      FEGlobalMemoryStatus = (PFGlobalMemoryStatus)::GetProcAddress(hKernel32, "GlobalMemoryStatus");
+    }
+  }
+  virtual ~CheckMemory() {
+    if (hKernel32) FreeLibrary(hKernel32);
+  }
+
+  system_info::memory_usage getMemoryStatus() {
+    system_info::memory_usage ret;
+    if (FEGlobalMemoryStatusEx != NULL) {
+      MEMORYSTATUSEX buffer;
+      buffer.dwLength = sizeof(buffer);
+      if (!FEGlobalMemoryStatusEx(&buffer)) throw nsclient::nsclient_exception("GlobalMemoryStatusEx failed: " + error::lookup::last_error());
+      ret.physical.total = buffer.ullTotalPhys;
+      ret.physical.avail = buffer.ullAvailPhys;
+      ret.virtual_memory.total = buffer.ullTotalVirtual;
+      ret.virtual_memory.avail = buffer.ullAvailVirtual;
+      ret.pagefile.total = buffer.ullTotalPageFile;
+      ret.pagefile.avail = buffer.ullAvailPageFile;
+      return ret;
+    } else if (FEGlobalMemoryStatus != NULL) {
+      MEMORYSTATUS buffer;
+      buffer.dwLength = sizeof(buffer);
+      if (!FEGlobalMemoryStatus(&buffer)) throw nsclient::nsclient_exception("GlobalMemoryStatus failed: " + error::lookup::last_error());
+      ret.physical.total = buffer.dwTotalPhys;
+      ret.physical.avail = buffer.dwAvailPhys;
+      ret.virtual_memory.total = buffer.dwTotalVirtual;
+      ret.virtual_memory.avail = buffer.dwAvailVirtual;
+      ret.pagefile.total = buffer.dwTotalPageFile;
+      ret.pagefile.avail = buffer.dwAvailPageFile;
+      return ret;
+    } else {
+      throw nsclient::nsclient_exception("Failed to check memory: No method found");
+    }
+  }
+
+ private:
+  typedef BOOL(WINAPI *PFGlobalMemoryStatusEx)(LPMEMORYSTATUSEX lpBuffer);
+  typedef BOOL(WINAPI *PFGlobalMemoryStatus)(LPMEMORYSTATUS lpBuffer);
+  HMODULE hKernel32;
+  PFGlobalMemoryStatusEx FEGlobalMemoryStatusEx;
+  PFGlobalMemoryStatus FEGlobalMemoryStatus;
+};
+
+CheckMemory g_memory_checker;
+system_info::memory_usage system_info::get_memory() { return g_memory_checker.getMemoryStatus(); }
+
+std::vector<system_info::pagefile_info> system_info::get_pagefile_info() {
+  std::vector<system_info::pagefile_info> ret;
+
+  SYSTEM_INFO si;
+  GetSystemInfo(&si);
+
+  hlp::buffer<BYTE, LPVOID> buffer(4096);
+  DWORD retLen = 0;
+  windows::winapi::NTSTATUS status =
+      windows::winapi::NtQuerySystemInformation(windows::winapi::SystemPageFileInformation, buffer, static_cast<unsigned long>(buffer.size()), &retLen);
+  if (status == STATUS_INFO_LENGTH_MISMATCH) {
+    buffer.resize(retLen + 10);
+    status = windows::winapi::NtQuerySystemInformation(windows::winapi::SystemPageFileInformation, buffer, static_cast<unsigned long>(buffer.size()), &retLen);
+  }
+  if (status != STATUS_SUCCESS) throw nsclient::nsclient_exception("Failed to get pagefile info");
+  if (retLen == 0) {
+    return ret;
+  }
+  ULONG offset = 0;
+  while (true) {
+    windows::winapi::SYSTEM_PAGEFILE_INFORMATION *info = buffer.get_t<windows::winapi::SYSTEM_PAGEFILE_INFORMATION *>(offset);
+    system_info::pagefile_info data(utf8::cvt<std::string>(std::wstring(info->PageFileName.Buffer)));
+    data.peak_usage = static_cast<long long>(info->PeakUsage) * static_cast<long long>(si.dwPageSize);
+    data.usage = static_cast<long long>(info->TotalInUse) * static_cast<long long>(si.dwPageSize);
+    data.size = static_cast<long long>(info->TotalSize) * static_cast<long long>(si.dwPageSize);
+    ret.push_back(data);
+    if (info->NextEntryOffset == 0) break;
+    offset += info->NextEntryOffset;
+  }
+  return ret;
+}
+}  // namespace windows

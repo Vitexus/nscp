@@ -4,6 +4,15 @@ Write status updates to a text file (A bit like the NSCA server does)
 
 
 
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `SimpleFileWriter = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+SimpleFileWriter = enabled
+```
+
 
 
 
@@ -17,7 +26,7 @@ Write status updates to a text file (A bit like the NSCA server does)
 
 
 
-### FILE WRITER <a id="/settings/writers/file"/>
+### FILE WRITER <a id="/settings/writers/file"></a>
 
 Section for simple file writer module (SimpleFileWriter.dll).
 
@@ -62,7 +71,6 @@ The channel to listen to.
 | Path:          | [/settings/writers/file](#/settings/writers/file) |
 | Key:           | channel                                           |
 | Default value: | `FILE`                                            |
-| Used by:       | SimpleFileWriter                                  |
 
 
 **Sample:**
@@ -88,7 +96,6 @@ The filename to write output to.
 | Path:          | [/settings/writers/file](#/settings/writers/file) |
 | Key:           | file                                              |
 | Default value: | `output.txt`                                      |
-| Used by:       | SimpleFileWriter                                  |
 
 
 **Sample:**
@@ -104,7 +111,7 @@ file=output.txt
 #### HOST MESSAGE SYNTAX <a id="/settings/writers/file/host-syntax"></a>
 
 The syntax of the message to write to the line.
-Can be any arbitrary string as well as include any of the following special keywords:${command} = The command name, ${host} the host, ${channel} the recieving channel, ${alias} the alias for the command, ${alias-or-command} = alias if set otherweise command, ${message} = the message data (no escape), ${result} or ${result_number} = The result status (number), ${epoch} = seconds since unix epoch, ${time} = time using time-format.
+Can be any arbitrary string as well as include any of the following special keywords:${command} = The command name, ${host} the host, ${channel} the receiving channel, ${alias} the alias for the command, ${alias-or-command} = alias if set otherwise command, ${message} = the message data (no escape), ${result} or ${result_number} = The result status (number), ${epoch} = seconds since unix epoch, ${time} = time using time-format.
 
 
 
@@ -116,7 +123,6 @@ Can be any arbitrary string as well as include any of the following special keyw
 | Path:          | [/settings/writers/file](#/settings/writers/file) |
 | Key:           | host-syntax                                       |
 | Default value: | _N/A_                                             |
-| Used by:       | SimpleFileWriter                                  |
 
 
 **Sample:**
@@ -132,7 +138,7 @@ host-syntax=
 #### SERVICE MESSAGE SYNTAX <a id="/settings/writers/file/service-syntax"></a>
 
 The syntax of the message to write to the line.
-Can be any arbitrary string as well as include any of the following special keywords:${command} = The command name, ${host} the host, ${channel} the recieving channel, ${alias} the alias for the command, ${alias-or-command} = alias if set otherweise command, ${message} = the message data (no escape), ${result} or ${result_number} = The result status (number), ${epoch} = seconds since unix epoch, ${time} = time using time-format.
+Can be any arbitrary string as well as include any of the following special keywords:${command} = The command name, ${host} the host, ${channel} the receiving channel, ${alias} the alias for the command, ${alias-or-command} = alias if set otherwise command, ${message} = the message data (no escape), ${result} or ${result_number} = The result status (number), ${epoch} = seconds since unix epoch, ${time} = time using time-format.
 
 
 
@@ -144,7 +150,6 @@ Can be any arbitrary string as well as include any of the following special keyw
 | Path:          | [/settings/writers/file](#/settings/writers/file) |
 | Key:           | service-syntax                                    |
 | Default value: | _N/A_                                             |
-| Used by:       | SimpleFileWriter                                  |
 
 
 **Sample:**
@@ -160,7 +165,7 @@ service-syntax=
 #### MESSAGE SYNTAX <a id="/settings/writers/file/syntax"></a>
 
 The syntax of the message to write to the line.
-Can be any arbitrary string as well as include any of the following special keywords:${command} = The command name, ${host} the host, ${channel} the recieving channel, ${alias} the alias for the command, ${alias-or-command} = alias if set otherweise command, ${message} = the message data (no escape), ${result} or ${result_number} = The result status (number), ${epoch} = seconds since unix epoch, ${time} = time using time-format.
+Can be any arbitrary string as well as include any of the following special keywords:${command} = The command name, ${host} the host, ${channel} the receiving channel, ${alias} the alias for the command, ${alias-or-command} = alias if set otherwise command, ${message} = the message data (no escape), ${result} or ${result_number} = The result status (number), ${epoch} = seconds since unix epoch, ${time} = time using time-format.
 
 
 
@@ -171,7 +176,6 @@ Can be any arbitrary string as well as include any of the following special keyw
 | Path:          | [/settings/writers/file](#/settings/writers/file) |
 | Key:           | syntax                                            |
 | Default value: | `${alias-or-command} ${result} ${message}`        |
-| Used by:       | SimpleFileWriter                                  |
 
 
 **Sample:**
@@ -197,7 +201,6 @@ The date format using strftime format flags. This is the time of writing the mes
 | Path:          | [/settings/writers/file](#/settings/writers/file) |
 | Key:           | time-syntax                                       |
 | Default value: | `%Y-%m-%d %H:%M:%S`                               |
-| Used by:       | SimpleFileWriter                                  |
 
 
 **Sample:**

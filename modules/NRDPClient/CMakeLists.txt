@@ -1,51 +1,80 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.10)
 
-SET(TARGET NRDPClient)
-	
-PROJECT(${TARGET})
+set(TARGET NRDPClient)
+
+project(${TARGET})
 
 CREATE_MODULE(SRCS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
-SET(SRCS ${SRCS}
-	"${TARGET}.cpp"
-	nrdp.cpp
-	${TINYXML2_INCLUDE_DIR}/tinyxml2.cpp
-	${NSCP_INCLUDEDIR}/socket/socket_helpers.cpp
-
-	${NSCP_DEF_PLUGIN_CPP}
-	${NSCP_CLIENT_CPP}
+set(SRCS
+    ${SRCS}
+    "${TARGET}.cpp"
+    nrdp.cpp
+    ${TINYXML2_INCLUDE_DIR}/tinyxml2.cpp
+    ${NSCP_INCLUDEDIR}/net/socket/socket_helpers.cpp
+    ${NSCP_INCLUDEDIR}/bytes/base64.c
+    ${NSCP_DEF_PLUGIN_CPP}
+    ${NSCP_CLIENT_CPP}
 )
 
-ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
-INCLUDE_DIRECTORIES(${TINYXML2_INCLUDE_DIR})
-IF(OPENSSL_FOUND)
-	ADD_DEFINITIONS(-DUSE_SSL)
-	SET(EXTRA_LIBS ${EXTRA_LIBS} ${OPENSSL_LIBRARIES})
-	INCLUDE_DIRECTORIES(${OPENSSL_INCLUDE_DIR})
-ENDIF(OPENSSL_FOUND)
+add_definitions(${NSCP_GLOBAL_DEFINES})
+include_directories(${TINYXML2_INCLUDE_DIR})
+if(OPENSSL_FOUND)
+    add_definitions(-DUSE_SSL)
+    set(EXTRA_LIBS
+        ${EXTRA_LIBS}
+        ${OPENSSL_LIBRARIES}
+    )
+    if(WIN32)
+        set(EXTRA_LIBS
+            ${EXTRA_LIBS}
+            CRYPT32
+        )
+    endif(WIN32)
+    include_directories(${OPENSSL_INCLUDE_DIR})
+endif(OPENSSL_FOUND)
 
-
-IF(WIN32)
-	SET(SRCS ${SRCS}
-		"${TARGET}.h"
-		nrdp.hpp
-		nrdp_client.hpp
-		nrdp_handler.hpp
-
-		${NSCP_INCLUDEDIR}/socket/socket_helpers.hpp
-		${TINYXML2_INCLUDE_DIR}/tinyxml2.h
-		${NSCP_DEF_PLUGIN_HPP}
-		${NSCP_CLIENT_HPP}
-	)
-ENDIF(WIN32)
+if(WIN32)
+    set(SRCS
+        ${SRCS}
+        "${TARGET}.h"
+        nrdp.hpp
+        nrdp_client.hpp
+        nrdp_handler.hpp
+        ${NSCP_INCLUDEDIR}/net/socket/socket_helpers.hpp
+        ${TINYXML2_INCLUDE_DIR}/tinyxml2.h
+        ${NSCP_DEF_PLUGIN_HPP}
+        ${NSCP_CLIENT_HPP}
+    )
+endif(WIN32)
 
 add_library(${TARGET} MODULE ${SRCS})
+NSCP_DEBUG_SYMBOLS(${TARGET})
 
-target_link_libraries(${TARGET}
-	${Boost_FILESYSTEM_LIBRARY}
-	${Boost_PROGRAM_OPTIONS_LIBRARY}
-	${NSCP_DEF_PLUGIN_LIB}
-	${EXTRA_LIBS}
+target_link_libraries(
+    ${TARGET}
+    ${Boost_FILESYSTEM_LIBRARY}
+    ${Boost_PROGRAM_OPTIONS_LIBRARY}
+    ${NSCP_DEF_PLUGIN_LIB}
+    ${EXTRA_LIBS}
 )
-INCLUDE(${BUILD_CMAKE_FOLDER}/module.cmake)
-SOURCE_GROUP("Server" REGULAR_EXPRESSION .*include/nrdp/.*)
+OPENSSL_LINK_FIX(${TARGET})
+include(${BUILD_CMAKE_FOLDER}/module.cmake)
+source_group("Server" REGULAR_EXPRESSION .*include/nrdp/.*)
+
+NSCP_CREATE_TEST(
+    nrdp_test
+    SOURCES
+        nrdp_test.cpp
+        nrdp.cpp
+        ${TINYXML2_INCLUDE_DIR}/tinyxml2.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+        ${TINYXML2_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)

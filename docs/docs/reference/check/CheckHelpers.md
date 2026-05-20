@@ -4,6 +4,15 @@ Various helper function to extend other checks.
 
 
 
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `CheckHelpers = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+CheckHelpers = enabled
+```
+
 
 ## Queries
 
@@ -55,17 +64,19 @@ A list of all short hand aliases for queries (check commands)
 Run another check and regardless of its return code return CRITICAL.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_always_critical_options)
 
 
 
 
 
-<a name="check_always_critical_help"/>
-<a name="check_always_critical_help-pb"/>
-<a name="check_always_critical_show-default"/>
-<a name="check_always_critical_help-short"/>
-<a name="check_always_critical_options"/>
+<a id="check_always_critical_help"></a>
+<a id="check_always_critical_help-pb"></a>
+<a id="check_always_critical_show-default"></a>
+<a id="check_always_critical_help-short"></a>
+<a id="check_always_critical_options"></a>
 #### Command-line Arguments
 
 
@@ -84,17 +95,19 @@ Run another check and regardless of its return code return CRITICAL.
 Run another check and regardless of its return code return OK.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_always_ok_options)
 
 
 
 
 
-<a name="check_always_ok_help"/>
-<a name="check_always_ok_help-pb"/>
-<a name="check_always_ok_show-default"/>
-<a name="check_always_ok_help-short"/>
-<a name="check_always_ok_options"/>
+<a id="check_always_ok_help"></a>
+<a id="check_always_ok_help-pb"></a>
+<a id="check_always_ok_show-default"></a>
+<a id="check_always_ok_help-short"></a>
+<a id="check_always_ok_options"></a>
 #### Command-line Arguments
 
 
@@ -113,17 +126,19 @@ Run another check and regardless of its return code return OK.
 Run another check and regardless of its return code return WARNING.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_always_warning_options)
 
 
 
 
 
-<a name="check_always_warning_help"/>
-<a name="check_always_warning_help-pb"/>
-<a name="check_always_warning_show-default"/>
-<a name="check_always_warning_help-short"/>
-<a name="check_always_warning_options"/>
+<a id="check_always_warning_help"></a>
+<a id="check_always_warning_help-pb"></a>
+<a id="check_always_warning_show-default"></a>
+<a id="check_always_warning_help-short"></a>
+<a id="check_always_warning_options"></a>
 #### Command-line Arguments
 
 
@@ -142,20 +157,22 @@ Run another check and regardless of its return code return WARNING.
 Run a check and forward the result as a passive check.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_and_forward_options)
 
 
 
 
 
-<a name="check_and_forward_help"/>
-<a name="check_and_forward_help-pb"/>
-<a name="check_and_forward_show-default"/>
-<a name="check_and_forward_help-short"/>
-<a name="check_and_forward_target"/>
-<a name="check_and_forward_command"/>
-<a name="check_and_forward_arguments"/>
-<a name="check_and_forward_options"/>
+<a id="check_and_forward_help"></a>
+<a id="check_and_forward_help-pb"></a>
+<a id="check_and_forward_show-default"></a>
+<a id="check_and_forward_help-short"></a>
+<a id="check_and_forward_target"></a>
+<a id="check_and_forward_command"></a>
+<a id="check_and_forward_arguments"></a>
+<a id="check_and_forward_options"></a>
 #### Command-line Arguments
 
 
@@ -177,17 +194,19 @@ Run a check and forward the result as a passive check.
 Just return CRITICAL (anything passed along will be used as a message).
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_critical_options)
 
 
 
 
 
-<a name="check_critical_help"/>
-<a name="check_critical_help-pb"/>
-<a name="check_critical_show-default"/>
-<a name="check_critical_help-short"/>
-<a name="check_critical_options"/>
+<a id="check_critical_help"></a>
+<a id="check_critical_help-pb"></a>
+<a id="check_critical_show-default"></a>
+<a id="check_critical_help-short"></a>
+<a id="check_critical_options"></a>
 #### Command-line Arguments
 
 
@@ -213,21 +232,23 @@ Message to return
 Run more then one check and return the worst state.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_multi_options)
 
 
 
 
 
-<a name="check_multi_help"/>
-<a name="check_multi_help-pb"/>
-<a name="check_multi_show-default"/>
-<a name="check_multi_help-short"/>
-<a name="check_multi_command"/>
-<a name="check_multi_arguments"/>
-<a name="check_multi_prefix"/>
-<a name="check_multi_suffix"/>
-<a name="check_multi_options"/>
+<a id="check_multi_help"></a>
+<a id="check_multi_help-pb"></a>
+<a id="check_multi_show-default"></a>
+<a id="check_multi_help-short"></a>
+<a id="check_multi_command"></a>
+<a id="check_multi_arguments"></a>
+<a id="check_multi_prefix"></a>
+<a id="check_multi_suffix"></a>
+<a id="check_multi_options"></a>
 #### Command-line Arguments
 
 
@@ -257,23 +278,25 @@ Separator between messages
 Run a check and alter the return status codes according to arguments.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_negate_options)
 
 
 
 
 
-<a name="check_negate_help"/>
-<a name="check_negate_help-pb"/>
-<a name="check_negate_show-default"/>
-<a name="check_negate_help-short"/>
-<a name="check_negate_ok"/>
-<a name="check_negate_warning"/>
-<a name="check_negate_critical"/>
-<a name="check_negate_unknown"/>
-<a name="check_negate_command"/>
-<a name="check_negate_arguments"/>
-<a name="check_negate_options"/>
+<a id="check_negate_help"></a>
+<a id="check_negate_help-pb"></a>
+<a id="check_negate_show-default"></a>
+<a id="check_negate_help-short"></a>
+<a id="check_negate_ok"></a>
+<a id="check_negate_warning"></a>
+<a id="check_negate_critical"></a>
+<a id="check_negate_unknown"></a>
+<a id="check_negate_command"></a>
+<a id="check_negate_arguments"></a>
+<a id="check_negate_options"></a>
 #### Command-line Arguments
 
 
@@ -298,17 +321,19 @@ Run a check and alter the return status codes according to arguments.
 Just return OK (anything passed along will be used as a message).
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_ok_options)
 
 
 
 
 
-<a name="check_ok_help"/>
-<a name="check_ok_help-pb"/>
-<a name="check_ok_show-default"/>
-<a name="check_ok_help-short"/>
-<a name="check_ok_options"/>
+<a id="check_ok_help"></a>
+<a id="check_ok_help-pb"></a>
+<a id="check_ok_show-default"></a>
+<a id="check_ok_help-short"></a>
+<a id="check_ok_options"></a>
 #### Command-line Arguments
 
 
@@ -334,21 +359,23 @@ Message to return
 Run a check and timeout after a given amount of time if the check has not returned.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_timeout_options)
 
 
 
 
 
-<a name="check_timeout_help"/>
-<a name="check_timeout_help-pb"/>
-<a name="check_timeout_show-default"/>
-<a name="check_timeout_help-short"/>
-<a name="check_timeout_timeout"/>
-<a name="check_timeout_command"/>
-<a name="check_timeout_arguments"/>
-<a name="check_timeout_return"/>
-<a name="check_timeout_options"/>
+<a id="check_timeout_help"></a>
+<a id="check_timeout_help-pb"></a>
+<a id="check_timeout_show-default"></a>
+<a id="check_timeout_help-short"></a>
+<a id="check_timeout_timeout"></a>
+<a id="check_timeout_command"></a>
+<a id="check_timeout_arguments"></a>
+<a id="check_timeout_return"></a>
+<a id="check_timeout_options"></a>
 #### Command-line Arguments
 
 
@@ -371,17 +398,19 @@ Run a check and timeout after a given amount of time if the check has not return
 Just return the NSClient++ version.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_version_options)
 
 
 
 
 
-<a name="check_version_help"/>
-<a name="check_version_help-pb"/>
-<a name="check_version_show-default"/>
-<a name="check_version_help-short"/>
-<a name="check_version_options"/>
+<a id="check_version_help"></a>
+<a id="check_version_help-pb"></a>
+<a id="check_version_show-default"></a>
+<a id="check_version_help-short"></a>
+<a id="check_version_options"></a>
 #### Command-line Arguments
 
 
@@ -400,17 +429,19 @@ Just return the NSClient++ version.
 Just return WARNING (anything passed along will be used as a message).
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#check_warning_options)
 
 
 
 
 
-<a name="check_warning_help"/>
-<a name="check_warning_help-pb"/>
-<a name="check_warning_show-default"/>
-<a name="check_warning_help-short"/>
-<a name="check_warning_options"/>
+<a id="check_warning_help"></a>
+<a id="check_warning_help-pb"></a>
+<a id="check_warning_show-default"></a>
+<a id="check_warning_help-short"></a>
+<a id="check_warning_options"></a>
 #### Command-line Arguments
 
 
@@ -435,6 +466,33 @@ Message to return
 
 Run a check and filter performance data.
 
+`filter_perf` while badly named can be used to post process performance data.
+
+It can be useful for sorting performance data or limiting the number of performance data items shown.
+
+In its most basic form you can run `filter_perf command=COMMAND arguments REGULAR ARGUMENTS` for example `check_process`:
+```
+filter_perf command=check_process arguments "filter=exe not in ('sqlservr.exe')" "warn=working_set > 3G" "crit=working_set > 5G"
+L        cli WARNING: WARNING: clion64.exe=started
+L        cli  Performance data: ' ws_size'=0GB;3;5 ' ws_size'=0GB;3;5 ' ws_size'=0GB;3;5 ' ...
+```
+
+This will not do anything by itself but we can for instance sort performance data entries by adding `sort=normal`:
+```
+filter_perf sort=normal command=check_process arguments "filter=exe not in ('sqlservr.exe')" "warn=working_set > 3G" "crit=working_set > 5G"
+L        cli WARNING: WARNING: clion64.exe=started
+L        cli  Performance data: 'clion64.exe ws_size'=3.30851GB;3;5 'Rider.Backend.exe ws_size'=1.80017GB;3;5 'clangd.exe ws_size'=1.4822GB;3;5 'devenv.exe ws_size'=1.14938GB;3;5 ...
+```
+
+And further can also limit the number of results shown by adding `limit=5` like so:
+```
+filter_perf sort=normal limit=5 command=check_process arguments "filter=exe not in ('sqlservr.exe')" "warn=working_set > 3G" "crit=working_set > 5G"
+L        cli WARNING: WARNING: clion64.exe=started
+L        cli  Performance data: 'clion64.exe ws_size'=3.30852GB;3;5 'Rider.Backend.exe ws_size'=1.80017GB;3;5 'clangd.exe ws_size'=1.4822GB;3;5 'devenv.exe ws_size'=1.14938GB;3;5 'msedge.exe ws_size'=0.5757GB;3;5
+```
+
+
+**Jump to section:**
 
 * [Command-line Arguments](#filter_perf_options)
 
@@ -442,13 +500,13 @@ Run a check and filter performance data.
 
 
 
-<a name="filter_perf_help"/>
-<a name="filter_perf_help-pb"/>
-<a name="filter_perf_show-default"/>
-<a name="filter_perf_help-short"/>
-<a name="filter_perf_command"/>
-<a name="filter_perf_arguments"/>
-<a name="filter_perf_options"/>
+<a id="filter_perf_help"></a>
+<a id="filter_perf_help-pb"></a>
+<a id="filter_perf_show-default"></a>
+<a id="filter_perf_help-short"></a>
+<a id="filter_perf_command"></a>
+<a id="filter_perf_arguments"></a>
+<a id="filter_perf_options"></a>
 #### Command-line Arguments
 
 
@@ -483,6 +541,8 @@ The maximum number of items to return (0 returns all items)
 Run a check and render the performance data as output message.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#render_perf_options)
 * [Filter keywords](#render_perf_filter_keys)
 
@@ -490,19 +550,19 @@ Run a check and render the performance data as output message.
 
 
 
-<a name="render_perf_warn"/>
-<a name="render_perf_crit"/>
-<a name="render_perf_debug"/>
-<a name="render_perf_show-all"/>
-<a name="render_perf_escape-html"/>
-<a name="render_perf_help"/>
-<a name="render_perf_help-pb"/>
-<a name="render_perf_show-default"/>
-<a name="render_perf_help-short"/>
-<a name="render_perf_command"/>
-<a name="render_perf_arguments"/>
-<a name="render_perf_remove-perf"/>
-<a name="render_perf_options"/>
+<a id="render_perf_warn"></a>
+<a id="render_perf_crit"></a>
+<a id="render_perf_debug"></a>
+<a id="render_perf_show-all"></a>
+<a id="render_perf_escape-html"></a>
+<a id="render_perf_help"></a>
+<a id="render_perf_help-pb"></a>
+<a id="render_perf_show-default"></a>
+<a id="render_perf_help-short"></a>
+<a id="render_perf_command"></a>
+<a id="render_perf_arguments"></a>
+<a id="render_perf_remove-perf"></a>
+<a id="render_perf_options"></a>
 #### Command-line Arguments
 
 
@@ -562,7 +622,6 @@ Filter which marks items which generates an ok state.
 If anything matches this any previous state for this item will be reset to ok.
 
 
-
 <h5 id="render_perf_empty-state">empty-state:</h5>
 
 Return status to use when nothing matched filter.
@@ -580,7 +639,7 @@ TODO: obj ( key: value; key: value) obj (key:valuer;key:value)
 
 Top level syntax.
 Used to format the message to return can include text as well as special keywords which will include information from the checks.
-To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to excpae on linux).
+To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to escape on linux).
 
 *Default Value:* `%(status): %(message) %(list)`
 
@@ -602,7 +661,7 @@ DEPRECATED! This is the syntax for when nothing matches the filter.
 Detail level syntax.
 Used to format each resulting item in the message.
 %(list) will be replaced with all the items formated by this syntax string in the top-syntax.
-To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to excpae on linux).
+To add a keyword to the message you can use two syntaxes either ${keyword} or %(keyword) (there is no difference between them apart from ${} can be difficult to escape on linux).
 
 *Default Value:* `%(key)	%(value)	%(unit)	%(warn)	%(crit)	%(min)	%(max)
 `
@@ -615,33 +674,38 @@ This is the syntax for the base names of the performance data.
 *Default Value:* `%(key)`
 
 
-<a name="render_perf_filter_keys"/>
+<a id="render_perf_filter_keys"></a>
 #### Filter keywords
 
 
-| Option        | Description                                                                                                  |
-|---------------|--------------------------------------------------------------------------------------------------------------|
-| count         | Number of items matching the filter. Common option for all checks.                                           |
-| crit          | Major version number                                                                                         |
-| crit_count    | Number of items matched the critical criteria. Common option for all checks.                                 |
-| crit_list     | A list of all items which matched the critical criteria. Common option for all checks.                       |
-| detail_list   | A special list with critical, then warning and finally ok. Common option for all checks.                     |
-| key           | Major version number                                                                                         |
-| list          | A list of all items which matched the filter. Common option for all checks.                                  |
-| max           | Major version number                                                                                         |
-| message       | Major version number                                                                                         |
-| min           | Major version number                                                                                         |
-| ok_count      | Number of items matched the ok criteria. Common option for all checks.                                       |
-| ok_list       | A list of all items which matched the ok criteria. Common option for all checks.                             |
-| problem_count | Number of items matched either warning or critical criteria. Common option for all checks.                   |
-| problem_list  | A list of all items which matched either the critical or the warning criteria. Common option for all checks. |
-| status        | The returned status (OK/WARN/CRIT/UNKNOWN). Common option for all checks.                                    |
-| total         | Total number of items. Common option for all checks.                                                         |
-| unit          | Major version number                                                                                         |
-| value         | Major version number                                                                                         |
-| warn          | Major version number                                                                                         |
-| warn_count    | Number of items matched the warning criteria. Common option for all checks.                                  |
-| warn_list     | A list of all items which matched the warning criteria. Common option for all checks.                        |
+| Option  | Description          |
+|---------|----------------------|
+| crit    | Major version number |
+| key     | Major version number |
+| max     | Major version number |
+| message | Major version number |
+| min     | Major version number |
+| unit    | Major version number |
+| value   | Major version number |
+| warn    | Major version number |
+
+**Common options for all checks:**
+
+| Option        | Description                                                                    |
+|---------------|--------------------------------------------------------------------------------|
+| count         | Number of items matching the filter.                                           |
+| crit_count    | Number of items matched the critical criteria.                                 |
+| crit_list     | A list of all items which matched the critical criteria.                       |
+| detail_list   | A special list with critical, then warning and finally ok.                     |
+| list          | A list of all items which matched the filter.                                  |
+| ok_count      | Number of items matched the ok criteria.                                       |
+| ok_list       | A list of all items which matched the ok criteria.                             |
+| problem_count | Number of items matched either warning or critical criteria.                   |
+| problem_list  | A list of all items which matched either the critical or the warning criteria. |
+| status        | The returned status (OK/WARN/CRIT/UNKNOWN).                                    |
+| total         | Total number of items.                                                         |
+| warn_count    | Number of items matched the warning criteria.                                  |
+| warn_list     | A list of all items which matched the warning criteria.                        |
 
 
 ### xform_perf
@@ -649,22 +713,24 @@ This is the syntax for the base names of the performance data.
 Run a check and transform the performance data in various (currently one) way.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#xform_perf_options)
 
 
 
 
 
-<a name="xform_perf_help"/>
-<a name="xform_perf_help-pb"/>
-<a name="xform_perf_show-default"/>
-<a name="xform_perf_help-short"/>
-<a name="xform_perf_command"/>
-<a name="xform_perf_arguments"/>
-<a name="xform_perf_mode"/>
-<a name="xform_perf_field"/>
-<a name="xform_perf_replace"/>
-<a name="xform_perf_options"/>
+<a id="xform_perf_help"></a>
+<a id="xform_perf_help-pb"></a>
+<a id="xform_perf_show-default"></a>
+<a id="xform_perf_help-short"></a>
+<a id="xform_perf_command"></a>
+<a id="xform_perf_arguments"></a>
+<a id="xform_perf_mode"></a>
+<a id="xform_perf_field"></a>
+<a id="xform_perf_replace"></a>
+<a id="xform_perf_options"></a>
 #### Command-line Arguments
 
 
@@ -679,6 +745,30 @@ Run a check and transform the performance data in various (currently one) way.
 | mode         |               | Transformation mode: extract to fetch data or minmax to add missing min/max |
 | field        |               | Field to work with (value, warn, crit, max, min)                            |
 | replace      |               | Replace expression for the alias                                            |
+
+
+
+
+
+
+## Configuration
+
+
+
+| Path / Section                                    | Description     |
+|---------------------------------------------------|-----------------|
+| [/settings/check helpers/alias](#command-aliases) | Command aliases |
+
+
+
+### Command aliases <a id="/settings/check helpers/alias"></a>
+
+A list of aliases for already-defined commands (with arguments).
+An alias is an internal command that has been predefined to provide a single command without arguments. Be careful so you don't create loops (e.g. check_loop=check_a, check_a=check_loop).
+Aliases are also available in CheckExternalScripts under [/settings/external scripts/alias]; use this section when you want aliases without enabling external-script execution. If the same alias name is registered by both modules, the last one to load wins - avoid duplicating definitions.
+
+
+This is a section of objects. This means that you will create objects below this point by adding sections which all look the same.
 
 
 

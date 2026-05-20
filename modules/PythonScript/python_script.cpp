@@ -1,249 +1,292 @@
 #include "python_script.hpp"
 
+#include <memory>
+#include <str/utf8.hpp>
+
 #include "script_wrapper.hpp"
 
-#include <boost/shared_ptr.hpp>
-#include <boost/python.hpp>
+#ifdef __linux__
+#include <dlfcn.h>
+#endif
 
 namespace py = boost::python;
 
-#if BOOST_VERSION == 105800
-py::object fix_for_broken_exec_file(char const *filename, py::object global, py::object local) {
-	char *f = const_cast<char *>(filename);
-	PyObject *pyfile = PyFile_FromString(f, const_cast<char*>("r"));
-	if (!pyfile) throw std::invalid_argument(std::string(filename) + " : no such file");
-	py::handle<> file(pyfile);
-	FILE *fs = PyFile_AsFile(file.get());
-	PyObject* result = PyRun_File(fs, f, Py_file_input, global.ptr(), local.ptr());
-	if (!result) py::throw_error_already_set();
-	return py::object(py::detail::new_reference(result));
-}
-#endif
-
 BOOST_PYTHON_MODULE(NSCP) {
-	py::class_<script_wrapper::settings_wrapper, boost::shared_ptr<script_wrapper::settings_wrapper> >("Settings", py::no_init)
-		.def("get", &script_wrapper::settings_wrapper::create)
-		.staticmethod("get")
-		.def("create", &script_wrapper::settings_wrapper::create)
-		.staticmethod("create")
-		.def("get_section", &script_wrapper::settings_wrapper::get_section)
-		.def("get_string", &script_wrapper::settings_wrapper::get_string)
-		.def("set_string", &script_wrapper::settings_wrapper::set_string)
-		.def("get_bool", &script_wrapper::settings_wrapper::get_bool)
-		.def("set_bool", &script_wrapper::settings_wrapper::set_bool)
-		.def("get_int", &script_wrapper::settings_wrapper::get_int)
-		.def("set_int", &script_wrapper::settings_wrapper::set_int)
-		.def("save", &script_wrapper::settings_wrapper::save)
-		.def("register_path", &script_wrapper::settings_wrapper::settings_register_path)
-		.def("register_key", &script_wrapper::settings_wrapper::settings_register_key)
-		.def("query", &script_wrapper::settings_wrapper::query)
-		;
-	py::class_<script_wrapper::function_wrapper, boost::shared_ptr<script_wrapper::function_wrapper> >("Registry", py::no_init)
-		.def("get", &script_wrapper::function_wrapper::create)
-		.staticmethod("get")
-		.def("create", &script_wrapper::function_wrapper::create)
-		.staticmethod("create")
-		.def("function", &script_wrapper::function_wrapper::register_function)
-		.def("simple_function", &script_wrapper::function_wrapper::register_simple_function)
-		.def("cmdline", &script_wrapper::function_wrapper::register_cmdline)
-		.def("simple_cmdline", &script_wrapper::function_wrapper::register_simple_cmdline)
-		.def("subscription", &script_wrapper::function_wrapper::subscribe_function)
-		.def("simple_subscription", &script_wrapper::function_wrapper::subscribe_simple_function)
-		.def("submit_metrics", &script_wrapper::function_wrapper::register_submit_metrics)
-		.def("fetch_metrics", &script_wrapper::function_wrapper::register_fetch_metrics)
-		.def("event_pb", &script_wrapper::function_wrapper::register_event_pb)
-		.def("event", &script_wrapper::function_wrapper::register_event)
-		.def("query", &script_wrapper::function_wrapper::query)
-		;
-	py::class_<script_wrapper::command_wrapper, boost::shared_ptr<script_wrapper::command_wrapper> >("Core", py::no_init)
-		.def("get", &script_wrapper::command_wrapper::create)
-		.staticmethod("get")
-		.def("create", &script_wrapper::command_wrapper::create)
-		.staticmethod("create")
-		.def("simple_query", &script_wrapper::command_wrapper::simple_query)
-		.def("query", &script_wrapper::command_wrapper::query)
-		.def("simple_exec", &script_wrapper::command_wrapper::simple_exec)
-		.def("exec", &script_wrapper::command_wrapper::exec)
-		.def("simple_submit", &script_wrapper::command_wrapper::simple_submit)
-		.def("submit", &script_wrapper::command_wrapper::submit)
-		.def("reload", &script_wrapper::command_wrapper::reload)
-		.def("load_module", &script_wrapper::command_wrapper::load_module)
-		.def("unload_module", &script_wrapper::command_wrapper::unload_module)
-		.def("expand_path", &script_wrapper::command_wrapper::expand_path)
-		;
+  py::class_<script_wrapper::settings_wrapper, std::shared_ptr<script_wrapper::settings_wrapper>>("Settings", py::no_init)
+      .def("get", &script_wrapper::settings_wrapper::create)
+      .staticmethod("get")
+      .def("create", &script_wrapper::settings_wrapper::create)
+      .staticmethod("create")
+      .def("get_section", &script_wrapper::settings_wrapper::get_section)
+      .def("get_string", &script_wrapper::settings_wrapper::get_string)
+      .def("set_string", &script_wrapper::settings_wrapper::set_string)
+      .def("get_bool", &script_wrapper::settings_wrapper::get_bool)
+      .def("set_bool", &script_wrapper::settings_wrapper::set_bool)
+      .def("get_int", &script_wrapper::settings_wrapper::get_int)
+      .def("set_int", &script_wrapper::settings_wrapper::set_int)
+      .def("save", &script_wrapper::settings_wrapper::save)
+      .def("register_path", &script_wrapper::settings_wrapper::settings_register_path)
+      .def("register_key", &script_wrapper::settings_wrapper::settings_register_key)
+      .def("query", &script_wrapper::settings_wrapper::query);
+  py::class_<script_wrapper::function_wrapper, std::shared_ptr<script_wrapper::function_wrapper>>("Registry", py::no_init)
+      .def("get", &script_wrapper::function_wrapper::create)
+      .staticmethod("get")
+      .def("create", &script_wrapper::function_wrapper::create)
+      .staticmethod("create")
+      .def("function", &script_wrapper::function_wrapper::register_function)
+      .def("simple_function", &script_wrapper::function_wrapper::register_simple_function)
+      .def("cmdline", &script_wrapper::function_wrapper::register_cmdline)
+      .def("simple_cmdline", &script_wrapper::function_wrapper::register_simple_cmdline)
+      .def("subscription", &script_wrapper::function_wrapper::subscribe_function)
+      .def("simple_subscription", &script_wrapper::function_wrapper::subscribe_simple_function)
+      .def("submit_metrics", &script_wrapper::function_wrapper::register_submit_metrics)
+      .def("fetch_metrics", &script_wrapper::function_wrapper::register_fetch_metrics)
+      .def("event_pb", &script_wrapper::function_wrapper::register_event_pb)
+      .def("event", &script_wrapper::function_wrapper::register_event)
+      .def("query", &script_wrapper::function_wrapper::query);
+  py::class_<script_wrapper::command_wrapper, std::shared_ptr<script_wrapper::command_wrapper>>("Core", py::no_init)
+      .def("get", &script_wrapper::command_wrapper::create)
+      .staticmethod("get")
+      .def("create", &script_wrapper::command_wrapper::create)
+      .staticmethod("create")
+      .def("simple_query", &script_wrapper::command_wrapper::simple_query)
+      .def("query", &script_wrapper::command_wrapper::query)
+      .def("simple_exec", &script_wrapper::command_wrapper::simple_exec)
+      .def("exec", &script_wrapper::command_wrapper::exec)
+      .def("simple_submit", &script_wrapper::command_wrapper::simple_submit)
+      .def("submit", &script_wrapper::command_wrapper::submit)
+      .def("reload", &script_wrapper::command_wrapper::reload)
+      .def("load_module", &script_wrapper::command_wrapper::load_module)
+      .def("unload_module", &script_wrapper::command_wrapper::unload_module)
+      .def("expand_path", &script_wrapper::command_wrapper::expand_path);
 
-	py::enum_<script_wrapper::status>("status")
-		.value("CRITICAL", script_wrapper::CRIT)
-		.value("WARNING", script_wrapper::WARN)
-		.value("UNKNOWN", script_wrapper::UNKNOWN)
-		.value("OK", script_wrapper::OK)
-		;
-	py::def("log", script_wrapper::log_msg);
-	py::def("log_err", script_wrapper::log_error);
-	py::def("log_deb", script_wrapper::log_debug);
-	py::def("log_error", script_wrapper::log_error);
-	py::def("log_debug", script_wrapper::log_debug);
-	py::def("sleep", script_wrapper::sleep);
+  py::enum_<script_wrapper::status>("status")
+      .value("CRITICAL", script_wrapper::CRIT)
+      .value("WARNING", script_wrapper::WARN)
+      .value("UNKNOWN", script_wrapper::UNKNOWN)
+      .value("OK", script_wrapper::OK);
+  py::def("log", script_wrapper::log_msg);
+  py::def("log_err", script_wrapper::log_error);
+  py::def("log_deb", script_wrapper::log_debug);
+  py::def("log_error", script_wrapper::log_error);
+  py::def("log_debug", script_wrapper::log_debug);
+  py::def("sleep", script_wrapper::sleep);
 }
 
 static bool has_init = false;
 
+void python_script::init(const std::string &python_cache_path, const std::string &lib_python_path) {
+  NSC_DEBUG_MSG("boot python");
 
-void python_script::init() {
-	NSC_DEBUG_MSG("boot python");
+  if (!has_init) {
+    has_init = true;
+    PyImport_AppendInittab("NSCP", &PyInit_NSCP);
+    // Py_SetProgramName("NSCP");
 
-	bool do_init = false;
-	if (!has_init) {
-		has_init = true;
-		Py_Initialize();
-		PyEval_InitThreads();
-		PyEval_SaveThread();
-		do_init = true;
-	}
+    if (!python_cache_path.empty()) {
+      PyConfig config;
+      PyConfig_InitPythonConfig(&config);
+      PyStatus status = PyConfig_SetBytesString(&config, &config.pycache_prefix, python_cache_path.c_str());
+      if (PyStatus_Exception(status)) {
+        NSC_LOG_ERROR("Failed to setup python cache path: " + python_cache_path);
+        PyConfig_Clear(&config);
+        return;
+      }
+      status = Py_InitializeFromConfig(&config);
+      if (PyStatus_Exception(status)) {
+        NSC_LOG_ERROR("Failed to initialize Python");
+        PyConfig_Clear(&config);
+        return;
+      }
 
-	try {
-		{
-			script_wrapper::thread_locker locker;
-			try {
-				NSC_DEBUG_MSG("Prepare python");
+      PyConfig_Clear(&config);
+    }
 
-				PyRun_SimpleString("import cStringIO");
-				PyRun_SimpleString("import sys");
-				PyRun_SimpleString("sys.stderr = cStringIO.StringIO()");
+#ifdef __linux__
+    if (!lib_python_path.empty()) {
+      void *lib = dlopen(lib_python_path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+      if (!lib) {
+        NSC_LOG_ERROR("Failed to promote Python library to global: " + std::string(dlerror()));
+      }
+    }
+#endif
 
-				if (do_init) {
-					NSC_DEBUG_MSG("init python");
-					initNSCP();
-				}
-			} catch (py::error_already_set e) {
-				script_wrapper::log_exception();
-			}
-		}
-	} catch (std::exception &e) {
-		NSC_LOG_ERROR_EXR("load python scripts", e);
-	} catch (...) {
-		NSC_LOG_ERROR_EX("load python scripts");
-	}
+    Py_Initialize();
+#if PY_VERSION_HEX < 0x03090000
+    PyEval_InitThreads();
+#endif
+    PyEval_SaveThread();
+  }
+
+  try {
+    {
+      script_wrapper::thread_locker locker;
+      try {
+        NSC_DEBUG_MSG("Prepare python");
+
+        PyRun_SimpleString("from io import StringIO");
+        PyRun_SimpleString("import sys");
+        PyRun_SimpleString("sys.stderr = StringIO()");
+
+      } catch (py::error_already_set &) {
+        script_wrapper::log_exception(__FILE__, __LINE__);
+      }
+    }
+  } catch (std::exception &e) {
+    NSC_LOG_ERROR_EXR("load python scripts", e);
+  } catch (...) {
+    NSC_LOG_ERROR_EX("load python scripts");
+  }
 }
 
-python_script::python_script(unsigned int plugin_id, const std::string base_path, const std::string plugin_alias, const std::string script_alias, const std::string script)
-	: base_path(base_path)
-	, plugin_id(plugin_id) {
-	NSC_DEBUG_MSG_STD("Loading python script: " + script);
-	_exec(script);
-	NSC_DEBUG_MSG_STD("Initializing script: " + script);
-	callFunction("init", plugin_id, plugin_alias, script_alias);
+void python_script::destroy() {
+  NSC_DEBUG_MSG("unloading python");
+  // Release the registered Python callable handles while the interpreter
+  // is still alive. The handles are stored in a static shared_ptr whose
+  // destructor would otherwise run during process atexit, after libpython
+  // has already torn down its runtime, causing a SIGSEGV in
+  // _PyInterpreterState_GET() during Py_DECREF.
+  if (script_wrapper::functions::instance) {
+    script_wrapper::thread_locker locker;
+    script_wrapper::functions::destroy();
+  }
+  /*
+  if (Py_FinalizeEx() < 0) {
+      NSC_LOG_ERROR("Failed to unload python");
+      return;
+  }
+   */
+  // PyMem_RawFree("NSCP");
+}
+
+python_script::python_script(unsigned int plugin_id, const std::string base_path, const std::string plugin_alias, const std::string script_alias,
+                             const std::string script)
+    : base_path(base_path), plugin_id(plugin_id) {
+  {
+    script_wrapper::thread_locker locker;
+    {
+      localDict.reset(new boost::python::dict());
+    }
+  }
+
+  NSC_DEBUG_MSG_STD("Loading python script: " + script);
+  _exec(script);
+  NSC_DEBUG_MSG_STD("Initializing script: " + script);
+  callFunction("init", plugin_id, plugin_alias, script_alias);
 }
 python_script::~python_script() {
-	callFunction("shutdown");
+  callFunction("shutdown");
+  {
+    script_wrapper::thread_locker locker;
+    {
+      localDict.reset();
+    }
+  }
 }
-bool python_script::callFunction(const std::string& functionName) {
-	try {
-		script_wrapper::thread_locker locker;
-		try {
-			if (!localDict.has_key(functionName))
-				return true;
-			py::object scriptFunction = py::extract<py::object>(localDict[functionName]);
-			if (scriptFunction)
-				scriptFunction();
-			return true;
-		} catch (py::error_already_set e) {
-			script_wrapper::log_exception();
-			return false;
-		}
-	} catch (...) {
-		NSC_LOG_ERROR("Unknown exception");
-		return false;
-	}
+bool python_script::callFunction(const std::string &functionName) {
+  try {
+    script_wrapper::thread_locker locker;
+    try {
+      if (!localDict->has_key(functionName)) return true;
+      py::object scriptFunction = py::extract<py::object>(localDict->get(functionName));
+      if (scriptFunction) scriptFunction();
+      return true;
+    } catch (py::error_already_set &) {
+      script_wrapper::log_exception(__FILE__, __LINE__);
+      return false;
+    }
+  } catch (...) {
+    NSC_LOG_ERROR("Unknown exception");
+    return false;
+  }
 }
-bool python_script::callFunction(const std::string& functionName, const std::list<std::string> &args) {
-	try {
-		script_wrapper::thread_locker locker;
-		try {
-			if (!localDict.has_key(functionName))
-				return true;
-			py::object scriptFunction = py::extract<py::object>(localDict[functionName]);
-			if (scriptFunction)
-				scriptFunction(script_wrapper::convert(args));
-			return true;
-		} catch (py::error_already_set e) {
-			script_wrapper::log_exception();
-			return false;
-		}
-	} catch (...) {
-		NSC_LOG_ERROR("Unknown exception");
-		return false;
-	}
+bool python_script::callFunction(const std::string &functionName, const std::list<std::string> &args) {
+  try {
+    script_wrapper::thread_locker locker;
+    try {
+      if (!localDict->has_key(functionName)) return true;
+      py::object scriptFunction = py::extract<py::object>(localDict->get(functionName));
+      if (scriptFunction) scriptFunction(script_wrapper::convert(args));
+      return true;
+    } catch (py::error_already_set &) {
+      script_wrapper::log_exception(__FILE__, __LINE__);
+      return false;
+    }
+  } catch (...) {
+    NSC_LOG_ERROR("Unknown exception");
+    return false;
+  }
 }
-bool python_script::callFunction(const std::string& functionName, unsigned int i1, const std::string &s1, const std::string &s2) {
-	try {
-		script_wrapper::thread_locker locker;
-		try {
-			if (!localDict.has_key(functionName))
-				return true;
-			py::object scriptFunction = py::extract<py::object>(localDict[functionName]);
-			if (scriptFunction)
-				scriptFunction(i1, s1, s2);
-			return true;
-		} catch (py::error_already_set e) {
-			script_wrapper::log_exception();
-			return false;
-		}
-	} catch (...) {
-		NSC_LOG_ERROR("Unknown exception");
-		return false;
-	}
+bool python_script::callFunction(const std::string &functionName, unsigned int i1, const std::string &s1, const std::string &s2) {
+  try {
+    script_wrapper::thread_locker locker;
+    try {
+      if (!localDict->has_key(functionName)) return true;
+      py::object scriptFunction = py::extract<py::object>(localDict->get(functionName));
+      if (scriptFunction) scriptFunction(i1, s1, s2);
+      return true;
+    } catch (py::error_already_set &) {
+      script_wrapper::log_exception(__FILE__, __LINE__, functionName);
+      return false;
+    }
+  } catch (...) {
+    NSC_LOG_ERROR("Unknown exception");
+    return false;
+  }
 }
 
+py::object pystr2(std::string str) { return py::object(py::handle<>(PyUnicode_FromString(str.c_str()))); }
 
 void python_script::_exec(const std::string &scriptfile) {
-	try {
-		script_wrapper::thread_locker locker;
-		try {
-			py::object main_module = py::import("__main__");
-			py::dict globalDict = py::extract<py::dict>(main_module.attr("__dict__"));
-			localDict = globalDict.copy();
-			localDict.setdefault("__file__", scriptfile);
-			//localDict.attr("plugin_id") = plugin_id;
-			//localDict.attr("plugin_alias") = alias;
+  try {
+    script_wrapper::thread_locker locker;
+    try {
+      py::object main_module = py::import("__main__");
+      py::dict globalDict = py::extract<py::dict>(main_module.attr("__dict__"));
+      localDict.reset(new py::dict(globalDict.copy()));
+      localDict->setdefault("__file__", scriptfile);
+      // localDict.attr("plugin_id") = plugin_id;
+      // localDict.attr("plugin_alias") = alias;
 
-			PyRun_SimpleString("import cStringIO");
-			PyRun_SimpleString("import sys");
-			PyRun_SimpleString("sys.stderr = cStringIO.StringIO()");
-			boost::filesystem::path path = base_path;
-			path /= "scripts";
-			path /= "python";
-			path /= "lib";
-			NSC_DEBUG_MSG("Lib path: " + path.string());
-			try {
+      PyRun_SimpleString("from io import StringIO");
+      PyRun_SimpleString("import sys");
+      PyRun_SimpleString("sys.stderr = StringIO()");
+
+      boost::filesystem::path path = base_path;
+      path /= "python";
+      path /= "lib";
+      NSC_DEBUG_MSG("Lib path: " + path.string());
+      try {
 #ifdef WIN32
-				//TODO: FIXME: Fix this somehow
-				PyRun_SimpleString(("sys.path.append('" + path.generic_string() + "')").c_str());
+        // TODO: FIXME: Fix this somehow
+        PyRun_SimpleString(("sys.path.append('" + path.generic_string() + "')").c_str());
 #else
-				PyRun_SimpleString(("sys.path.append('" + path.string() + "')").c_str());
+        PyRun_SimpleString(("sys.path.append('" + path.string() + "')").c_str());
 #endif
-			} catch (py::error_already_set e) {
-				NSC_LOG_ERROR("Failed to setup env for script: " + scriptfile);
-				script_wrapper::log_exception();
-				return;
-			}
+      } catch (py::error_already_set &) {
+        NSC_LOG_ERROR("Failed to setup env for script: " + scriptfile);
+        script_wrapper::log_exception(__FILE__, __LINE__, scriptfile);
+        return;
+      }
 
-#if BOOST_VERSION == 105800
-			py::object ignored = fix_for_broken_exec_file(scriptfile.c_str(), localDict, localDict);
-#else
-			py::object ignored = exec_file(scriptfile.c_str(), localDict, localDict);
-#endif
-		} catch (py::error_already_set e) {
-			NSC_LOG_ERROR("Failed to load script: " + scriptfile);
-			script_wrapper::log_exception();
-		} catch (const std::exception &e) {
-			NSC_LOG_ERROR("Failed to load script: " + scriptfile);
-			NSC_LOG_ERROR_EXR("python script", e);
-		} catch (...) {
-			NSC_LOG_ERROR("Failed to load script: " + scriptfile);
-			NSC_LOG_ERROR_EX("python script");
-		}
-	} catch (...) {
-		NSC_LOG_ERROR_EX("python");
-	}
+      py::object main = py::import("__main__");
+
+      py::object global(main.attr("__dict__"));
+
+      py::object sFile = pystr2(scriptfile);
+      FILE *fp = _Py_fopen_obj(sFile.ptr(), "r");
+      PyRun_File(fp, scriptfile.c_str(), Py_file_input, localDict->ptr(), localDict->ptr());
+    } catch (py::error_already_set &) {
+      NSC_LOG_ERROR("Failed to load script: " + scriptfile);
+      script_wrapper::log_exception(__FILE__, __LINE__, scriptfile);
+    } catch (const std::exception &e) {
+      NSC_LOG_ERROR("Failed to load script: " + scriptfile);
+      NSC_LOG_ERROR_EXR("python script", e);
+    } catch (...) {
+      NSC_LOG_ERROR("Failed to load script: " + scriptfile);
+      NSC_LOG_ERROR_EX("python script");
+    }
+  } catch (...) {
+    NSC_LOG_ERROR_EX("python");
+  }
 }

@@ -19,18 +19,17 @@
 
 #include "CauseCrashes.h"
 
-#include <nscapi/nscapi_protobuf_functions.hpp>
 #include <nscapi/nscapi_program_options.hpp>
+#include <nscapi/protobuf/functions_convert.hpp>
+#include <nscapi/protobuf/functions_response.hpp>
 
-namespace sh = nscapi::settings_helper;
 namespace po = boost::program_options;
 
-void CauseCrashes::crash_client(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	po::options_description desc = nscapi::program_options::create_desc(request);
-	po::variables_map vm;
-	if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response))
-		return;
-	int *foo = 0;
-	*foo = 0;
-	return nscapi::protobuf::functions::set_response_bad(*response, "We should have crashed now...");
+void CauseCrashes::crash_client(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  po::options_description desc = nscapi::program_options::create_desc(request);
+  po::variables_map vm;
+  if (!nscapi::program_options::process_arguments_from_request(vm, desc, request, *response)) return;
+  int *foo = 0;
+  *foo = 0;
+  return nscapi::protobuf::functions::set_response_bad(*response, "We should have crashed now...");
 }

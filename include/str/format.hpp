@@ -19,387 +19,434 @@
 
 #pragma once
 
-#include <str/xtos.hpp>
-#include <str/utils.hpp>
-
-#include <boost/lexical_cast.hpp>
 #include <boost/date_time.hpp>
-#include <boost/algorithm/string.hpp>
-#include <boost/foreach.hpp>
-
-#include <time.h>
-
-#include <locale>
-#include <string>
-#include <sstream>
-#include <iomanip>
-#include <utility>
-#include <list>
-#include <iostream>
+#include <boost/lexical_cast.hpp>
 #include <cctype>
+#include <cmath>
+#include <iomanip>
+#include <iostream>
+#include <list>
+#include <locale>
+#include <sstream>
+#include <stdexcept>
+#include <str/utils.hpp>
+#include <str/xtos.hpp>
+#include <string>
 
 namespace str {
-	namespace format {
+namespace format {
 
-		//
-		// Padding
-		//
-		inline std::string rpad(std::string str, std::size_t len) {
-			if (str.length() > len)
-				return str.substr(str.length() - len);
-			return std::string(len - str.length(), ' ') + str;
-		}
-		inline std::string lpad(std::string str, std::size_t len) {
-			if (str.length() > len)
-				return str.substr(0, len);
-			return str + std::string(len - str.length(), ' ');
-		}
+//
+// Percent helpers (issue #419 / #595)
+//
+// calc_pct_round computes round-to-nearest of (value * 100 / total) using
+// double precision so the integer percentage matches the value embedded in
+// performance data (which is computed in floating point). Truncating integer
+// division silently loses a percent for values near a boundary.
+inline long long calc_pct_round(unsigned long long value, unsigned long long total) {
+  if (total == 0) return 0;
+  return static_cast<long long>(std::llround(static_cast<double>(value) * 100.0 / static_cast<double>(total)));
+}
+inline long long calc_pct_round(long long value, long long total) {
+  if (total <= 0) return 0;
+  return static_cast<long long>(std::llround(static_cast<double>(value) * 100.0 / static_cast<double>(total)));
+}
+inline double calc_pct_double(unsigned long long value, unsigned long long total) {
+  if (total == 0) return 0.0;
+  return static_cast<double>(value) * 100.0 / static_cast<double>(total);
+}
+inline double calc_pct_double(long long value, long long total) {
+  if (total <= 0) return 0.0;
+  return static_cast<double>(value) * 100.0 / static_cast<double>(total);
+}
+// format_pct renders a percentage value with `decimals` decimal places (default 2).
+// Used by `%(used_pct)`/`%(free_pct)` so users can see e.g. "97.34" rather than "97".
+inline std::string format_pct(double pct, int decimals = 2) {
+  std::ostringstream os;
+  os << std::fixed << std::setprecision(decimals) << pct;
+  return os.str();
+}
+inline std::string format_pct(unsigned long long value, unsigned long long total, int decimals = 2) {
+  return format_pct(calc_pct_double(value, total), decimals);
+}
+inline std::string format_pct(long long value, long long total, int decimals = 2) { return format_pct(calc_pct_double(value, total), decimals); }
 
-		//
-		// Cleaning
-		//
-		inline std::string strip_ctrl_chars(std::string str) {
-			std::string ret; ret.reserve(str.size());
-			BOOST_FOREACH(char c, str) {
-				if (c == 0 || c == 7 || c == 10 || c == 11 || c == 12 || c == 13 || c == 127)
-					ret.push_back('?');
-				else
-					ret.push_back(c);
-			}
-			return ret;
-		}
-		inline std::string format_buffer(const char* buf, std::string::size_type len) {
-			std::stringstream ss;
-			std::string chars;
-			for (std::string::size_type i = 0; i < len; i++) {
-				if (i % 32 == 0) {
-					if (i > 0) {
-						ss << chars;
-						ss << "\n";
-					}
-					chars = "";
-					ss << std::hex << std::setw(8) << std::setfill('0') << i;
-					ss << ": ";
-				}
-				ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(buf[i]));
-				ss << ", ";
-				if (buf[i] < 30 || buf[i] == 127)
-					chars += '?';
-				else
-					chars += buf[i];
-			}
-			ss << chars;
-			return ss.str();
-		}
-		inline std::string format_buffer(const std::string &buf) {
-			return format_buffer(buf.c_str(), buf.size());
-		}
-		//
-		// Appending
-		//
-		inline void append_list(std::string &lst, const std::string &append, const std::string sep = ", ") {
-			if (append.empty())
-				return;
-			if (!lst.empty())
-				lst += sep;
-			lst += append;
-		}
-		inline std::string join(std::list<std::string> lst, std::string key) {
-			std::string ret;
-			BOOST_FOREACH(const std::string &s, lst) {
-				if (!ret.empty())
-					ret += key;
-				ret += s;
-			}
-			return ret;
-		}
-		inline std::string join(std::vector<std::string> lst, std::string key) {
-			std::string ret;
-			BOOST_FOREACH(const std::string &s, lst) {
-				if (!ret.empty())
-					ret += key;
-				ret += s;
-			}
-			return ret;
-		}
+//
+// Padding
+//
+inline std::string rpad(const std::string &str, const std::size_t len) {
+  if (str.length() > len) return str.substr(str.length() - len);
+  return std::string(len - str.length(), ' ') + str;
+}
+inline std::string lpad(const std::string &str, const std::size_t len) {
+  if (str.length() > len) return str.substr(0, len);
+  return str + std::string(len - str.length(), ' ');
+}
 
-		//
-		// Date
-		//
-		inline std::string format_date(boost::posix_time::ptime date, std::string format = "%Y-%m-%d %H:%M:%S") {
-			std::locale locale_local(std::cout.getloc(), new boost::posix_time::time_facet(format.c_str()));
-			std::stringstream date_ss;
-			date_ss.imbue(locale_local);
-			date_ss << date;
-			return date_ss.str();
-		}
-		inline std::string format_date(std::time_t time, std::string format = "%Y-%m-%d %H:%M:%S") {
-			return format_date(boost::posix_time::from_time_t(time), format);
-		}
-#define MK_FORMAT_FTD(min, key, val) \
-	if (mtm->tm_year > min) \
-	str::utils::replace(format, key, str::xtos(val));  \
-	else  \
-	str::utils::replace(format, key, "0");
+//
+// Cleaning
+//
+inline std::string strip_ctrl_chars(const std::string &str) {
+  std::string ret;
+  ret.reserve(str.size());
+  for (char c : str) {
+    if (c == 0 || c == 7 || c == 10 || c == 11 || c == 12 || c == 13 || c == 127)
+      ret.push_back('?');
+    else
+      ret.push_back(c);
+  }
+  return ret;
+}
+inline std::string format_buffer(const char *buf, std::string::size_type len) {
+  std::stringstream ss;
+  std::string chars;
+  for (std::string::size_type i = 0; i < len; i++) {
+    if (i % 32 == 0) {
+      if (i > 0) {
+        ss << chars;
+        ss << "\n";
+      }
+      chars = "";
+      ss << std::hex << std::setw(8) << std::setfill('0') << i;
+      ss << ": ";
+    }
+    ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(buf[i]));
+    ss << ", ";
+    if (buf[i] < 30 || buf[i] == 127)
+      chars += '?';
+    else
+      chars += buf[i];
+  }
+  ss << chars;
+  return ss.str();
+}
+inline std::string format_buffer(const std::string &buf) { return format_buffer(buf.c_str(), buf.size()); }
+//
+// Appending
+//
+inline void append_list(std::string &lst, const std::string &append, const std::string &sep = ", ") {
+  if (append.empty()) return;
+  if (!lst.empty()) lst += sep;
+  lst += append;
+}
+inline std::string join(const std::list<std::string> &lst, const std::string &key) {
+  std::string ret;
+  for (const std::string &s : lst) {
+    if (!ret.empty()) ret += key;
+    ret += s;
+  }
+  return ret;
+}
+inline std::string join(const std::vector<std::string> &lst, const std::string &key) {
+  std::string ret;
+  for (const std::string &s : lst) {
+    if (!ret.empty()) ret += key;
+    ret += s;
+  }
+  return ret;
+}
+
+//
+// Date
+//
+inline std::string format_date(const boost::posix_time::ptime date, const std::string &format = "%Y-%m-%d %H:%M:%S") {
+  const std::locale locale_local(std::cout.getloc(), new boost::posix_time::time_facet(format.c_str()));
+  std::stringstream date_ss;
+  date_ss.imbue(locale_local);
+  date_ss << date;
+  return date_ss.str();
+}
+inline std::string format_date(const std::time_t time, const std::string &format = "%Y-%m-%d %H:%M:%S") {
+  return format_date(boost::posix_time::from_time_t(time), format);
+}
+#define MK_FORMAT_FTD(min, key, val)                  \
+  if ((mtm->tm_year) > (min))                         \
+    str::utils::replace(format, key, str::xtos(val)); \
+  else                                                \
+    str::utils::replace(format, key, "0");
 #ifdef WIN32
-		inline std::string format_time_delta(struct tm *mtm, std::string format = "%Y years %m months %d days %H hours %M minutes") {
-			// "Date: %Y-%m-%d %H:%M:%S"
-			MK_FORMAT_FTD(70, "%Y", mtm->tm_year);
-			MK_FORMAT_FTD(0, "%m", mtm->tm_mon);
-			MK_FORMAT_FTD(0, "%d", mtm->tm_mday - 1);
-			MK_FORMAT_FTD(0, "%H", mtm->tm_hour);
-			MK_FORMAT_FTD(0, "%M", mtm->tm_min);
-			MK_FORMAT_FTD(0, "%S", mtm->tm_sec);
-			return format;
-		}
-		inline std::string format_time_delta(time_t time, std::string format = "%Y years %m months %d days %H hours %M minutes") {
-			struct tm nt;
-			if (gmtime_s(&nt, &time) != 0)
-				return "";
-			return format_time_delta(&nt, format);
-		}
-		static const unsigned long long SECS_BETWEEN_EPOCHS = 11644473600ull;
-		static const unsigned long long SECS_TO_100NS = 10000000ull;
-		inline unsigned long long filetime_to_time(unsigned long long filetime) {
-			return (filetime - (SECS_BETWEEN_EPOCHS * SECS_TO_100NS)) / SECS_TO_100NS;
-		}
+inline std::string format_time_delta(const tm *mtm, std::string format = "%Y years %m months %d days %H hours %M minutes") {
+  // "Date: %Y-%m-%d %H:%M:%S"
+  MK_FORMAT_FTD(70, "%Y", mtm->tm_year);
+  MK_FORMAT_FTD(0, "%m", mtm->tm_mon);
+  MK_FORMAT_FTD(0, "%d", mtm->tm_mday - 1);
+  MK_FORMAT_FTD(0, "%H", mtm->tm_hour);
+  MK_FORMAT_FTD(0, "%M", mtm->tm_min);
+  MK_FORMAT_FTD(0, "%S", mtm->tm_sec);
+  return format;
+}
+inline std::string format_time_delta(const time_t time, const std::string &format = "%Y years %m months %d days %H hours %M minutes") {
+  tm nt;
+  if (gmtime_s(&nt, &time) != 0) return "";
+  return format_time_delta(&nt, format);
+}
+constexpr unsigned long long SECS_BETWEEN_EPOCHS = 11644473600ull;
+constexpr unsigned long long SECS_TO_100NS = 10000000ull;
+inline unsigned long long filetime_to_time(const unsigned long long filetime) { return (filetime - (SECS_BETWEEN_EPOCHS * SECS_TO_100NS)) / SECS_TO_100NS; }
 
-		inline std::string format_filetime_delta(unsigned long long filetime, std::string format = "%Y-%m-%d %H:%M:%S") {
-			if (filetime == 0)
-				return "ZERO";
-			//filetime -= (SECS_BETWEEN_EPOCHS * SECS_TO_100NS);
-			filetime /= SECS_TO_100NS;
-			return format_time_delta(static_cast<time_t>(filetime), format);
-		}
+inline std::string format_filetime_delta(unsigned long long filetime, const std::string &format = "%Y-%m-%d %H:%M:%S") {
+  if (filetime == 0) return "ZERO";
+  filetime /= SECS_TO_100NS;
+  return format_time_delta(static_cast<time_t>(filetime), format);
+}
 
-		inline std::string format_filetime(unsigned long long filetime, std::string format = "%Y-%m-%d %H:%M:%S") {
-			if (filetime == 0)
-				return "ZERO";
-			return format_date(static_cast<time_t>(filetime_to_time(filetime)), format);
-		}
+inline std::string format_filetime(const unsigned long long filetime, const std::string &format = "%Y-%m-%d %H:%M:%S") {
+  if (filetime == 0) return "ZERO";
+  return format_date(static_cast<time_t>(filetime_to_time(filetime)), format);
+}
 #endif
 
-		template<class T>
-		inline T decode_time(std::string time, unsigned int factor = 1) {
-			std::string::size_type p = time.find_first_of("sSmMhHdDwW");
-			std::string::size_type pend = time.find_first_not_of("0123456789");
-			T value = boost::lexical_cast<T>(pend == std::string::npos ? time : time.substr(0, pend).c_str());
-			if (p == std::string::npos)
-				return value * factor;
-			else if ((time[p] == 's') || (time[p] == 'S'))
-				return value * factor;
-			else if ((time[p] == 'm') || (time[p] == 'M'))
-				return value * 60 * factor;
-			else if ((time[p] == 'h') || (time[p] == 'H'))
-				return value * 60 * 60 * factor;
-			else if ((time[p] == 'd') || (time[p] == 'D'))
-				return value * 24 * 60 * 60 * factor;
-			else if ((time[p] == 'w') || (time[p] == 'W'))
-				return value * 7 * 24 * 60 * 60 * factor;
-			return value * factor;
-		}
-
-#define WEEK	(7 * 24 * 60 * 60 * 1000)
-#define DAY		(24 * 60 * 60 * 1000)
-#define HOUR	(60 * 60 * 1000)
-#define MINUTE	(60 * 1000)
-#define SEC		(1000)
-		inline std::string itos_as_time(unsigned long long time) {
-			unsigned long long rest = time;
-			std::stringstream ss;
-			if (time > WEEK) {
-				unsigned int w = static_cast<unsigned int>(rest / WEEK);
-				rest -= (static_cast<unsigned long long>(w)*WEEK);
-				unsigned int d = static_cast<unsigned int>(rest / DAY);
-				rest -= (static_cast<unsigned long long>(d)*DAY);
-				unsigned int h = static_cast<unsigned int>(rest / HOUR);
-				rest -= (static_cast<unsigned long long>(h)*HOUR);
-				unsigned int m = static_cast<unsigned int>(rest / MINUTE);
-				ss << w;
-				ss << "w " << d << "d ";
-				ss << std::setfill('0') << std::setw(2);
-				ss << h << ":" << m;
-			} else if (time > DAY) {
-				unsigned int d = static_cast<unsigned int>(rest / DAY);
-				rest -= (static_cast<unsigned long long>(d)*DAY);
-				unsigned int h = static_cast<unsigned int>(rest / HOUR);
-				rest -= (static_cast<unsigned long long>(h)*HOUR);
-				unsigned int m = static_cast<unsigned int>(rest / MINUTE);
-				ss << d;
-				ss << "d ";
-				ss << std::setfill('0') << std::setw(2);
-				ss << h << ":" << m;
-			} else if (time > HOUR) {
-				unsigned int h = static_cast<unsigned int>(rest / HOUR);
-				rest -= (static_cast<unsigned long long>(h)*HOUR);
-				unsigned int m = static_cast<unsigned int>(rest / MINUTE);
-				ss << std::setfill('0') << std::setw(2);
-				ss << h << ":" << m;
-			} else if (time > MINUTE) {
-				ss << std::setfill('0') << std::setw(2);
-				ss << "0:" << static_cast<unsigned int>(time / (60 * 1000));
-			} else if (time > SEC)
-				ss << boost::lexical_cast<std::string>(static_cast<unsigned int>(time / (1000))) << "s";
-			else
-				ss << static_cast<unsigned int>(time);
-			return ss.str();
-		}
-		template<class T>
-		inline T stox_as_time_sec(std::string time, std::string default_unit) {
-			std::string::size_type p = time.find_first_of("sSmMhHdDwW");
-			std::string::size_type pend = time.find_first_not_of("0123456789");
-			T value = str::stox<T>(pend == std::string::npos ? time : time.substr(0, pend).c_str());
-			std::string unit = default_unit;
-			if (p != std::string::npos) {
-				unit = time.substr(p);
-			}
-			char u = ' ';
-			if (unit.length() > 0) {
-				u = unit[0];
-			}
-			if ((u == 's') || (u == 'S'))
-				return value;
-			else if ((u == 'm') || (u == 'M'))
-				return value * 60;
-			else if ((u == 'h') || (u == 'H'))
-				return value * 60 * 60;
-			else if ((u == 'd') || (u == 'D'))
-				return value * 24 * 60 * 60;
-			else if ((u == 'w') || (u == 'W'))
-				return value * 7 * 24 * 60 * 60;
-			return value;
-		}
-
-		//
-		// Units
-		//
-		template<class T>
-		inline T decode_byte_units(const T value, const std::string &unit) {
-			if (unit.size() == 0)
-				return value;
-			if (unit[0] == 'B' || unit[0] == 'b')
-				return value;
-			else if (unit[0] == 'K' || unit[0] == 'k')
-				return value * 1024;
-			else if (unit[0] == 'M' || unit[0] == 'm')
-				return value * 1024 * 1024;
-			else if (unit[0] == 'G' || unit[0] == 'g')
-				return value * 1024 * 1024 * 1024;
-			else if (unit[0] == 'T' || unit[0] == 't')
-				return value * 1024 * 1024 * 1024 * 1024;
-			else
-				return value;
-		}
-		inline long long decode_byte_units(const std::string &s) {
-			std::string::size_type p = s.find_first_not_of("0123456789");
-			if (p == std::string::npos || p == 0)
-				return boost::lexical_cast<long long>(s);
-			std::string numbers = s.substr(0, p);
-			return decode_byte_units(boost::lexical_cast<long long>(numbers), s.substr(p));
-		}
-#define BKMG_RANGE "BKMGTPE"
-#define BKMG_SIZE 5
-
-		inline std::string format_byte_units(const long long i) {
-			double cpy = static_cast<double>(i);
-			char postfix[] = BKMG_RANGE;
-			int idx = 0;
-			double acpy = cpy < 0 ? -cpy : cpy;
-			while ((acpy > 999) && (idx < BKMG_SIZE)) {
-				cpy /= 1024;
-				acpy = cpy < 0 ? -cpy : cpy;
-				idx++;
-			}
-			std::stringstream ss;
-			ss << std::setiosflags(std::ios::fixed) << std::setprecision(3) << cpy;
-			std::string ret = ss.str();
-			std::string::size_type pos = ret.find_last_not_of("0");
-			if (pos != std::string::npos) {
-				if (ret[pos] == '.')
-					pos--;
-				ret = ret.substr(0, pos + 1);
-			}
-			ret += postfix[idx];
-			if (idx > 0)
-				ret += "B";
-			return ret;
-		}
-		inline std::string format_byte_units(const unsigned long long i) {
-			double cpy = static_cast<double>(i);
-			char postfix[] = BKMG_RANGE;
-			int idx = 0;
-			while ((cpy > 999) && (idx < BKMG_SIZE)) {
-				cpy /= 1024;
-				idx++;
-			}
-			std::stringstream ss;
-			ss << std::setiosflags(std::ios::fixed) << std::setprecision(3) << cpy;
-			std::string ret = ss.str();
-			std::string::size_type pos = ret.find_last_not_of("0");
-			if (pos != std::string::npos) {
-				if (ret[pos] == '.')
-					pos--;
-				ret = ret.substr(0, pos + 1);
-			}
-			ret += postfix[idx];
-			if (idx > 0)
-				ret += "B";
-			return ret;
-		}
-		template<class T>
-		inline double convert_to_byte_units(T i, const std::string unit) {
-			std::string unit_uc = boost::to_upper_copy(unit);
-			char postfix[] = BKMG_RANGE;
-			int idx = 0;
-			if (unit_uc.size() == 0) {
-				return i;
-			}
-			double cpy = static_cast<double>(i);
-			while (idx < BKMG_SIZE) {
-				if (unit_uc[0] == postfix[idx]) {
-					return cpy;
-				}
-				cpy /= 1024.0;
-				idx++;
-			}
-			return cpy;
-		}
-		template<class T>
-		inline std::string format_byte_units(T i, std::string unit) {
-			std::stringstream ss;
-			double cpy = static_cast<double>(i);
-			char postfix[] = BKMG_RANGE;
-			if (unit.size() == 0) {
-				ss << cpy;
-				return ss.str();
-			}
-			for (int i = 0; i < BKMG_SIZE; i++) {
-				if (unit[0] == postfix[i]) {
-					ss << std::setiosflags(std::ios::fixed) << std::setprecision(3) << cpy;
-					std::string s = ss.str();
-					std::string::size_type pos = s.find_last_not_of("0");
-					if (pos != std::string::npos) {
-						s = s.substr(0, pos + 1);
-					}
-					return s;
-				}
-				cpy /= 1024;
-			}
-			ss << cpy;
-			return ss.str();
-		}
-		inline std::string find_proper_unit_BKMG(unsigned long long i) {
-			double cpy = static_cast<double>(i);
-			char postfix[] = BKMG_RANGE;
-			int idx = 0;
-			while ((cpy > 999) && (idx < BKMG_SIZE)) {
-				cpy /= 1024;
-				idx++;
-			}
-			std::string ret = std::string(1, postfix[idx]);
-			if (idx > 0)
-				ret += "B";
-			return ret;
-		}
-	}
+// Validate that `time` is a well-formed duration spec: optional whitespace,
+// one or more digits, optionally followed by a single unit suffix character
+// (s/m/h/d/w in either case), and optional trailing whitespace. Throws
+// std::invalid_argument if the input contains anything else; this avoids
+// silently ignoring typos such as `time=3000foobar` (issue #589).
+inline void validate_time_spec(const std::string &time) {
+  std::size_t i = 0;
+  while (i < time.size() && std::isspace(static_cast<unsigned char>(time[i]))) ++i;
+  const std::size_t digits_start = i;
+  while (i < time.size() && std::isdigit(static_cast<unsigned char>(time[i]))) ++i;
+  if (i == digits_start) throw std::invalid_argument("Invalid time specification: '" + time + "'");
+  if (i < time.size()) {
+    const char c = time[i];
+    if (c == 's' || c == 'S' || c == 'm' || c == 'M' || c == 'h' || c == 'H' || c == 'd' || c == 'D' || c == 'w' || c == 'W') ++i;
+  }
+  while (i < time.size() && std::isspace(static_cast<unsigned char>(time[i]))) ++i;
+  if (i != time.size()) throw std::invalid_argument("Invalid time specification: '" + time + "'");
 }
+
+template <class T>
+T decode_time(const std::string &time, unsigned int factor = 1) {
+  validate_time_spec(time);
+  const auto p = time.find_first_of("sSmMhHdDwW");
+  const auto pend = time.find_first_not_of("0123456789");
+  T value = boost::lexical_cast<T>(pend == std::string::npos ? time : time.substr(0, pend));
+  if (p == std::string::npos) return value * factor;
+  if ((time[p] == 's') || (time[p] == 'S')) return value * factor;
+  if ((time[p] == 'm') || (time[p] == 'M')) return value * 60 * factor;
+  if ((time[p] == 'h') || (time[p] == 'H')) return value * 60 * 60 * factor;
+  if ((time[p] == 'd') || (time[p] == 'D')) return value * 24 * 60 * 60 * factor;
+  if ((time[p] == 'w') || (time[p] == 'W')) return value * 7 * 24 * 60 * 60 * factor;
+  return value * factor;
+}
+
+#define WEEK (7 * 24 * 60 * 60 * 1000)
+#define DAY (24 * 60 * 60 * 1000)
+#define HOUR (60 * 60 * 1000)
+#define MINUTE (60 * 1000)
+#define SEC (1000)
+
+// Maximum unit to use when formatting a duration with `itos_as_time`.
+// Picking a smaller maximum forces the result to use coarser units only
+// (for example: `unit_day` keeps results bounded to days even for very long
+// uptimes, so a 6-week uptime renders as `42d 00:00`). The default is
+// `unit_week` which preserves backwards compatible output (issue #590).
+enum itos_as_time_unit { unit_second = 0, unit_minute = 1, unit_hour = 2, unit_day = 3, unit_week = 4 };
+
+// Parse a single-letter time-unit token (s|m|h|d|w, case-insensitive) into
+// `itos_as_time_unit`. Throws `std::invalid_argument` on anything else so
+// callers can surface a clear error to users (issue #590 follow-up).
+inline itos_as_time_unit parse_itos_as_time_unit(const std::string &s) {
+  if (s.size() == 1) {
+    switch (std::tolower(static_cast<unsigned char>(s[0]))) {
+      case 's':
+        return unit_second;
+      case 'm':
+        return unit_minute;
+      case 'h':
+        return unit_hour;
+      case 'd':
+        return unit_day;
+      case 'w':
+        return unit_week;
+      default:;
+    }
+  }
+  throw std::invalid_argument("Invalid time unit: '" + s + "' (expected one of s|m|h|d|w)");
+}
+
+inline std::string itos_as_time(const unsigned long long time, itos_as_time_unit max_unit = unit_week) {
+  unsigned long long rest = time;
+  std::stringstream ss;
+  if (time > WEEK && max_unit >= unit_week) {
+    const auto w = static_cast<unsigned int>(rest / WEEK);
+    rest -= (static_cast<unsigned long long>(w) * WEEK);
+    const auto d = static_cast<unsigned int>(rest / DAY);
+    rest -= (static_cast<unsigned long long>(d) * DAY);
+    const auto h = static_cast<unsigned int>(rest / HOUR);
+    rest -= (static_cast<unsigned long long>(h) * HOUR);
+    const auto m = static_cast<unsigned int>(rest / MINUTE);
+    ss << w;
+    ss << "w " << d << "d ";
+    ss << std::setfill('0') << std::setw(2);
+    ss << h << ":" << std::setw(2) << m;
+  } else if (time > DAY && max_unit >= unit_day) {
+    const auto d = static_cast<unsigned int>(rest / DAY);
+    rest -= (static_cast<unsigned long long>(d) * DAY);
+    const auto h = static_cast<unsigned int>(rest / HOUR);
+    rest -= (static_cast<unsigned long long>(h) * HOUR);
+    const auto m = static_cast<unsigned int>(rest / MINUTE);
+    ss << d;
+    ss << "d ";
+    ss << std::setfill('0') << std::setw(2);
+    ss << h << ":" << std::setw(2) << m;
+  } else if (time > HOUR && max_unit >= unit_hour) {
+    const auto h = static_cast<unsigned int>(rest / HOUR);
+    rest -= (static_cast<unsigned long long>(h) * HOUR);
+    const auto m = static_cast<unsigned int>(rest / MINUTE);
+    ss << std::setfill('0') << std::setw(2);
+    ss << h << ":" << std::setw(2) << m;
+  } else if (time > MINUTE && max_unit >= unit_minute) {
+    ss << std::setfill('0');
+    ss << "0:" << std::setw(2) << static_cast<unsigned int>(time / (60 * 1000));
+  } else if (time > SEC)
+    ss << boost::lexical_cast<std::string>(static_cast<unsigned int>(time / (1000))) << "s";
+  else
+    ss << static_cast<unsigned int>(time);
+  return ss.str();
+}
+template <class T>
+T stox_as_time_sec(const std::string &time, const std::string &default_unit) {
+  validate_time_spec(time);
+  const auto p = time.find_first_of("sSmMhHdDwW");
+  const auto pend = time.find_first_not_of("0123456789");
+  T value = str::stox<T>(pend == std::string::npos ? time : time.substr(0, pend));
+  std::string unit = default_unit;
+  if (p != std::string::npos) {
+    unit = time.substr(p);
+  }
+  char u = ' ';
+  if (!unit.empty()) {
+    u = unit[0];
+  }
+  if ((u == 's') || (u == 'S')) return value;
+  if ((u == 'm') || (u == 'M')) return value * 60;
+  if ((u == 'h') || (u == 'H')) return value * 60 * 60;
+  if ((u == 'd') || (u == 'D')) return value * 24 * 60 * 60;
+  if ((u == 'w') || (u == 'W')) return value * 7 * 24 * 60 * 60;
+  return value;
+}
+
+//
+// Units
+//
+template <class T>
+T decode_byte_units(const T value, const std::string &unit) {
+  if (unit.empty()) return value;
+  if (unit[0] == 'B' || unit[0] == 'b') return value;
+  if (unit[0] == 'K' || unit[0] == 'k') return value * 1024;
+  if (unit[0] == 'M' || unit[0] == 'm') return value * 1024 * 1024;
+  if (unit[0] == 'G' || unit[0] == 'g') return value * 1024 * 1024 * 1024;
+  if (unit[0] == 'T' || unit[0] == 't') return value * 1024 * 1024 * 1024 * 1024;
+  return value;
+}
+inline long long decode_byte_units(const std::string &s) {
+  std::string::size_type p = s.find_first_not_of("0123456789");
+  if (p == std::string::npos || p == 0) return boost::lexical_cast<long long>(s);
+  std::string numbers = s.substr(0, p);
+  return decode_byte_units(boost::lexical_cast<long long>(numbers), s.substr(p));
+}
+constexpr char BKMG_RANGE[] = "BKMGTPE?";
+constexpr std::size_t BKMG_SIZE = 7;
+
+inline std::string format_byte_units(const long long i) {
+  auto cpy = static_cast<double>(i);
+  std::size_t idx = 0;
+  double acpy = cpy < 0 ? -cpy : cpy;
+  while ((acpy > 999) && (idx < BKMG_SIZE)) {
+    cpy /= 1024;
+    acpy = cpy < 0 ? -cpy : cpy;
+    idx++;
+  }
+  std::stringstream ss;
+  ss << std::setiosflags(std::ios::fixed) << std::setprecision(3) << cpy;
+  std::string ret = ss.str();
+  std::string::size_type pos = ret.find_last_not_of('0');
+  if (pos != std::string::npos) {
+    if (ret[pos] == '.') pos--;
+    ret = ret.substr(0, pos + 1);
+  }
+  ret += BKMG_RANGE[idx];
+  if (idx > 0) ret += "B";
+  return ret;
+}
+inline std::string format_byte_units(const unsigned long long i) {
+  auto cpy = static_cast<double>(i);
+  std::size_t idx = 0;
+  while ((cpy > 999) && (idx < BKMG_SIZE)) {
+    cpy /= 1024;
+    idx++;
+  }
+  std::stringstream ss;
+  ss << std::setiosflags(std::ios::fixed) << std::setprecision(3) << cpy;
+  std::string ret = ss.str();
+  std::string::size_type pos = ret.find_last_not_of('0');
+  if (pos != std::string::npos) {
+    if (ret[pos] == '.') pos--;
+    ret = ret.substr(0, pos + 1);
+  }
+  ret += BKMG_RANGE[idx];
+  if (idx > 0) ret += "B";
+  return ret;
+}
+template <class T>
+double convert_to_byte_units(T i, const std::string &unit) {
+  const std::string unit_uc = boost::to_upper_copy(unit);
+  std::size_t idx = 0;
+  if (unit_uc.empty()) {
+    return static_cast<double>(i);
+  }
+  auto cpy = static_cast<double>(i);
+  while (idx < BKMG_SIZE) {
+    if (unit_uc[0] == BKMG_RANGE[idx]) {
+      return cpy;
+    }
+    cpy /= 1024.0;
+    idx++;
+  }
+  return cpy;
+}
+template <class T>
+std::string format_byte_units(T value, std::string unit) {
+  std::stringstream ss;
+  auto cpy = static_cast<double>(value);
+  if (unit.empty()) {
+    ss << cpy;
+    return ss.str();
+  }
+  for (std::size_t i = 0; i < BKMG_SIZE; i++) {
+    if (unit[0] == BKMG_RANGE[i]) {
+      ss << std::setiosflags(std::ios::fixed) << std::setprecision(3) << cpy;
+      std::string s = ss.str();
+      std::string::size_type pos = s.find_last_not_of('0');
+      if (pos != std::string::npos) {
+        if (s[pos] == '.') {
+          if (pos == 0) {
+            // Handle strings like ".000" by normalizing to "0"
+            s = "0";
+            return s;
+          }
+          --pos;
+        }
+        s = s.substr(0, pos + 1);
+      }
+      return s;
+    }
+    cpy /= 1024;
+  }
+  ss << cpy;
+  return ss.str();
+}
+inline std::string find_proper_unit_BKMG(unsigned long long i) {
+  auto cpy = static_cast<double>(i);
+  std::size_t idx = 0;
+  while ((cpy > 999) && (idx < BKMG_SIZE)) {
+    cpy /= 1024;
+    idx++;
+  }
+  auto ret = std::string(1, BKMG_RANGE[idx]);
+  if (idx > 0) ret += "B";
+  return ret;
+}
+}  // namespace format
+}  // namespace str

@@ -1,0 +1,52 @@
+---
+name: Download TinyXml2
+description: Download and cache TinyXml2
+inputs:
+  version:
+    description: The TinyXml2 version to cache
+    required: true
+outputs:
+  path:
+    description: The path to the folder (windows \ format)
+    value:  ${{ steps.path.outputs.path }}
+  path_unix:
+    description: The path to the folder (unix / format)
+    value:  ${{ steps.path.outputs.path_unix }}
+runs:
+  using: composite
+  steps:
+    - name: Download
+      run: |
+        curl -L https://github.com/leethomason/tinyxml2/archive/refs/tags/${{ inputs.version }}.zip --output tinyxml2.zip
+      working-directory: tmp
+      shell: bash
+
+    - name: Unzip on windows
+      if: runner.os == 'Windows'
+      run: |
+        7z x tinyxml2.zip
+        del tinyxml2.zip
+      working-directory: tmp
+      shell: cmd
+
+    - name: Unzip on linux
+      if: runner.os != 'Windows'
+      run: |
+          unzip tinyxml2.zip
+          rm tinyxml2.zip
+      working-directory: tmp
+      shell: bash
+
+    - id: path
+      run: |
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          path=$(pwd -W)
+          path_unix=$(pwd -W | sed 's/\\/\//g')
+        else
+          path=$(pwd)
+          path_unix=$path
+        fi
+        echo "path=$path" >> $GITHUB_OUTPUT
+        echo "path_unix=$path_unix" >> $GITHUB_OUTPUT
+      shell: bash
+      working-directory: tmp/tinyxml2-${{ inputs.version }}

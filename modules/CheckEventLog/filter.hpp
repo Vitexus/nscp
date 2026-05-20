@@ -20,200 +20,154 @@
 #pragma once
 
 #ifdef WIN32
-#define WIN32_LEAN_AND_MEAN		// Exclude rarely-used stuff from Windows headers
+#define WIN32_LEAN_AND_MEAN  // Exclude rarely-used stuff from Windows headers
 #include <Windows.h>
 #endif
 
-#include <map>
-#include <string>
-
 #include <boost/optional.hpp>
-#include <boost/shared_ptr.hpp>
-#include <boost/noncopyable.hpp>
-
-#include <error/error.hpp>
-#include <str/format.hpp>
-
-#include <parsers/where.hpp>
-#include <parsers/where/node.hpp>
-#include <parsers/where/engine.hpp>
+#include <bytes/buffer.hpp>
+#include <handle.hpp>
+#include <map>
 #include <parsers/filter/modern_filter.hpp>
 #include <parsers/where/filter_handler_impl.hpp>
-
-#include <buffer.hpp>
-#include <handle.hpp>
+#include <parsers/where/node.hpp>
+#include <str/format.hpp>
+#include <string>
 
 #include "eventlog_record.hpp"
 #include "modern_eventlog.hpp"
 
 namespace eventlog_filter {
-	struct filter_obj : boost::noncopyable {
+struct filter_obj : boost::noncopyable {
+  unsigned long long now_;
 
-		unsigned long long now_;
+  filter_obj(unsigned long long now) : now_(now) {}
+  virtual ~filter_obj() = default;
 
-		filter_obj(unsigned long long now) : now_(now) {}
-		virtual ~filter_obj() {}
+  virtual std::string show() = 0;
 
-		virtual long long get_id() const = 0;
-		virtual std::string get_provider() const = 0;
-		virtual std::string get_guid() const = 0;
-		virtual std::string get_computer() const = 0;
-		virtual long long get_el_type() const = 0;
-		virtual std::string get_task() = 0;
-		virtual std::string get_keyword() = 0;
-		virtual std::string get_el_type_s() const = 0;
-		virtual long long get_severity() const = 0;
-		virtual void set_truncate(int truncate) = 0;
-		virtual std::string get_message() = 0;
-		virtual std::string get_xml() = 0;
-		virtual std::string get_strings() = 0;
-		virtual std::string get_log() const = 0;
-		virtual long long get_written() const = 0;
-		virtual long long get_category() const = 0;
-		virtual long long get_facility() const = 0;
-		virtual long long get_customer() const = 0;
-		virtual long long get_raw_id() const = 0;
-		virtual long long get_generated() const = 0;
-		virtual bool is_modern() const = 0;
-		virtual std::string get_written_s() const {
-			unsigned long long time = get_written();
-			return str::format::itos_as_time((now_ - time) * 1000);
-		}
-		virtual std::string get_written_hs() const;
-		virtual std::string to_string() const = 0;
-	};
+  virtual long long get_id() const = 0;
+  virtual std::string get_provider() const = 0;
+  virtual std::string get_guid() const = 0;
+  virtual std::string get_computer() const = 0;
+  virtual long long get_el_type() const = 0;
+  virtual std::string get_task() = 0;
+  virtual std::string get_opcode() = 0;
+  virtual std::string get_keyword() = 0;
+  virtual std::string get_el_type_s() const = 0;
+  virtual long long get_severity() const = 0;
+  virtual void set_truncate(int truncate) = 0;
+  virtual std::string get_message() = 0;
+  virtual std::string get_xml() = 0;
+  virtual std::string get_strings() = 0;
+  virtual std::string get_log() const = 0;
+  virtual long long get_written() const = 0;
+  virtual long long get_category() const = 0;
+  virtual long long get_facility() const = 0;
+  virtual long long get_customer() const = 0;
+  virtual long long get_raw_id() const = 0;
+  virtual long long get_generated() const = 0;
+  virtual bool is_modern() const = 0;
+  virtual std::string get_written_s() const {
+    unsigned long long time = get_written();
+    return str::format::itos_as_time((now_ - time) * 1000);
+  }
+  virtual std::string get_written_hs() const;
+  virtual std::string to_string() const = 0;
+};
 
-	struct old_filter_obj : filter_obj {
-		EventLogRecord record;
-		int truncate_message;
+struct old_filter_obj : filter_obj {
+  EventLogRecord record;
+  int truncate_message;
 
-		old_filter_obj(unsigned long long now, std::string file, const EVENTLOGRECORD *pevlr, const int truncate_message)
-			: filter_obj(now)
-			, record(file, pevlr)
-			, truncate_message(truncate_message) {}
+  old_filter_obj(unsigned long long now, std::string file, const EVENTLOGRECORD *pevlr, const int truncate_message)
+      : filter_obj(now), record(file, pevlr), truncate_message(truncate_message) {}
 
-		long long get_id() const {
-			return record.eventID();
-		}
-		std::string get_provider() const {
-			return utf8::cvt<std::string>(record.get_source());
-		}
-		std::string get_computer() const {
-			return utf8::cvt<std::string>(record.get_computer());
-		}
-		std::string get_task() {
-			return "";
-		}
-		std::string get_keyword() {
-			return "";
-		}
-		long long get_el_type() const {
-			return record.eventType();
-		}
-		std::string get_el_type_s() const;
-		long long get_severity() const {
-			return record.severity();
-		}
-		void set_truncate(int truncate) {
-			truncate_message = truncate;
-		}
-		std::string get_message() {
-			return utf8::cvt<std::string>(record.render_message(truncate_message));
-		}
-		std::string get_xml() {
-			return "";
-		}
-		std::string get_strings() {
-			return utf8::cvt<std::string>(record.enumStrings());
-		}
-		std::string get_log() const {
-			return utf8::cvt<std::string>(record.get_log());
-		}
-		std::string get_guid() const {
-			return "";
-		}
-		long long get_written() const {
-			return record.written();
-		}
-		long long get_category() const {
-			return record.category();
-		}
-		long long get_facility() const {
-			return record.facility();
-		}
-		long long get_customer() const {
-			return record.customer();
-		}
-		long long get_raw_id() const {
-			return record.raw_id();
-		}
-		long long get_generated() const {
-			return record.generated();
-		}
-		bool is_modern() const { return false; }
-		
-		virtual std::string to_string() const { 
-			return get_log() + ":" + str::xtos(get_id()) + "=" + get_el_type_s();
-		}
+  std::string show() override { return get_log() + ":" + str::xtos(get_id()) + "=" + get_el_type_s() + "('" + get_message() + "')"; }
 
-	};
+  long long get_id() const override { return record.eventID(); }
+  std::string get_provider() const override { return utf8::cvt<std::string>(record.get_source()); }
+  std::string get_computer() const override { return utf8::cvt<std::string>(record.get_computer()); }
+  std::string get_task() override { return ""; }
+  std::string get_opcode() override { return ""; }
+  std::string get_keyword() override { return ""; }
+  long long get_el_type() const override { return record.eventType(); }
+  std::string get_el_type_s() const override;
+  long long get_severity() const override { return record.severity(); }
+  void set_truncate(int truncate) override { truncate_message = truncate; }
+  std::string get_message() override { return utf8::cvt<std::string>(record.render_message(truncate_message)); }
+  std::string get_xml() override { return ""; }
+  std::string get_strings() override { return utf8::cvt<std::string>(record.enumStrings()); }
+  std::string get_log() const override { return utf8::cvt<std::string>(record.get_log()); }
+  std::string get_guid() const override { return ""; }
+  long long get_written() const override { return record.written(); }
+  long long get_category() const override { return record.category(); }
+  long long get_facility() const override { return record.facility(); }
+  long long get_customer() const override { return record.customer(); }
+  long long get_raw_id() const override { return record.raw_id(); }
+  long long get_generated() const override { return record.generated(); }
+  bool is_modern() const override { return false; }
 
-	struct new_filter_obj : filter_obj {
-		const std::string logfile;
-		eventlog::evt_handle hEvent;
-		hlp::buffer<wchar_t, eventlog::api::PEVT_VARIANT> buffer;
-		int truncate_message;
-		std::map<std::string, eventlog::evt_handle> providers_;
+  std::string to_string() const override { return get_log() + ":" + str::xtos(get_id()) + "=" + get_el_type_s(); }
+};
 
-		new_filter_obj(unsigned long long now, const std::string &logfile, eventlog::api::EVT_HANDLE hEvent, eventlog::evt_handle &hContext, const int truncate_message);
-		virtual ~new_filter_obj() {}
+struct new_filter_obj : filter_obj {
+  const std::string logfile;
+  eventlog::evt_handle hEvent;
+  hlp::buffer<wchar_t, eventlog::api::PEVT_VARIANT> buffer;
+  int truncate_message;
+  std::map<std::string, eventlog::evt_handle> providers_;
 
-		long long get_id() const {
-			return buffer.get()[eventlog::api::EvtSystemEventID].UInt16Val;
-		}
-		std::string get_provider() const;
-		std::string get_guid() const;
-		std::string get_computer() const;
-		long long get_el_type() const;
-		std::string get_task();
-		std::string get_keyword();
-		std::string get_el_type_s() const;
-		long long get_severity() const {
-			return 0;
-		}
-		std::string get_message();
-		std::string get_xml();
-		void set_truncate(int truncate) {
-			truncate_message = truncate;
-		}
-		std::string get_strings() {
-			return get_message();
-		}
-		std::string get_log() const;
-		long long get_written() const;
-		long long get_category() const;
-		long long get_facility() const {
-			return 0;
-		}
-		long long get_customer() const {
-			return 0;
-		}
-		long long get_raw_id() const {
-			return 0;
-		}
-		long long get_generated() const {
-			return 0;
-		}
-		bool is_modern() const { return true; }
-		eventlog::evt_handle& get_provider_handle(const std::string provider);
-		virtual std::string to_string() const { return logfile + ":" + str::xtos(get_id()) + "=" + get_el_type_s(); }
-	};
+  new_filter_obj(unsigned long long now, std::string logfile, eventlog::api::EVT_HANDLE hEvent, const eventlog::evt_handle &hContext, int truncate_message);
+  ~new_filter_obj() override = default;
 
-	typedef parsers::where::filter_handler_impl<boost::shared_ptr<filter_obj> > native_context;
-	struct filter_obj_handler : public native_context {
-		static const parsers::where::value_type type_custom_severity = parsers::where::type_custom_int_1;
-		static const parsers::where::value_type type_custom_type = parsers::where::type_custom_int_2;
-		filter_obj_handler();
-	};
-	typedef modern_filter::modern_filters<filter_obj, filter_obj_handler> filter;
-}
+  std::string show() override { return get_log() + ":" + str::xtos(get_id()) + "=" + get_el_type_s() + "('" + get_message() + "')"; }
+
+  long long get_id() const override { return buffer.get()[eventlog::api::EvtSystemEventID].UInt16Val; }
+  // Reconstruct the legacy 32-bit Event Record Id from the modern WinAPI fields.
+  // Classic (legacy) providers stash the upper 16 bits of the original DWORD EventID
+  // (severity/customer/reserved/facility) into EvtSystemQualifiers; manifest-based
+  // modern providers leave Qualifiers as Null. This mirrors the layout exposed by
+  // old_filter_obj::get_raw_id() so that the `rawid`, `severity`, `facility` and
+  // `customer` filter variables behave consistently across both code paths.
+  unsigned long get_raw_id_dword() const {
+    const DWORD eid = static_cast<DWORD>(buffer.get()[eventlog::api::EvtSystemEventID].UInt16Val) & 0xffff;
+    DWORD qual = 0;
+    if (eventlog::api::EvtVarTypeNull != buffer.get()[eventlog::api::EvtSystemQualifiers].Type) {
+      qual = static_cast<DWORD>(buffer.get()[eventlog::api::EvtSystemQualifiers].UInt16Val) & 0xffff;
+    }
+    return (qual << 16) | eid;
+  }
+  std::string get_provider() const override;
+  std::string get_guid() const override;
+  std::string get_computer() const override;
+  long long get_el_type() const override;
+  std::string get_task() override;
+  std::string get_opcode() override;
+  std::string get_keyword() override;
+  std::string get_el_type_s() const override;
+  long long get_severity() const override { return 0; }
+  std::string get_message() override;
+  std::string get_xml() override;
+  void set_truncate(const int truncate) override { truncate_message = truncate; }
+  std::string get_strings() override { return get_message(); }
+  std::string get_log() const override;
+  long long get_written() const override;
+  long long get_category() const override;
+  long long get_facility() const override { return (get_raw_id_dword() >> 16) & 0xfff; }
+  long long get_customer() const override { return (get_raw_id_dword() >> 29) & 0x1; }
+  long long get_raw_id() const override { return get_raw_id_dword(); }
+  long long get_generated() const override { return 0; }
+  bool is_modern() const override { return true; }
+  eventlog::evt_handle &get_provider_handle(const std::string &provider);
+  std::string to_string() const override { return logfile + ":" + str::xtos(get_id()) + "=" + get_el_type_s(); }
+};
+
+typedef parsers::where::filter_handler_impl<std::shared_ptr<filter_obj> > native_context;
+struct filter_obj_handler : native_context {
+  static constexpr parsers::where::value_type type_custom_severity = parsers::where::type_custom_int_1;
+  static constexpr parsers::where::value_type type_custom_type = parsers::where::type_custom_int_2;
+  filter_obj_handler();
+};
+typedef modern_filter::modern_filters<filter_obj, filter_obj_handler> filter;
+}  // namespace eventlog_filter

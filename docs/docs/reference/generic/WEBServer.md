@@ -4,6 +4,15 @@ A server that listens for incoming HTTP connection and processes incoming reques
 
 
 
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `WEBServer = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+WEBServer = enabled
+```
+
 
 
 
@@ -11,38 +20,40 @@ A server that listens for incoming HTTP connection and processes incoming reques
 
 
 
-| Path / Section                       | Description |
-|--------------------------------------|-------------|
-| [/settings/default](#)               |             |
-| [/settings/WEB/server](#web-server)  | Web server  |
-| [/settings/WEB/server/roles](#roles) | Roles       |
-| [/settings/WEB/server/users](#users) | Users       |
+| Path / Section                                  | Description       |
+|-------------------------------------------------|-------------------|
+| [/settings/default](#default-values)            | Default values    |
+| [/settings/WEB/server](#web-server)             | Web server        |
+| [/settings/WEB/server/log](#log-configuration)  | Log configuration |
+| [/settings/WEB/server/roles](#web-server-roles) | Web server roles  |
+| [/settings/WEB/server/users](#web-server-users) | Web server users  |
 
 
 
-### /settings/default <a id="/settings/default"/>
+### Default values <a id="/settings/default"></a>
+
+Default values used in other config sections.
 
 
 
 
-
-
-| Key                                         | Default Value | Description           |
-|---------------------------------------------|---------------|-----------------------|
-| [allowed hosts](#allowed-hosts)             | 127.0.0.1     | ALLOWED HOSTS         |
-| [bind to](#bind-to-address)                 |               | BIND TO ADDRESS       |
-| [cache allowed hosts](#cache-allowed-hosts) | true          | CACHE ALLOWED HOSTS   |
-| [encoding](#nrpe-payload-encoding)          |               | NRPE PAYLOAD ENCODING |
-| [inbox](#inbox)                             | inbox         | INBOX                 |
-| [password](#password)                       |               | PASSWORD              |
-| [socket queue size](#listen-queue)          | 0             | LISTEN QUEUE          |
-| [thread pool](#thread-pool)                 | 10            | THREAD POOL           |
-| [timeout](#timeout)                         | 30            | TIMEOUT               |
+| Key                                                 | Default Value | Description                 |
+|-----------------------------------------------------|---------------|-----------------------------|
+| [allowed hosts](#allowed-hosts)                     | 127.0.0.1     | Allowed hosts               |
+| [bind to](#bind-to-address)                         |               | BIND TO ADDRESS             |
+| [cache allowed hosts](#cache-list-of-allowed-hosts) | true          | Cache list of allowed hosts |
+| [encoding](#nrpe-payload-encoding)                  |               | NRPE PAYLOAD ENCODING       |
+| [inbox](#inbox)                                     | inbox         | INBOX                       |
+| [password](#password)                               |               | Password                    |
+| [socket queue size](#listen-queue)                  | 0             | LISTEN QUEUE                |
+| [thread pool](#thread-pool)                         | 10            | THREAD POOL                 |
+| [timeout](#timeout)                                 | 30            | TIMEOUT                     |
+| [timezone](#timezone)                               | local         | Timezone                    |
 
 
 
 ```ini
-# 
+# Default values used in other config sections.
 [/settings/default]
 allowed hosts=127.0.0.1
 cache allowed hosts=true
@@ -50,6 +61,7 @@ inbox=inbox
 socket queue size=0
 thread pool=10
 timeout=30
+timezone=local
 
 ```
 
@@ -57,7 +69,7 @@ timeout=30
 
 
 
-#### ALLOWED HOSTS <a id="/settings/default/allowed hosts"></a>
+#### Allowed hosts <a id="/settings/default/allowed hosts"></a>
 
 A comma separated list of allowed hosts. You can use netmasks (/ syntax) or * to create ranges.
 
@@ -65,19 +77,18 @@ A comma separated list of allowed hosts. You can use netmasks (/ syntax) or * to
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | allowed hosts                                                    |
-| Default value: | `127.0.0.1`                                                      |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | allowed hosts                           |
+| Default value: | `127.0.0.1`                             |
 
 
 **Sample:**
 
 ```
 [/settings/default]
-# ALLOWED HOSTS
+# Allowed hosts
 allowed hosts=127.0.0.1
 ```
 
@@ -92,12 +103,11 @@ Allows you to bind server to a specific local address. This has to be a dotted i
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | bind to                                                          |
-| Default value: | _N/A_                                                            |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | bind to                                 |
+| Default value: | _N/A_                                   |
 
 
 **Sample:**
@@ -110,7 +120,7 @@ bind to=
 
 
 
-#### CACHE ALLOWED HOSTS <a id="/settings/default/cache allowed hosts"></a>
+#### Cache list of allowed hosts <a id="/settings/default/cache allowed hosts"></a>
 
 If host names (DNS entries) should be cached, improves speed and security somewhat but won't allow you to have dynamic IPs for your Nagios server.
 
@@ -118,19 +128,18 @@ If host names (DNS entries) should be cached, improves speed and security somewh
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | cache allowed hosts                                              |
-| Default value: | `true`                                                           |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | cache allowed hosts                     |
+| Default value: | `true`                                  |
 
 
 **Sample:**
 
 ```
 [/settings/default]
-# CACHE ALLOWED HOSTS
+# Cache list of allowed hosts
 cache allowed hosts=true
 ```
 
@@ -145,13 +154,12 @@ cache allowed hosts=true
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | encoding                                                         |
-| Advanced:      | Yes (means it is not commonly used)                              |
-| Default value: | _N/A_                                                            |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | encoding                                |
+| Advanced:      | Yes (means it is not commonly used)     |
+| Default value: | _N/A_                                   |
 
 
 **Sample:**
@@ -172,12 +180,11 @@ The default channel to post incoming messages on
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | inbox                                                            |
-| Default value: | `inbox`                                                          |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | inbox                                   |
+| Default value: | `inbox`                                 |
 
 
 **Sample:**
@@ -190,7 +197,7 @@ inbox=inbox
 
 
 
-#### PASSWORD <a id="/settings/default/password"></a>
+#### Password <a id="/settings/default/password"></a>
 
 Password used to authenticate against server
 
@@ -199,19 +206,18 @@ Password used to authenticate against server
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | password                                                         |
-| Default value: | _N/A_                                                            |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | password                                |
+| Default value: | _N/A_                                   |
 
 
 **Sample:**
 
 ```
 [/settings/default]
-# PASSWORD
+# Password
 password=
 ```
 
@@ -225,13 +231,12 @@ Number of sockets to queue before starting to refuse new incoming connections. T
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | socket queue size                                                |
-| Advanced:      | Yes (means it is not commonly used)                              |
-| Default value: | `0`                                                              |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | socket queue size                       |
+| Advanced:      | Yes (means it is not commonly used)     |
+| Default value: | `0`                                     |
 
 
 **Sample:**
@@ -252,13 +257,12 @@ socket queue size=0
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | thread pool                                                      |
-| Advanced:      | Yes (means it is not commonly used)                              |
-| Default value: | `10`                                                             |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | thread pool                             |
+| Advanced:      | Yes (means it is not commonly used)     |
+| Default value: | `10`                                    |
 
 
 **Sample:**
@@ -273,18 +277,17 @@ thread pool=10
 
 #### TIMEOUT <a id="/settings/default/timeout"></a>
 
-Timeout when reading packets on incoming sockets. If the data has not arrived within this time we will bail out.
+Timeout (in seconds) when reading packets on incoming sockets. If the data has not arrived within this time we will bail out.
 
 
 
 
 
-| Key            | Description                                                      |
-|----------------|------------------------------------------------------------------|
-| Path:          | [/settings/default](#/settings/default)                          |
-| Key:           | timeout                                                          |
-| Default value: | `30`                                                             |
-| Used by:       | CheckMKServer, NRPEServer, NSCAServer, NSClientServer, WEBServer |
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | timeout                                 |
+| Default value: | `30`                                    |
 
 
 **Sample:**
@@ -296,30 +299,67 @@ timeout=30
 ```
 
 
-### Web server <a id="/settings/WEB/server"/>
+
+#### Timezone <a id="/settings/default/timezone"></a>
+
+Timezone used to render dates such as boot time. Accepts 'local' (default), 'utc', or any POSIX TZ string parseable by Boost.Date_time (e.g. 'MST-07' or 'EST-05EDT,M3.2.0,M11.1.0').
+
+
+
+
+
+| Key            | Description                             |
+|----------------|-----------------------------------------|
+| Path:          | [/settings/default](#/settings/default) |
+| Key:           | timezone                                |
+| Advanced:      | Yes (means it is not commonly used)     |
+| Default value: | `local`                                 |
+
+
+**Sample:**
+
+```
+[/settings/default]
+# Timezone
+timezone=local
+```
+
+
+### Web server <a id="/settings/WEB/server"></a>
 
 Section for WEB (WEBServer.dll) (check_WEB) protocol options.
 
 
 
 
-| Key                                         | Default Value                       | Description         |
-|---------------------------------------------|-------------------------------------|---------------------|
-| [allowed hosts](#allowed-hosts)             | 127.0.0.1                           | ALLOWED HOSTS       |
-| [cache allowed hosts](#cache-allowed-hosts) | true                                | CACHE ALLOWED HOSTS |
-| [certificate](#certificate)                 | ${certificate-path}/certificate.pem | CERTIFICATE         |
-| [password](#password)                       |                                     | PASSWORD            |
-| [port](#port-number)                        | 8443                                | PORT NUMBER         |
-| [threads](#number-of-threads)               | 10                                  | NUMBER OF THREADS   |
+| Key                                                                  | Default Value                       | Description                        |
+|----------------------------------------------------------------------|-------------------------------------|------------------------------------|
+| [allow anonymous access](#allow-anonymous-access)                    | false                               | ALLOW ANONYMOUS ACCESS             |
+| [allowed hosts](#allowed-hosts)                                      | 127.0.0.1                           | Allowed hosts                      |
+| [auth rate limit block seconds](#auth-rate-limit-(block-seconds))    | 60                                  | AUTH RATE LIMIT (BLOCK SECONDS)    |
+| [auth rate limit max failures](#auth-rate-limit-(failures))          | 10                                  | AUTH RATE LIMIT (FAILURES)         |
+| [cache allowed hosts](#cache-list-of-allowed-hosts)                  | true                                | Cache list of allowed hosts        |
+| [certificate](#tls-certificate)                                      | ${certificate-path}/certificate.pem | TLS Certificate                    |
+| [certificate key](#tls-private-key)                                  |                                     | TLS private key                    |
+| [disable admin user](#disable-admin-user)                            | false                               | DISABLE ADMIN USER                 |
+| [legacy query auth user agents](#legacy-query-string-auth-allowlist) | Icinga/check_nscp_api               | LEGACY QUERY-STRING AUTH ALLOWLIST |
+| [password](#password)                                                |                                     | Password                           |
+| [port](#server-port)                                                 | 8443                                | Server port                        |
+| [threads](#server-threads)                                           | 10                                  | Server threads                     |
 
 
 
 ```ini
 # Section for WEB (WEBServer.dll) (check_WEB) protocol options.
 [/settings/WEB/server]
+allow anonymous access=false
 allowed hosts=127.0.0.1
+auth rate limit block seconds=60
+auth rate limit max failures=10
 cache allowed hosts=true
 certificate=${certificate-path}/certificate.pem
+disable admin user=false
+legacy query auth user agents=Icinga/check_nscp_api
 port=8443
 threads=10
 
@@ -329,9 +369,34 @@ threads=10
 
 
 
-#### ALLOWED HOSTS <a id="/settings/WEB/server/allowed hosts"></a>
+#### ALLOW ANONYMOUS ACCESS <a id="/settings/WEB/server/allow anonymous access"></a>
 
-A comma separated list of allowed hosts. You can use netmasks (/ syntax) or * to create ranges. parent for this key is found under: /settings/default this is marked as advanced in favor of the parent.
+When false (the default) any role named \`anonymous\` registered via /settings/WEB/server/roles is ignored and the WEB server never answers an unauthenticated request. Set to true only if you intentionally want to expose endpoints (via the \`anonymous\` role grants) without authentication.
+
+
+
+
+
+| Key            | Description                                   |
+|----------------|-----------------------------------------------|
+| Path:          | [/settings/WEB/server](#/settings/WEB/server) |
+| Key:           | allow anonymous access                        |
+| Default value: | `false`                                       |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server]
+# ALLOW ANONYMOUS ACCESS
+allow anonymous access=false
+```
+
+
+
+#### Allowed hosts <a id="/settings/WEB/server/allowed hosts"></a>
+
+A comma separated list of allowed hosts. You can use netmasks (/ syntax) or * to create ranges.
 
 
 
@@ -341,24 +406,72 @@ A comma separated list of allowed hosts. You can use netmasks (/ syntax) or * to
 |----------------|-----------------------------------------------|
 | Path:          | [/settings/WEB/server](#/settings/WEB/server) |
 | Key:           | allowed hosts                                 |
-| Advanced:      | Yes (means it is not commonly used)           |
 | Default value: | `127.0.0.1`                                   |
-| Used by:       | WEBServer                                     |
 
 
 **Sample:**
 
 ```
 [/settings/WEB/server]
-# ALLOWED HOSTS
+# Allowed hosts
 allowed hosts=127.0.0.1
 ```
 
 
 
-#### CACHE ALLOWED HOSTS <a id="/settings/WEB/server/cache allowed hosts"></a>
+#### AUTH RATE LIMIT (BLOCK SECONDS) <a id="/settings/WEB/server/auth rate limit block seconds"></a>
 
-If host names (DNS entries) should be cached, improves speed and security somewhat but won't allow you to have dynamic IPs for your Nagios server. parent for this key is found under: /settings/default this is marked as advanced in favor of the parent.
+How long an IP stays blocked after hitting \`auth rate limit max failures\` consecutive failures. Default 60 s.
+
+
+
+
+
+| Key            | Description                                   |
+|----------------|-----------------------------------------------|
+| Path:          | [/settings/WEB/server](#/settings/WEB/server) |
+| Key:           | auth rate limit block seconds                 |
+| Default value: | `60`                                          |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server]
+# AUTH RATE LIMIT (BLOCK SECONDS)
+auth rate limit block seconds=60
+```
+
+
+
+#### AUTH RATE LIMIT (FAILURES) <a id="/settings/WEB/server/auth rate limit max failures"></a>
+
+How many consecutive failed authentication attempts from one client IP trigger the block. Default 10. Set to 0 to disable the limiter entirely (useful for integration test harnesses that intentionally probe failed auth).
+
+
+
+
+
+| Key            | Description                                   |
+|----------------|-----------------------------------------------|
+| Path:          | [/settings/WEB/server](#/settings/WEB/server) |
+| Key:           | auth rate limit max failures                  |
+| Default value: | `10`                                          |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server]
+# AUTH RATE LIMIT (FAILURES)
+auth rate limit max failures=10
+```
+
+
+
+#### Cache list of allowed hosts <a id="/settings/WEB/server/cache allowed hosts"></a>
+
+If host names (DNS entries) should be cached, improves speed and security somewhat but won't allow you to have dynamic IPs for your Nagios server.
 
 
 
@@ -368,22 +481,20 @@ If host names (DNS entries) should be cached, improves speed and security somewh
 |----------------|-----------------------------------------------|
 | Path:          | [/settings/WEB/server](#/settings/WEB/server) |
 | Key:           | cache allowed hosts                           |
-| Advanced:      | Yes (means it is not commonly used)           |
 | Default value: | `true`                                        |
-| Used by:       | WEBServer                                     |
 
 
 **Sample:**
 
 ```
 [/settings/WEB/server]
-# CACHE ALLOWED HOSTS
+# Cache list of allowed hosts
 cache allowed hosts=true
 ```
 
 
 
-#### CERTIFICATE <a id="/settings/WEB/server/certificate"></a>
+#### TLS Certificate <a id="/settings/WEB/server/certificate"></a>
 
 Ssl certificate to use for the ssl server
 
@@ -396,22 +507,97 @@ Ssl certificate to use for the ssl server
 | Path:          | [/settings/WEB/server](#/settings/WEB/server) |
 | Key:           | certificate                                   |
 | Default value: | `${certificate-path}/certificate.pem`         |
-| Used by:       | WEBServer                                     |
 
 
 **Sample:**
 
 ```
 [/settings/WEB/server]
-# CERTIFICATE
+# TLS Certificate
 certificate=${certificate-path}/certificate.pem
 ```
 
 
 
-#### PASSWORD <a id="/settings/WEB/server/password"></a>
+#### TLS private key <a id="/settings/WEB/server/certificate key"></a>
 
-Password used to authenticate against server parent for this key is found under: /settings/default this is marked as advanced in favor of the parent.
+The private key for the certificate if not in the same file
+
+
+
+
+
+
+| Key            | Description                                   |
+|----------------|-----------------------------------------------|
+| Path:          | [/settings/WEB/server](#/settings/WEB/server) |
+| Key:           | certificate key                               |
+| Default value: | _N/A_                                         |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server]
+# TLS private key
+certificate key=
+```
+
+
+
+#### DISABLE ADMIN USER <a id="/settings/WEB/server/disable admin user"></a>
+
+When true, suppress the built-in \`admin\` user entirely. The default admin is not seeded on first boot, any pre-existing \`admin\` entry in /settings/WEB/server/users is ignored at load time, and the fallback that auto-creates admin when no users are configured is skipped. Use this when you want the WEB server up for monitoring (queries, metrics, anonymous endpoints) but do NOT want any account that can remotely reconfigure the host - even if credentials are compromised. Define your own read-only users under /settings/WEB/server/users (or rely on \`allow anonymous access\` with a tightly-scoped \`anonymous\` role) so something remains callable.
+
+
+
+
+
+| Key            | Description                                   |
+|----------------|-----------------------------------------------|
+| Path:          | [/settings/WEB/server](#/settings/WEB/server) |
+| Key:           | disable admin user                            |
+| Default value: | `false`                                       |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server]
+# DISABLE ADMIN USER
+disable admin user=false
+```
+
+
+
+#### LEGACY QUERY-STRING AUTH ALLOWLIST <a id="/settings/WEB/server/legacy query auth user agents"></a>
+
+Comma-separated list of User-Agent substrings (case-insensitive) for clients allowed to authenticate via the legacy \`?password=...\` / \`?TOKEN=...\` query-string mechanism. The fallback was removed for security in 340b8db1 because URL parameters leak into browser history, proxy logs and Referer headers. Defaults to 'Icinga/check_nscp_api' so Icinga's bundled check_nscp_api plugin keeps working without admitting any other client that happens to mention Icinga in its User-Agent. Set to empty string to disable the fallback entirely.
+
+
+
+
+
+| Key            | Description                                   |
+|----------------|-----------------------------------------------|
+| Path:          | [/settings/WEB/server](#/settings/WEB/server) |
+| Key:           | legacy query auth user agents                 |
+| Default value: | `Icinga/check_nscp_api`                       |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server]
+# LEGACY QUERY-STRING AUTH ALLOWLIST
+legacy query auth user agents=Icinga/check_nscp_api
+```
+
+
+
+#### Password <a id="/settings/WEB/server/password"></a>
+
+Password used to authenticate against server
 
 
 
@@ -422,22 +608,20 @@ Password used to authenticate against server parent for this key is found under:
 |----------------|-----------------------------------------------|
 | Path:          | [/settings/WEB/server](#/settings/WEB/server) |
 | Key:           | password                                      |
-| Advanced:      | Yes (means it is not commonly used)           |
 | Default value: | _N/A_                                         |
-| Used by:       | WEBServer                                     |
 
 
 **Sample:**
 
 ```
 [/settings/WEB/server]
-# PASSWORD
+# Password
 password=
 ```
 
 
 
-#### PORT NUMBER <a id="/settings/WEB/server/port"></a>
+#### Server port <a id="/settings/WEB/server/port"></a>
 
 Port to use for WEB server.
 
@@ -450,20 +634,19 @@ Port to use for WEB server.
 | Path:          | [/settings/WEB/server](#/settings/WEB/server) |
 | Key:           | port                                          |
 | Default value: | `8443`                                        |
-| Used by:       | WEBServer                                     |
 
 
 **Sample:**
 
 ```
 [/settings/WEB/server]
-# PORT NUMBER
+# Server port
 port=8443
 ```
 
 
 
-#### NUMBER OF THREADS <a id="/settings/WEB/server/threads"></a>
+#### Server threads <a id="/settings/WEB/server/threads"></a>
 
 The number of threads in the sever response pool.
 
@@ -476,38 +659,249 @@ The number of threads in the sever response pool.
 | Path:          | [/settings/WEB/server](#/settings/WEB/server) |
 | Key:           | threads                                       |
 | Default value: | `10`                                          |
-| Used by:       | WEBServer                                     |
 
 
 **Sample:**
 
 ```
 [/settings/WEB/server]
-# NUMBER OF THREADS
+# Server threads
 threads=10
 ```
 
 
-### Roles <a id="/settings/WEB/server/roles"/>
+### Log configuration <a id="/settings/WEB/server/log"></a>
+
+Configure which messages from the web server are logged.
+
+
+
+
+| Key                  | Default Value | Description |
+|----------------------|---------------|-------------|
+| [debug](#log-debug)  | false         | Log debug   |
+| [error](#log-errors) | true          | Log errors  |
+| [info](#log-info)    | false         | Log info    |
+
+
+
+```ini
+# Configure which messages from the web server are logged.
+[/settings/WEB/server/log]
+debug=false
+error=true
+info=false
+
+```
+
+
+
+
+
+#### Log debug <a id="/settings/WEB/server/log/debug"></a>
+
+Enable logging of debug messages from the web server.
+
+
+
+
+
+| Key            | Description                                           |
+|----------------|-------------------------------------------------------|
+| Path:          | [/settings/WEB/server/log](#/settings/WEB/server/log) |
+| Key:           | debug                                                 |
+| Default value: | `false`                                               |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server/log]
+# Log debug
+debug=false
+```
+
+
+
+#### Log errors <a id="/settings/WEB/server/log/error"></a>
+
+Enable logging of errors from the web server.
+
+
+
+
+
+| Key            | Description                                           |
+|----------------|-------------------------------------------------------|
+| Path:          | [/settings/WEB/server/log](#/settings/WEB/server/log) |
+| Key:           | error                                                 |
+| Default value: | `true`                                                |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server/log]
+# Log errors
+error=true
+```
+
+
+
+#### Log info <a id="/settings/WEB/server/log/info"></a>
+
+Enable logging of info messages from the web server.
+
+
+
+
+
+| Key            | Description                                           |
+|----------------|-------------------------------------------------------|
+| Path:          | [/settings/WEB/server/log](#/settings/WEB/server/log) |
+| Key:           | info                                                  |
+| Default value: | `false`                                               |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server/log]
+# Log info
+info=false
+```
+
+
+### Web server roles <a id="/settings/WEB/server/roles"></a>
 
 A list of roles and with coma separated list of access rights.
 
 
 
 
+| Key                                             | Default Value                                                                                                 | Description                      |
+|-------------------------------------------------|---------------------------------------------------------------------------------------------------------------|----------------------------------|
+| [client](#role-for-read-only)                   | public,info.get,info.get.version,queries.list,queries.get,queries.execute,aliases.list,login.get,modules.list | Role for read only               |
+| [full](#role-for-full-access)                   | *                                                                                                             | Role for Full access             |
+| [legacy](#role-for-legacy-api)                  | legacy,login.get                                                                                              | Role for legacy API              |
+| [monitoring](#role-for-checks-and-queries-only) | public,queries.execute,aliases.list,login.get,metrics.get                                                     | Role for checks and queries only |
 
 
 
 ```ini
 # A list of roles and with coma separated list of access rights.
 [/settings/WEB/server/roles]
+client=public,info.get,info.get.version,queries.list,queries.get,queries.execute,aliases.list,login.get,modules.list
+full=*
+legacy=legacy,login.get
+monitoring=public,queries.execute,aliases.list,login.get,metrics.get
 
 ```
 
 
 
 
-### Users <a id="/settings/WEB/server/users"/>
+
+#### Role for read only <a id="/settings/WEB/server/roles/client"></a>
+
+Default role for read only
+
+
+
+
+
+| Key            | Description                                                                                                     |
+|----------------|-----------------------------------------------------------------------------------------------------------------|
+| Path:          | [/settings/WEB/server/roles](#/settings/WEB/server/roles)                                                       |
+| Key:           | client                                                                                                          |
+| Default value: | `public,info.get,info.get.version,queries.list,queries.get,queries.execute,aliases.list,login.get,modules.list` |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server/roles]
+# Role for read only
+client=public,info.get,info.get.version,queries.list,queries.get,queries.execute,aliases.list,login.get,modules.list
+```
+
+
+
+#### Role for Full access <a id="/settings/WEB/server/roles/full"></a>
+
+Default role for Full access
+
+
+
+
+
+| Key            | Description                                               |
+|----------------|-----------------------------------------------------------|
+| Path:          | [/settings/WEB/server/roles](#/settings/WEB/server/roles) |
+| Key:           | full                                                      |
+| Default value: | `*`                                                       |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server/roles]
+# Role for Full access
+full=*
+```
+
+
+
+#### Role for legacy API <a id="/settings/WEB/server/roles/legacy"></a>
+
+Default role for legacy API
+
+
+
+
+
+| Key            | Description                                               |
+|----------------|-----------------------------------------------------------|
+| Path:          | [/settings/WEB/server/roles](#/settings/WEB/server/roles) |
+| Key:           | legacy                                                    |
+| Default value: | `legacy,login.get`                                        |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server/roles]
+# Role for legacy API
+legacy=legacy,login.get
+```
+
+
+
+#### Role for checks and queries only <a id="/settings/WEB/server/roles/monitoring"></a>
+
+Default role for checks and queries only
+
+
+
+
+
+| Key            | Description                                                 |
+|----------------|-------------------------------------------------------------|
+| Path:          | [/settings/WEB/server/roles](#/settings/WEB/server/roles)   |
+| Key:           | monitoring                                                  |
+| Default value: | `public,queries.execute,aliases.list,login.get,metrics.get` |
+
+
+**Sample:**
+
+```
+[/settings/WEB/server/roles]
+# Role for checks and queries only
+monitoring=public,queries.execute,aliases.list,login.get,metrics.get
+```
+
+
+### Web server users <a id="/settings/WEB/server/users"></a>
 
 Users which can access the REST API
 
@@ -530,7 +924,7 @@ This is a section of objects. This means that you will create objects below this
 **Sample:**
 
 ```ini
-# An example of a Users section
+# An example of a Web server users section
 [/settings/WEB/server/users/sample]
 #alias=...
 is template=false

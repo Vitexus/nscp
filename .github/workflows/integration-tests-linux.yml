@@ -1,0 +1,185 @@
+name: Integration Tests (Linux)
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      container:
+        type: string
+        description: 'Docker container to use for testing (e.g., rockylinux/rockylinux:9)'
+        required: true
+      architecture:
+        type: string
+        description: 'Architecture to test'
+        required: true
+        default: 'x64'
+      version:
+        type: string
+        description: 'Version to test'
+        required: true
+      artifact-name:
+        type: string
+        description: 'Name of the artifact to download'
+        required: true
+      package-type:
+        type: string
+        description: 'Package type (deb, rpm, zip)'
+        required: true
+      package-arch:
+        type: string
+        description: 'Package architecture suffix (e.g. amd64, arm64, x86_64, aarch64)'
+        required: false
+        default: 'amd64'
+      runner:
+        type: string
+        description: 'GitHub-hosted runner to execute on (e.g. ubuntu-latest, ubuntu-24.04-arm)'
+        required: false
+        default: 'ubuntu-latest'
+      distro:
+        type: string
+        description: 'Distribution name (ubuntu, rocky)'
+        required: true
+      distro_version:
+        type: string
+        description: 'Distribution version (e.g., 20.04, 9)'
+        required: true
+
+env:
+  PYTHON_VERSION: 3.11
+
+jobs:
+  integration-tests:
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: ${{ inputs.container }}
+
+    steps:
+      - name: Install base dependencies (DEB)
+        if: inputs.package-type == 'deb'
+        run: |
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n+1))
+              if [ $n -ge 3 ]; then echo "::error::Failed after $n attempts: $*" >&2; return 1; fi
+              echo "::warning::Attempt $n failed; retrying in $((n*5))s..." >&2
+              sleep $((n*5))
+            done
+          }
+          retry apt-get update
+          retry env DEBIAN_FRONTEND=noninteractive apt-get install -y git python3 python3-pip python3-venv nodejs npm
+
+      - name: Install base dependencies (RPM)
+        if: inputs.package-type == 'rpm'
+        shell: sh
+        run: |
+          retry() {
+            n=0
+            until "$@"; do
+              n=$((n+1))
+              if [ $n -ge 3 ]; then echo "::error::Failed after $n attempts: $*" >&2; return 1; fi
+              echo "::warning::Attempt $n failed; retrying in $((n*5))s..." >&2
+              sleep $((n*5))
+            done
+          }
+          retry dnf install -y epel-release
+          retry dnf install -y dnf-plugins-core
+          if [ "${{ matrix.distro_version }}" = "8" ]; then
+            dnf config-manager --set-enabled powertools
+          else
+            dnf config-manager --set-enabled crb
+          fi
+          retry dnf update -y
+          retry sh -c 'curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -'
+          retry dnf install -y --allowerasing coreutils bash file findutils git boost-devel gtest-devel protobuf-compiler protobuf-devel openssl openssl-devel gmock-devel cryptopp-devel lua-devel cmake gcc-c++ python3-pip rpm-build nodejs python3-devel dbus-devel bash nodejs coreutils procps-ng
+
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: .
+
+      # Linux: Install DEB package
+      - name: Install DEB package (Linux)
+        if: inputs.package-type == 'deb'
+        shell: bash
+        run: |
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n+1))
+              if [ $n -ge 3 ]; then echo "::error::Failed after $n attempts: $*" >&2; return 1; fi
+              echo "::warning::Attempt $n failed; retrying in $((n*5))s..." >&2
+              sleep $((n*5))
+            done
+          }
+          retry apt-get update
+          # Wrap the whole expression so a transient failure retries both branches,
+          # not just the lua-5.4 fallback.
+          retry bash -c 'DEBIAN_FRONTEND=noninteractive apt-get install -y python3-protobuf liblua5.3-0 || DEBIAN_FRONTEND=noninteractive apt-get install -y python3-protobuf liblua5.4-0'
+          # Local .deb install - no network, no retry needed.
+          DEBIAN_FRONTEND=noninteractive apt-get install -y ./NSCP-${{ inputs.version }}-${{ inputs.distro }}-${{ inputs.distro_version }}-${{ inputs.package-arch }}.deb
+
+      # Linux: Install RPM package
+      - name: Install RPM package (Linux)
+        if: inputs.package-type == 'rpm'
+        shell: /usr/bin/bash {0}
+        env:
+          PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        run: |
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n+1))
+              if [ $n -ge 3 ]; then echo "::error::Failed after $n attempts: $*" >&2; return 1; fi
+              echo "::warning::Attempt $n failed; retrying in $((n*5))s..." >&2
+              sleep $((n*5))
+            done
+          }
+          retry bash -c 'dnf install -y epel-release || true'
+          retry dnf install -y python3-devel python3 python3-protobuf lua
+          # Local .rpm install - no network, no retry needed.
+          dnf install -y ./NSCP-${{ inputs.version }}-${{ inputs.distro }}-${{ inputs.distro_version }}-${{ inputs.package-arch }}.rpm
+          nscp settings --load-all --list --add-defaults
+
+      # Linux: Acceptance tests (DEB)
+      - name: Acceptance tests (Linux DEB)
+        if: inputs.package-type == 'deb'
+        run: |
+          cp -r scripts/* /usr/lib/nsclient/scripts
+          nscp nrpe install --certificate --verify none
+          ./tests/acceptance-tests.sh
+
+      # Linux: Acceptance tests (RPM)
+      - name: Acceptance tests (Linux RPM)
+        if: inputs.package-type == 'rpm'
+        run: |
+          cp -r scripts/* /usr/lib/nsclient/scripts
+          nscp nrpe install --certificate --verify none
+          ./tests/acceptance-tests.sh
+
+      - name: Setup Python for tests
+        run: |
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n+1))
+              if [ $n -ge 3 ]; then echo "::error::Failed after $n attempts: $*" >&2; return 1; fi
+              echo "::warning::Attempt $n failed; retrying in $((n*5))s..." >&2
+              sleep $((n*5))
+            done
+          }
+          retry bash -c 'pip3 install --break-system-packages -r build/python/requirements.txt 2>/dev/null || pip3 install -r build/python/requirements.txt'
+
+      - name: Run rest tests
+        if: inputs.package-type == 'deb'
+        uses: ./.github/actions/rest-test
+
+      # TODO: Disabled for now due to issues with docker on windows runners
+      #- name: Run NRPE tests
+      #  working-directory: tmp/nscp
+      #  run: |
+      #    ..\..\tests\nrpe\run-test.bat

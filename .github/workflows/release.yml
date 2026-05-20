@@ -1,0 +1,99 @@
+name: Create release
+
+permissions:
+  contents: write
+  actions: read
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        description: 'Version to build'
+        required: true
+
+env:
+  PYTHON_VERSION: 3.11
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - id: python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ ENV.PYTHON_VERSION }}
+
+    # Windows artifacts
+    - uses: actions/download-artifact@v7
+      with:
+        name: NSCP-${{ inputs.version }}-x64
+    - uses: actions/download-artifact@v7
+      with:
+        name: NSCP-${{ inputs.version }}-Win32
+    - uses: actions/download-artifact@v7
+      with:
+        name: NSCP-${{ inputs.version }}-Win32-legacy-xp
+
+    # Ubuntu artifacts
+    - uses: actions/download-artifact@v7
+      with:
+        name: NSCP-${{ inputs.version }}-ubuntu-24.04-x64
+    - uses: actions/download-artifact@v7
+      with:
+        name: NSCP-${{ inputs.version }}-ubuntu-24.04-arm64
+
+    # RedHat (rocky) artifacts
+    - uses: actions/download-artifact@v7
+      with:
+        name: NSCP-${{ inputs.version }}-rocky-9-x64
+    - uses: actions/download-artifact@v7
+      with:
+        name: NSCP-${{ inputs.version }}-rocky-9-arm64
+    - uses: actions/download-artifact@v7
+      with:
+        name: NSCP-${{ inputs.version }}-rocky-10-x64
+    - uses: actions/download-artifact@v7
+      with:
+        name: NSCP-${{ inputs.version }}-rocky-10-arm64
+
+    - name: Rename docs
+      run: |
+        mv NSCP-${{ inputs.version }}-x64-docs.zip NSCP-${{ inputs.version }}-docs.zip
+        rm NSCP-${{ inputs.version }}-Win32-docs.zip
+        rm NSCP-${{ inputs.version }}-Win32-legacy-xp-docs.zip
+      shell: pwsh
+
+    - name: Create Release
+      id: create_release
+      uses: ncipollo/release-action@v1
+      with:
+        tag: ${{ inputs.version }}
+        name: ${{ inputs.version }}
+        draft: true
+        prerelease: false
+        generateReleaseNotes: true
+        # The standalone check_nsclient binary now lives in its own repo
+        # at https://github.com/mickem/check_nsclient/releases — it is
+        # bundled inside the NSCP installers built above but no longer
+        # re-attached to this release.
+        artifacts: |
+          NSCP-${{ inputs.version }}-docs.zip
+          NSCP-${{ inputs.version }}-x64.zip
+          NSCP-${{ inputs.version }}-Win32.zip
+          NSCP-${{ inputs.version }}-Win32-legacy-xp.zip
+          installers/installer-NSCP/NSCP-${{ inputs.version }}-x64.msi
+          installers/installer-NSCP/NSCP-${{ inputs.version }}-Win32.msi
+          installers/installer-NSCP/NSCP-${{ inputs.version }}-Win32-legacy-xp.msi
+          NSCP-${{ inputs.version }}-x64-symbols.zip
+          NSCP-${{ inputs.version }}-Win32-symbols.zip
+          NSCP-${{ inputs.version }}-Win32-legacy-xp-symbols.zip
+          NSCP-${{ inputs.version }}-ubuntu-24.04-amd64.deb
+          NSCP-${{ inputs.version }}-ubuntu-24.04-arm64.deb
+          NSCP-${{ inputs.version }}-rocky-9-x86_64.rpm
+          NSCP-${{ inputs.version }}-rocky-9-aarch64.rpm
+          NSCP-${{ inputs.version }}-rocky-10-x86_64.rpm
+          NSCP-${{ inputs.version }}-rocky-10-aarch64.rpm

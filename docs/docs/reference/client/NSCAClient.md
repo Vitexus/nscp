@@ -4,6 +4,15 @@ NSCA client can be used both from command line and from queries to submit passiv
 
 
 
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `NSCAClient = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+NSCAClient = enabled
+```
+
 
 ## Queries
 
@@ -25,43 +34,47 @@ A list of all available queries (check commands)
 Submit information to the remote NSCA server.
 
 
+**Jump to section:**
+
 * [Command-line Arguments](#submit_nsca_options)
 
 
 
 
 
-<a name="submit_nsca_help"/>
-<a name="submit_nsca_help-pb"/>
-<a name="submit_nsca_show-default"/>
-<a name="submit_nsca_help-short"/>
-<a name="submit_nsca_host"/>
-<a name="submit_nsca_port"/>
-<a name="submit_nsca_address"/>
-<a name="submit_nsca_timeout"/>
-<a name="submit_nsca_target"/>
-<a name="submit_nsca_retry"/>
-<a name="submit_nsca_retries"/>
-<a name="submit_nsca_source-host"/>
-<a name="submit_nsca_sender-host"/>
-<a name="submit_nsca_command"/>
-<a name="submit_nsca_alias"/>
-<a name="submit_nsca_message"/>
-<a name="submit_nsca_result"/>
-<a name="submit_nsca_separator"/>
-<a name="submit_nsca_batch"/>
-<a name="submit_nsca_certificate"/>
-<a name="submit_nsca_dh"/>
-<a name="submit_nsca_certificate-key"/>
-<a name="submit_nsca_certificate-format"/>
-<a name="submit_nsca_ca"/>
-<a name="submit_nsca_verify"/>
-<a name="submit_nsca_allowed-ciphers"/>
-<a name="submit_nsca_payload-length"/>
-<a name="submit_nsca_buffer-length"/>
-<a name="submit_nsca_password"/>
-<a name="submit_nsca_time-offset"/>
-<a name="submit_nsca_options"/>
+<a id="submit_nsca_help"></a>
+<a id="submit_nsca_help-pb"></a>
+<a id="submit_nsca_show-default"></a>
+<a id="submit_nsca_help-short"></a>
+<a id="submit_nsca_host"></a>
+<a id="submit_nsca_port"></a>
+<a id="submit_nsca_address"></a>
+<a id="submit_nsca_timeout"></a>
+<a id="submit_nsca_target"></a>
+<a id="submit_nsca_retry"></a>
+<a id="submit_nsca_retries"></a>
+<a id="submit_nsca_source-host"></a>
+<a id="submit_nsca_sender-host"></a>
+<a id="submit_nsca_command"></a>
+<a id="submit_nsca_alias"></a>
+<a id="submit_nsca_message"></a>
+<a id="submit_nsca_result"></a>
+<a id="submit_nsca_separator"></a>
+<a id="submit_nsca_batch"></a>
+<a id="submit_nsca_certificate"></a>
+<a id="submit_nsca_dh"></a>
+<a id="submit_nsca_certificate-key"></a>
+<a id="submit_nsca_certificate-format"></a>
+<a id="submit_nsca_ca"></a>
+<a id="submit_nsca_verify"></a>
+<a id="submit_nsca_allowed-ciphers"></a>
+<a id="submit_nsca_payload-length"></a>
+<a id="submit_nsca_buffer-length"></a>
+<a id="submit_nsca_password"></a>
+<a id="submit_nsca_hostname"></a>
+<a id="submit_nsca_time-offset"></a>
+<a id="submit_nsca_timezone"></a>
+<a id="submit_nsca_options"></a>
 #### Command-line Arguments
 
 
@@ -86,8 +99,8 @@ Submit information to the remote NSCA server.
 | result                                |               | Result code either a number or OK, WARN, CRIT, UNKNOWN                                                                                                                    |
 | separator                             |               | Separator to use for the batch command (default is |)                                                                                                                     |
 | batch                                 |               | Add multiple records using the separator format is: command|result|message                                                                                                |
-| certificate                           |               | Length of payload (has to be same as on the server)                                                                                                                       |
-| dh                                    |               | Length of payload (has to be same as on the server)                                                                                                                       |
+| certificate                           |               | The client certificate to use                                                                                                                                             |
+| dh                                    |               | The DH key to use                                                                                                                                                         |
 | certificate-key                       |               | Client certificate to use                                                                                                                                                 |
 | certificate-format                    |               | Client certificate format                                                                                                                                                 |
 | ca                                    |               | Certificate authority                                                                                                                                                     |
@@ -98,7 +111,9 @@ Submit information to the remote NSCA server.
 | payload-length                        |               | Length of payload (has to be same as on the server)                                                                                                                       |
 | buffer-length                         |               | Length of payload to/from the NRPE agent. This is a hard specific value so you have to "configure" (read recompile) your NRPE agent to use the same value for it to work. |
 | password                              |               | Password                                                                                                                                                                  |
+| hostname                              |               | Host name to report                                                                                                                                                       |
 | time-offset                           |               |                                                                                                                                                                           |
+| timezone                              |               | Reference timezone for wire timestamps (default 'utc'; use 'local' only for legacy peers that emit local-clock-as-Unix-time)                                              |
 
 
 
@@ -144,7 +159,7 @@ gost = GOST
 
 
 
-### NSCA CLIENT SECTION <a id="/settings/NSCA/client"/>
+### NSCA CLIENT SECTION <a id="/settings/NSCA/client"></a>
 
 Section for NSCA passive check module.
 
@@ -184,7 +199,6 @@ The channel to listen to.
 | Path:          | [/settings/NSCA/client](#/settings/NSCA/client) |
 | Key:           | channel                                         |
 | Default value: | `NSCA`                                          |
-| Used by:       | NSCAClient                                      |
 
 
 **Sample:**
@@ -212,7 +226,6 @@ channel=NSCA
 | Key:           | encoding                                        |
 | Advanced:      | Yes (means it is not commonly used)             |
 | Default value: | _N/A_                                           |
-| Used by:       | NSCAClient                                      |
 
 
 **Sample:**
@@ -249,7 +262,6 @@ ${domain_uc}	Domainname in uppercase
 | Path:          | [/settings/NSCA/client](#/settings/NSCA/client) |
 | Key:           | hostname                                        |
 | Default value: | `auto`                                          |
-| Used by:       | NSCAClient                                      |
 
 
 **Sample:**
@@ -261,7 +273,7 @@ hostname=auto
 ```
 
 
-### CLIENT HANDLER SECTION <a id="/settings/NSCA/client/handlers"/>
+### CLIENT HANDLER SECTION <a id="/settings/NSCA/client/handlers"></a>
 
 
 
@@ -273,7 +285,7 @@ This is a section of objects. This means that you will create objects below this
 
 
 
-### REMOTE TARGET DEFINITIONS <a id="/settings/NSCA/client/targets"/>
+### REMOTE TARGET DEFINITIONS <a id="/settings/NSCA/client/targets"></a>
 
 
 
@@ -302,6 +314,7 @@ This is a section of objects. This means that you will create objects below this
 | retries            | 3             | RETRIES               |
 | time offset        | 0             | TIME OFFSET           |
 | timeout            | 30            | TIMEOUT               |
+| timezone           | utc           | TIMEZONE              |
 | use ssl            |               | ENABLE SSL ENCRYPTION |
 | verify mode        |               | VERIFY MODE           |
 
@@ -327,6 +340,7 @@ payload length=512
 retries=3
 time offset=0
 timeout=30
+timezone=utc
 #use ssl=...
 #verify mode=...
 

@@ -1,50 +1,44 @@
 #pragma once
 
+#include <boost/regex.hpp>
+#include <string>
+
 #include "Request.h"
 #include "Response.h"
 
-#include <boost/regex.hpp>
+namespace Mongoose {
 
-#include <string>
+class RegexpRequestHandlerBase {
+ public:
+  virtual ~RegexpRequestHandlerBase() = default;
+  virtual Response *process(Request &request, boost::smatch &what) = 0;
+};
 
-namespace Mongoose
-{
+template <typename T, typename R>
+class RegexpRequestHandler : public RegexpRequestHandlerBase {
+ public:
+  typedef void (T::*fPtr)(Request &request, boost::smatch &what, R &response);
 
-	class RegexpRequestHandlerBase {
-	public:
-		virtual Response *process(Request &request, boost::smatch &what) = 0;
-	};
+  RegexpRequestHandler(T *controller_, const fPtr function_) : controller(controller_), function(function_) {}
 
-    template<typename T, typename R>
-    class RegexpRequestHandler : public RegexpRequestHandlerBase
-    {
-        public:
-            typedef void (T::*fPtr)(Request &request, boost::smatch &what, R &response);
+  Response *process(Request &request, boost::smatch &what) override {
+    R *response = new R;
 
-			RegexpRequestHandler(T *controller_, fPtr function_)
-                : controller(controller_), function(function_)
-            {
-            }
+    try {
+      (controller->*function)(request, what, *response);
+    } catch (std::string &exception) {
+      return Controller::serverInternalError(exception);
+    } catch (const std::exception &exception) {
+      return Controller::serverInternalError(exception.what());
+    } catch (...) {
+      return Controller::serverInternalError("Unknown error");
+    }
 
-            Response *process(Request &request, boost::smatch &what)
-            {
-                R *response = new R;
+    return response;
+  }
 
-                try {
-                    (controller->*function)(request, what, *response);
-				} catch (string exception) {
-					return controller->serverInternalError(exception);
-				} catch (const std::exception &exception) {
-					return controller->serverInternalError(exception.what());
-				} catch (...) {
-                    return controller->serverInternalError("Unknown error");
-                }
-
-                return response;
-            }
-
-        protected:
-            T *controller;
-            fPtr function;
-    };
-}
+ protected:
+  T *controller;
+  fPtr function;
+};
+}  // namespace Mongoose

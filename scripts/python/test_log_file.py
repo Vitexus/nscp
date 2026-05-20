@@ -1,5 +1,5 @@
 from NSCP import Settings, Registry, Core, log, status, log_error, sleep
-from test_helper import BasicTest, TestResult, Callable, setup_singleton, install_testcases, init_testcases, shutdown_testcases
+from test_helper import BasicTest, TestResult, install_testcases, init_testcases, shutdown_testcases
 from types import *
 import uuid
 import os
@@ -18,7 +18,7 @@ def delete_file(file):
 	if os.path.exists(file):
 		try:
 			os.remove(file)
-		except OSError, (errno, strerror):
+		except OSError:
 			log('Failed to delete: %s'%file)
 
 class LogFileTest(BasicTest):
@@ -81,26 +81,29 @@ class LogFileTest(BasicTest):
 		return result
 		
 	def run_filter_operator_test(self):
+		# The fixture file has 6 newline-terminated rows. Earlier expectations
+		# were calibrated against a parser bug that emitted a phantom empty
+		# record at EOF (giving 7 total); the parser now correctly produces 6.
 		result = TestResult('Filter tests')
-		result.add(self.check_files('none', 'Count all lines', 7))
+		result.add(self.check_files('none', 'Count all lines', 6))
 		result.add(self.check_files("column2 = 'A'", 'Count all A', 2))
 		result.add(self.check_files("column2 = 'B'", 'Count all B', 3))
 		result.add(self.check_files("column2 = 'C'", 'Count all C', 1))
 		result.add(self.check_files("column3 = 'Test 1'", 'Count all T1', 4))
 		result.add(self.check_files("column3 like 'Test'", 'Count all T', 6))
-		result.add(self.check_files("column3 not like '1'", 'Count all T', 3))
+		result.add(self.check_files("column3 not like '1'", 'Count all T', 2))
 		result.add(self.check_files("column1 > 1", 'Count all B', 5))
 		result.add(self.check_files("column1 > 3", 'Count all B', 3))
 		result.add(self.check_files("column1 > 5", 'Count all B', 1))
-		result.add(self.check_files("column1 < 1", 'Count all B', 1))
-		result.add(self.check_files("column1 < 3", 'Count all B', 3))
-		result.add(self.check_files("column1 < 5", 'Count all B', 5))
+		result.add(self.check_files("column1 < 1", 'Count all B', 0))
+		result.add(self.check_files("column1 < 3", 'Count all B', 2))
+		result.add(self.check_files("column1 < 5", 'Count all B', 4))
 		result.add(self.check_files("column1 = 1", 'Count all B', 1))
 		result.add(self.check_files("column1 = 3", 'Count all B', 1))
 		result.add(self.check_files("column1 = 5", 'Count all B', 1))
-		result.add(self.check_files("column1 != 1", 'Count all B', 6))
-		result.add(self.check_files("column1 != 3", 'Count all B', 6))
-		result.add(self.check_files("column1 != 5", 'Count all B', 6))
+		result.add(self.check_files("column1 != 1", 'Count all B', 5))
+		result.add(self.check_files("column1 != 3", 'Count all B', 5))
+		result.add(self.check_files("column1 != 5", 'Count all B', 5))
 		
 		return result
 
@@ -120,13 +123,13 @@ class LogFileTest(BasicTest):
 		
 		return result
 
-	def run_test(self):
+	def run_test(self, cases = None):
 		result = TestResult('Test')
 		result.append(self.run_filter_operator_test())
 		result.append(self.run_boundry_test())
 		return result
 
-	def install(self, arguments):
+	def install(self):
 		conf = self.conf
 		conf.set_string('/modules', 'test_disk', 'CheckLogFile')
 		conf.set_string('/modules', 'pytest', 'PythonScript')
@@ -139,7 +142,7 @@ class LogFileTest(BasicTest):
 	def help(self):
 		None
 
-	def init(self, plugin_id, prefix):
+	def init(self, plugin_id):
 		self.reg = Registry.get(plugin_id)
 		self.core = Core.get(plugin_id)
 		self.conf = Settings.get(plugin_id)
@@ -147,9 +150,7 @@ class LogFileTest(BasicTest):
 	def shutdown(self):
 		None
 
-setup_singleton(LogFileTest)
-
-all_tests = [LogFileTest]
+all_tests = [LogFileTest()]
 
 def __main__(args):
 	install_testcases(all_tests)

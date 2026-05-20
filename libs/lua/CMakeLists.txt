@@ -1,58 +1,54 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.10)
 
-IF (HAVE_LUA)
+if(LUA_SOURCE_FOUND)
+    set(TARGET lua)
 
-	SET(TARGET lua)
+    # Lua source files from: https://www.lua.org/manual/5.4/readme.html#other
+    set(LIB_FILES
+        lapi.c
+        lcode.c
+        lctype.c
+        ldebug.c
+        ldo.c
+        ldump.c
+        lfunc.c
+        lgc.c
+        llex.c
+        lmem.c
+        lobject.c
+        lopcodes.c
+        lparser.c
+        lstate.c
+        lstring.c
+        ltable.c
+        ltm.c
+        lundump.c
+        lvm.c
+        lzio.c
+        lauxlib.c
+        lbaselib.c
+        lcorolib.c
+        ldblib.c
+        liolib.c
+        lmathlib.c
+        loadlib.c
+        loslib.c
+        lstrlib.c
+        ltablib.c
+        lutf8lib.c
+        linit.c
+    )
 
-	IF(NOT LUA_LIBS_FOUND)
-		FIND_PATH(LUA_SOURCE_DIR lapi.c
-			${LUA_INCLUE_DIR}
-			${LUA_INCLUE_DIR}/src
-			${LUA_DIR}
-			${LUA_DIR}/src
-		)
-	
-		SET(SRCS
-			${LUA_SOURCE_DIR}/lapi.c
-			${LUA_SOURCE_DIR}/lauxlib.c
-			${LUA_SOURCE_DIR}/lbaselib.c
-			${LUA_SOURCE_DIR}/lcode.c
-			${LUA_SOURCE_DIR}/ldblib.c
-			${LUA_SOURCE_DIR}/ldebug.c
-			${LUA_SOURCE_DIR}/ldo.c
-			${LUA_SOURCE_DIR}/ldump.c
-			${LUA_SOURCE_DIR}/lfunc.c
-			${LUA_SOURCE_DIR}/lgc.c
-			${LUA_SOURCE_DIR}/linit.c
-			${LUA_SOURCE_DIR}/liolib.c
-			${LUA_SOURCE_DIR}/llex.c
-			${LUA_SOURCE_DIR}/lmathlib.c
-			${LUA_SOURCE_DIR}/lmem.c
-			${LUA_SOURCE_DIR}/loadlib.c
-			${LUA_SOURCE_DIR}/lobject.c
-			${LUA_SOURCE_DIR}/lopcodes.c
-			${LUA_SOURCE_DIR}/loslib.c
-			${LUA_SOURCE_DIR}/lparser.c
-			${LUA_SOURCE_DIR}/lstate.c
-			${LUA_SOURCE_DIR}/lstring.c
-			${LUA_SOURCE_DIR}/lstrlib.c
-			${LUA_SOURCE_DIR}/ltable.c
-			${LUA_SOURCE_DIR}/ltablib.c
-			${LUA_SOURCE_DIR}/ltm.c
-			${LUA_SOURCE_DIR}/lundump.c
-			${LUA_SOURCE_DIR}/lvm.c
-			${LUA_SOURCE_DIR}/lzio.c
-		)
-		
-		FILE (GLOB lua_HEADERS "${LUA_SOURCE_DIR}/*.h")
-		IF(NOT USE_STATIC_RUNTIME)
-			ADD_DEFINITIONS(-DLUA_BUILD_AS_DLL)
-			ADD_DEFINITIONS(-DLUA_LIB)
-		ENDIF()
+    foreach(file ${LIB_FILES})
+        list(APPEND SRCS ${LUA_SOURCE_DIR}/${file})
+    endforeach()
 
-		NSCP_MAKE_LIBRARY(${TARGET} "${SRCS}")
-		
-		SET(LUA_LIB lua PARENT_SCOPE)
-		
-	ENDIF(NOT LUA_LIBS_FOUND)
-ENDIF (HAVE_LUA)
+    file(GLOB lua_HEADERS "${LUA_SOURCE_DIR}/*.h")
+    if(NOT USE_STATIC_RUNTIME)
+        add_definitions(-DLUA_BUILD_AS_DLL)
+    endif()
+
+    NSCP_MAKE_LIBRARY(${TARGET} "${SRCS}")
+
+    set(LUA_LIBRARIES lua PARENT_SCOPE)
+endif()

@@ -19,212 +19,227 @@
 
 #include "Scheduler.h"
 
+#include <nscapi/macros.hpp>
 #include <nscapi/nscapi_core_helper.hpp>
 #include <nscapi/nscapi_helper_singleton.hpp>
-#include <nscapi/nscapi_settings_helper.hpp>
-#include <nscapi/nscapi_protobuf.hpp>
-#include <nscapi/nscapi_protobuf_nagios.hpp>
-#include <nscapi/macros.hpp>
+#include <nscapi/protobuf/command.hpp>
+#include <nscapi/protobuf/functions_convert.hpp>
+#include <nscapi/protobuf/functions_status.hpp>
+#include <nscapi/protobuf/functions_submit.hpp>
+#include <nscapi/settings/helper.hpp>
+#include <nscapi/settings/proxy.hpp>
+#include <str/utf8.hpp>
 
 namespace sh = nscapi::settings_helper;
 
 bool Scheduler::loadModuleEx(std::string alias, NSCAPI::moduleLoadMode mode) {
-	if (mode == NSCAPI::reloadStart) {
-		scheduler_.prepare_shutdown();
-		scheduler_.unset_handler();
-		scheduler_.stop();
-		schedules_.clear();
-	}
+  if (mode == NSCAPI::reloadStart) {
+    scheduler_.prepare_shutdown();
+    scheduler_.unset_handler();
+    scheduler_.stop();
+    schedules_.clear();
+  }
 
+  sh::settings_registry settings(nscapi::settings_proxy::create(get_id(), get_core()));
+  settings.set_alias(alias, "scheduler");
+  schedules_.set_path(settings.alias().get_settings_path("schedules"));
 
-	sh::settings_registry settings(get_settings_proxy());
-	settings.set_alias(alias, "scheduler");
-	schedules_.set_path(settings.alias().get_settings_path("schedules"));
+  // clang-format off
+  settings.alias().add_path_to_settings()
+    ("Scheduler", "Section for the Scheduler module.")
 
-	settings.alias().add_path_to_settings()
-		("Scheduler", "Section for the Scheduler module.")
+    ;
 
-		;
+  settings.alias().add_key_to_settings()
+    .add_int("threads", sh::int_fun_key([this] (auto value) { scheduler_.set_threads(value); }, 5),
+	    "Threads", "Number of threads to use.")
+    .add_string("timezone", sh::string_fun_key([this] (const auto& value) { scheduler_.set_timezone(value); }, "local"),
+        "Timezone",
+        "Reference clock for cron expressions. Accepts 'local' (default — standard cron semantics), 'utc'/'gmt' (restores the pre-0.13 "
+        "behaviour), or any POSIX TZ string such as 'EST-05EDT,M3.2.0,M11.1.0'. Unparseable values fall back to UTC and are flagged in the "
+        "tz label as 'UTC?'.")
+    ;
 
-	settings.alias().add_key_to_settings()
-		("threads", sh::int_fun_key(boost::bind(&schedules::scheduler::set_threads, &scheduler_, _1), 5),
-			"Threads", "Number of threads to use.")
-		;
+  settings.alias().add_path_to_settings()
+    ("schedules", sh::fun_values_path([this] (auto key, auto value) { this->add_schedule(key, value); }),
+	    "Schedules", "Section for the Scheduler module.",
+	    "SCHEDULE", "For more configuration options add a dedicated section")
+    ;
 
-	settings.alias().add_path_to_settings()
-		("schedules", sh::fun_values_path(boost::bind(&Scheduler::add_schedule, this, _1, _2)),
-			"Schedules", "Section for the Scheduler module.",
-			"SCHEDULE", "For more configuration options add a dedicated section")
-		;
+  settings.alias().add_templates()
+    ("schedules", "plus", "Add a simple schedule",
+	    "Add a simple scheduled job for passive monitoring",
+	    "{"
+	    "\"fields\": [ "
+	    " { \"id\": \"alias\",		\"title\" : \"Alias\",		\"type\" : \"input\",		\"desc\" : \"This will identify the command\"} , "
+	    " { \"id\": \"command\",	\"title\" : \"Command\",	\"type\" : \"data-choice\",	\"desc\" : \"The name of the command to execute\",\"exec\" : \"CheckExternalScripts list --json --query\" } , "
+	    " { \"id\": \"args\",		\"title\" : \"Arguments\",	\"type\" : \"input\",		\"desc\" : \"Command line arguments for the command\" } , "
+	    " { \"id\": \"cmd\",		\"key\" : \"command\", \"title\" : \"A\",	\"type\" : \"hidden\",		\"desc\" : \"A\" } "
+	    " ], "
+	    "\"events\": { "
+	    "\"onSave\": \"(function (node) { node.save_path = self.path; var f = node.get_field('cmd'); f.key = node.get_field('alias').value(); var val = node.get_field('command').value(); if (node.get_field('args').value()) { val += ' ' + node.get_field('args').value(); }; f.value(val)})\""
+	    "}"
+	    "}")
+    ;
+  // clang-format on
+  settings.register_all();
+  settings.notify();
 
-	settings.alias().add_templates()
-		("schedules", "plus", "Add a simple schedule",
-			"Add a simple scheduled job for passive monitoring",
-			"{"
-			"\"fields\": [ "
-			" { \"id\": \"alias\",		\"title\" : \"Alias\",		\"type\" : \"input\",		\"desc\" : \"This will identify the command\"} , "
-			" { \"id\": \"command\",	\"title\" : \"Command\",	\"type\" : \"data-choice\",	\"desc\" : \"The name of the command to execute\",\"exec\" : \"CheckExternalScripts list --json --query\" } , "
-			" { \"id\": \"args\",		\"title\" : \"Arguments\",	\"type\" : \"input\",		\"desc\" : \"Command line arguments for the command\" } , "
-			" { \"id\": \"cmd\",		\"key\" : \"command\", \"title\" : \"A\",	\"type\" : \"hidden\",		\"desc\" : \"A\" } "
-			" ], "
-			"\"events\": { "
-			"\"onSave\": \"(function (node) { node.save_path = self.path; var f = node.get_field('cmd'); f.key = node.get_field('alias').value(); var val = node.get_field('command').value(); if (node.get_field('args').value()) { val += ' ' + node.get_field('args').value(); }; f.value(val)})\""
-			"}"
-			"}")
-		;
-	settings.register_all();
-	settings.notify();
+  schedules_.ensure_default(nscapi::settings_proxy::create(get_id(), get_core()));
+  schedules_.add_samples(nscapi::settings_proxy::create(get_id(), get_core()));
 
-	schedules_.ensure_default();
-	schedules_.add_samples(get_settings_proxy());
+  for (const schedules::schedule_handler::object_list_type::value_type &o : schedules_.get_object_list()) {
+    if (o->duration && o->duration->total_seconds() == 0) {
+      NSC_LOG_ERROR("WE cant add schedules with 0 duration: " + o->to_string());
+      continue;
+    }
+    if (o->duration && o->schedule) {
+      NSC_LOG_ERROR("WE cant add schedules with both duration and schedule: " + o->to_string());
+      continue;
+    }
+    if (!o->duration && !o->schedule) {
+      NSC_LOG_ERROR("WE need wither duration or schedule: " + o->to_string());
+      continue;
+    }
+    NSC_DEBUG_MSG("Adding scheduled item: " + o->to_string());
+    scheduler_.add_task(o);
+  }
 
-	BOOST_FOREACH(const schedules::schedule_handler::object_list_type::value_type &o, schedules_.get_object_list()) {
-		if (o->duration && (*o->duration).total_seconds() == 0) {
-			NSC_LOG_ERROR("WE cant add schedules with 0 duration: " + o->to_string());
-			continue;
-		}
-		if (o->duration && o->schedule) {
-			NSC_LOG_ERROR("WE cant add schedules with both duration and schedule: " + o->to_string());
-			continue;
-		}
-		if (!o->duration && !o->schedule) {
-			NSC_LOG_ERROR("WE need wither duration or schedule: " + o->to_string());
-			continue;
-		}
-		NSC_DEBUG_MSG("Adding scheduled item: " + o->to_string());
-		scheduler_.add_task(o);
-	}
-
-	if (mode == NSCAPI::normalStart) {
-		scheduler_.set_handler(this);
-		scheduler_.start();
-	}
-	if (mode == NSCAPI::reloadStart) {
-		scheduler_.set_handler(this);
-		scheduler_.start();
-	}
-	return true;
+  if (mode == NSCAPI::normalStart) {
+    scheduler_.set_handler(this);
+    scheduler_.start();
+  }
+  if (mode == NSCAPI::reloadStart) {
+    scheduler_.set_handler(this);
+    scheduler_.start();
+  }
+  return true;
 }
 
-void Scheduler::add_schedule(std::string key, std::string arg) {
-	try {
-		schedules_.add(get_settings_proxy(), key, arg);
-	} catch (const std::exception &e) {
-		NSC_LOG_ERROR_EXR("Failed to add target: " + key, e);
-	} catch (...) {
-		NSC_LOG_ERROR_EX("Failed to add target: " + key);
-	}
+void Scheduler::add_schedule(const std::string &key, const std::string &arg) {
+  try {
+    schedules_.add(nscapi::settings_proxy::create(get_id(), get_core()), key, arg);
+  } catch (const std::exception &e) {
+    NSC_LOG_ERROR_EXR("Failed to add target: " + key, e);
+  } catch (...) {
+    NSC_LOG_ERROR_EX("Failed to add target: " + key);
+  }
+}
+
+void Scheduler::prepareShutdown() {
+  // Drain the scheduler while every peer plugin is still loaded so in-flight
+  // queries and submissions can complete normally. By the time unloadModule
+  // runs the worker threads have already been joined.
+  scheduler_.prepare_shutdown();
+  scheduler_.unset_handler();
+  scheduler_.stop();
 }
 
 bool Scheduler::unloadModule() {
-	scheduler_.prepare_shutdown();
-	scheduler_.unset_handler();
-	scheduler_.stop();
-	schedules_.clear();
-	return true;
+  scheduler_.prepare_shutdown();
+  scheduler_.unset_handler();
+  scheduler_.stop();
+  schedules_.clear();
+  return true;
 }
 
-void Scheduler::on_error(const char* file, int line, std::string msg) {
-	GET_CORE()->log(NSCAPI::log_level::error, file, line, msg);
-}
-void Scheduler::on_trace(const char* file, int line, std::string msg) {
-	GET_CORE()->log(NSCAPI::log_level::trace, file, line, msg);
-}
+void Scheduler::on_error(const char *file, const int line, std::string msg) { GET_CORE()->log(NSCAPI::log_level::error, file, line, msg); }
+void Scheduler::on_trace(const char *file, const int line, std::string msg) { GET_CORE()->log(NSCAPI::log_level::trace, file, line, msg); }
 
-#include <nscapi/functions.hpp>
-
-
-bool Scheduler::handle_schedule(schedules::target_object item) {
-	try {
-		std::string response;
-		nscapi::core_helper ch(get_core(), get_id());
-		if (!ch.simple_query(item->command.c_str(), item->arguments, response)) {
-			NSC_LOG_ERROR("Failed to execute: " + item->command);
-			if (item->channel.empty()) {
-				NSC_LOG_ERROR_WA("No channel specified for ", item->get_alias());
-				return true;
-			}
-			nscapi::protobuf::functions::create_simple_submit_request(item->channel, item->command, NSCAPI::query_return_codes::returnUNKNOWN, "Command was not found: " + item->command, "", response);
-			std::string result;
-			get_core()->submit_message(item->channel, response, result);
-			return true;
-		}
-		Plugin::QueryResponseMessage resp_msg;
-		resp_msg.ParseFromString(response);
-		Plugin::QueryResponseMessage resp_msg_send;
-		resp_msg_send.mutable_header()->CopyFrom(resp_msg.header());
-		BOOST_FOREACH(const Plugin::QueryResponseMessage::Response &p, resp_msg.payload()) {
-			if (nscapi::report::matches(item->report, nscapi::protobuf::functions::gbp_to_nagios_status(p.result())))
-				resp_msg_send.add_payload()->CopyFrom(p);
-		}
-		if (resp_msg_send.payload_size() > 0) {
-			if (item->channel.empty()) {
-				NSC_LOG_ERROR_STD("No channel specified for " + item->get_alias() + " mssage will not be sent.");
-				return true;
-			}
-			nscapi::protobuf::functions::make_submit_from_query(response, item->channel, item->get_alias(), item->target_id, item->source_id);
-			std::string result;
-			if (!get_core()->submit_message(item->channel, response, result)) {
-				NSC_LOG_ERROR_STD("Failed to submit: " + item->get_alias());
-				return true;
-			}
-			std::string error;
-			if (!nscapi::protobuf::functions::parse_simple_submit_response(result, error)) {
-				NSC_LOG_ERROR_STD("Failed to submit " + item->get_alias() + ": " + error);
-				return true;
-			}
-		} else {
-			NSC_DEBUG_MSG("Filter not matched for: " + item->get_alias() + " so nothing is reported");
-		}
-		return true;
-	} catch (nsclient::nsclient_exception &e) {
-		NSC_LOG_ERROR_EXR("Failed to register command: ", e);
-		return false;
-	} catch (std::exception &e) {
-		NSC_LOG_ERROR_EXR("Exception: ", e);
-		return false;
-	} catch (...) {
-		NSC_LOG_ERROR_EX(item->get_alias());
-		return false;
-	}
+bool Scheduler::handle_schedule(const schedules::target_object item) {
+  try {
+    std::string response;
+    nscapi::core_helper ch(get_core(), get_id());
+    if (!ch.simple_query(item->command, item->arguments, response)) {
+      NSC_LOG_ERROR("Failed to execute: " + item->command);
+      if (item->channel.empty()) {
+        NSC_LOG_ERROR_WA("No channel specified for ", item->get_alias());
+        return true;
+      }
+      nscapi::protobuf::functions::create_simple_submit_request(item->channel, item->command, NSCAPI::query_return_codes::returnUNKNOWN,
+                                                                "Command was not found: " + item->command, "", response);
+      std::string result;
+      get_core()->submit_message(item->channel, response, result);
+      return true;
+    }
+    PB::Commands::QueryResponseMessage resp_msg;
+    resp_msg.ParseFromString(response);
+    PB::Commands::QueryResponseMessage resp_msg_send;
+    resp_msg_send.mutable_header()->CopyFrom(resp_msg.header());
+    for (const PB::Commands::QueryResponseMessage::Response &p : resp_msg.payload()) {
+      if (nscapi::report::matches(item->report, nscapi::protobuf::functions::gbp_to_nagios_status(p.result()))) resp_msg_send.add_payload()->CopyFrom(p);
+    }
+    if (resp_msg_send.payload_size() > 0) {
+      if (item->channel == "drop") {
+        return true;
+      }
+      if (item->channel.empty()) {
+        NSC_LOG_ERROR_STD("No channel specified for " + item->get_alias() + " message will not be sent.");
+        return true;
+      }
+      nscapi::protobuf::functions::make_submit_from_query(response, item->channel, item->get_alias(), item->target_id, item->source_id);
+      std::string result;
+      if (!get_core()->submit_message(item->channel, response, result)) {
+        NSC_LOG_ERROR_STD("Failed to submit: " + item->get_alias());
+        return true;
+      }
+      std::string error;
+      if (!nscapi::protobuf::functions::parse_simple_submit_response(result, error)) {
+        NSC_LOG_ERROR_STD("Failed to submit " + item->get_alias() + ": " + error);
+        return true;
+      }
+    } else {
+      NSC_DEBUG_MSG("Filter not matched for: " + item->get_alias() + " so nothing is reported");
+    }
+    return true;
+  } catch (nsclient::nsclient_exception &e) {
+    NSC_LOG_ERROR_EXR("Failed to register command: ", e);
+    return false;
+  } catch (std::exception &e) {
+    NSC_LOG_ERROR_EXR("Exception: ", e);
+    return false;
+  } catch (...) {
+    NSC_LOG_ERROR_EX(item->get_alias());
+    return false;
+  }
 }
 
-void Scheduler::fetchMetrics(Plugin::MetricsMessage::Response *response) {
-	Plugin::Common::MetricsBundle *bundle = response->add_bundles();
-	bundle->set_key("scheduler");
-	if (scheduler_.get_scheduler().has_metrics()) {
-		boost::uint64_t taskes__ = scheduler_.get_scheduler().get_metric_executed();
-		boost::uint64_t submitted__ = scheduler_.get_scheduler().get_metric_compleated();
-		boost::uint64_t errors__ = scheduler_.get_scheduler().get_metric_errors();
-		boost::uint64_t threads = scheduler_.get_scheduler().get_metric_threads();
-		boost::uint64_t queue = scheduler_.get_scheduler().get_metric_ql();
-		boost::uint64_t avgtime = scheduler_.get_scheduler().get_avg_time();
-		boost::uint64_t rate = scheduler_.get_scheduler().get_metric_rate();
+void Scheduler::fetchMetrics(PB::Metrics::MetricsMessage::Response *response) {
+  PB::Metrics::MetricsBundle *bundle = response->add_bundles();
+  bundle->set_key("scheduler");
+  if (scheduler_.get_scheduler().has_metrics()) {
+    const auto tasks = scheduler_.get_scheduler().get_metric_executed();
+    const auto submitted = scheduler_.get_scheduler().get_metric_compleated();
+    const auto errors = scheduler_.get_scheduler().get_metric_errors();
+    const auto threads = scheduler_.get_scheduler().get_metric_threads();
+    const auto queue = scheduler_.get_scheduler().get_metric_ql();
+    const auto avg_time = scheduler_.get_scheduler().get_avg_time();
+    const auto rate = scheduler_.get_scheduler().get_metric_rate();
 
-		Plugin::Common::Metric *m = bundle->add_value();
-		m->set_key("jobs");
-		m->mutable_value()->set_int_data(taskes__);
-		m = bundle->add_value();
-		m->set_key("submitted");
-		m->mutable_value()->set_int_data(submitted__);
-		m = bundle->add_value();
-		m->set_key("errors");
-		m->mutable_value()->set_int_data(errors__);
-		m = bundle->add_value();
-		m->set_key("threads");
-		m->mutable_value()->set_int_data(threads);
-		m = bundle->add_value();
-		m->set_key("queue");
-		m->mutable_value()->set_int_data(queue);
-		m = bundle->add_value();
-		m->set_key("avgtime");
-		m->mutable_value()->set_int_data(avgtime);
-		m = bundle->add_value();
-		m->set_key("rate");
-		m->mutable_value()->set_int_data(rate);
-	} else {
-		Plugin::Common::Metric *m = bundle->add_value();
-		m->set_key("metrics.available");
-		m->mutable_value()->set_string_data("false");
-	}
+    PB::Metrics::Metric *m = bundle->add_value();
+    m->set_key("jobs");
+    m->mutable_gauge_value()->set_value(static_cast<double>(tasks));
+    m = bundle->add_value();
+    m->set_key("submitted");
+    m->mutable_gauge_value()->set_value(static_cast<double>(submitted));
+    m = bundle->add_value();
+    m->set_key("errors");
+    m->mutable_gauge_value()->set_value(static_cast<double>(errors));
+    m = bundle->add_value();
+    m->set_key("threads");
+    m->mutable_gauge_value()->set_value(static_cast<double>(threads));
+    m = bundle->add_value();
+    m->set_key("queue");
+    m->mutable_gauge_value()->set_value(static_cast<double>(queue));
+    m = bundle->add_value();
+    m->set_key("avgtime");
+    m->mutable_gauge_value()->set_value(static_cast<double>(avg_time));
+    m = bundle->add_value();
+    m->set_key("rate");
+    m->mutable_gauge_value()->set_value(static_cast<double>(rate));
+  } else {
+    PB::Metrics::Metric *m = bundle->add_value();
+    m->set_key("metrics.available");
+    m->mutable_gauge_value()->set_value(0);
+  }
 }

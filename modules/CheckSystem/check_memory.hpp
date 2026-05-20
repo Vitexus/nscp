@@ -19,26 +19,29 @@
 
 #pragma once
 
-#include <nscapi/nscapi_protobuf.hpp>
+#include <map>
+#include <nscapi/protobuf/command.hpp>
+#include <string>
+
 #include "filter_config_object.hpp"
 
 namespace memory_checks {
 
-	namespace realtime {
+namespace realtime {
 
-		struct mem_filter_helper_wrapper;
-		struct helper {
-			mem_filter_helper_wrapper *memory_helper;
+struct mem_filter_helper_wrapper;
+struct helper {
+  mem_filter_helper_wrapper *memory_helper;
 
-			helper(nscapi::core_wrapper *core, int plugin_id);
-			void add_obj(boost::shared_ptr<filters::mem::filter_config_object> object);
-			void boot();
-			void check();
+  helper(nscapi::core_wrapper *core, int plugin_id);
+  void add_obj(std::shared_ptr<filters::mem::filter_config_object> object);
+  void boot();
+  void check();
+  std::map<std::string, long long> get_counts() const;
+};
+}  // namespace realtime
+namespace memory {
 
-		};
-	}
-	namespace memory {
-
-		void check(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response);
-	}
+void check(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response);
 }
+}  // namespace memory_checks

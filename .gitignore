@@ -1,19 +1,68 @@
-# Custom installers
-installers/installer-op5
+# ─── Build output ────────────────────────────────────────────────────────────
+build.cmake
+cmake-build
+cmake-build-*
+# Sanitizer build dirs created by tools/sanitizers/run.sh (build-address+undefined,
+# build-thread, etc.) and any other ad-hoc build-<flavor>/ trees.
+build-*
+build_output.txt
+cmake_output.txt
+.cmake
 
-# Packages
-packages/*
+# ─── Runtime / data files ─────────────────────────────────────────────────────
+nsclient.log
+nsclient.fatal
+nsclient.db
 
-# Old stuff
-legacy/*
+# ─── Rust ─────────────────────────────────────────────────────────────────────
+rust/*/target
 
-# Python
+# ─── Python ───────────────────────────────────────────────────────────────────
 *.pyc
+.venv
 
-# Vagrant
-.vagrant
+# ─── Node ─────────────────────────────────────────────────────────────────────
+node_modules
+
+# ─── Temp / swap files ────────────────────────────────────────────────────────
+*.tmp
+*~
+*.swp
+
+# ─── IDE — CLion / JetBrains ──────────────────────────────────────────────────
+.idea
+cmake-build-debug
+
+# ─── IDE — VS Code ────────────────────────────────────────────────────────────
+.vscode
+
+# ─── IDE — CodeLite ───────────────────────────────────────────────────────────
 .codelite
 
-#Unix vi
-*~
-*swp
+# ─── IDE — Claude Code ────────────────────────────────────────────────────────
+.claude
+
+# ─── Vagrant ──────────────────────────────────────────────────────────────────
+.vagrant
+
+# ─── Credentials / secrets ────────────────────────────────────────────────────
+# VM login credentials used by local test scripts
+.vm.pwd
+
+# ─── AI agent instructions (local only, not shared) ──────────────────────────
+AGENT_INSTRUCTIONS.md
+.github/copilot-instructions.md
+.claude
+
+# ─── Local / custom content ───────────────────────────────────────────────────
+# Custom installers not part of the main repo
+installers/installer-op5
+# Build artefacts and packages
+packages/*
+# Legacy code not tracked
+legacy/*
+_build
+/tmp/
+
+
+/docs/design/*

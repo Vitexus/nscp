@@ -17,34 +17,32 @@
  * along with NSClient++.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "module.hpp"
 #include "CheckSystem.h"
 
-#include <map>
-#include <set>
-#include <iostream>
-#include <fstream>
-
-#include <sys/types.h>
-#include <sys/utsname.h>
-
+#include <boost/date_time/gregorian/gregorian.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/program_options.hpp>
-#include <boost/shared_ptr.hpp>
- 
-#include <utils.h>
-#include <nscapi/nscapi_settings_helper.hpp>
+#include <fstream>
+#include <locale>
+#include <nscapi/macros.hpp>
+#include <nscapi/nscapi_helper_singleton.hpp>
+#include <nscapi/nscapi_metrics_helper.hpp>
 #include <nscapi/nscapi_program_options.hpp>
-#include <parsers/filter/cli_helper.hpp>
+#include <nscapi/settings/helper.hpp>
+#include <nscp_time.hpp>
+#include <str/format.hpp>
 
-#include "filter.hpp"
+#include "check_cpu.h"
+#include "check_memory.h"
+#include "check_os_updates.h"
+#include "check_os_version.h"
+#include "check_pagefile.h"
+#include "check_process.h"
+#include "check_service.h"
+#include "check_uptime.h"
 
 namespace sh = nscapi::settings_helper;
 namespace po = boost::program_options;
-
-#define UPTIME_FILE  "/proc/uptime"
-#define MEMINFO_FILE  "/proc/meminfo"
-
-
 
 /**
  * New version of the load call.
@@ -52,18 +50,54 @@ namespace po = boost::program_options;
  * @return true
  */
 bool CheckSystem::loadModuleEx(std::string alias, NSCAPI::moduleLoadMode mode) {
+  sh::settings_registry settings(nscapi::settings_proxy::create(get_id(), get_core()));
+  settings.set_alias("system", alias, "unix");
 
-	sh::settings_registry settings(get_settings_proxy());
-	settings.set_alias("system", alias, "unix");
-	std::string counter_path = settings.alias().get_settings_path("counters");
+  // Start the CPU collector thread
+  collector_ = std::shared_ptr<pdh_thread>(new pdh_thread());
+  collector_->set_core(get_core(), get_id());
+  collector_->set_path(settings.alias().get_settings_path("real-time/cpu"), settings.alias().get_settings_path("real-time/memory"));
 
-//	collector.filters_path_ = settings.alias().get_settings_path("real-time/checks");
+  // clang-format off
+  settings.alias().add_path_to_settings()
+    ("Unix system", "Section for system checks and system settings")
 
-	//filters::filter_config_handler::add_samples(get_settings_proxy(), collector.filters_path_);
-	
-	return true;
+    ("real-time/cpu", sh::fun_values_path([this] (auto key, auto value) { collector_->add_realtime_cpu_filter(nscapi::settings_proxy::create(get_id(), get_core()), key, value); }),
+        "Realtime cpu filters", "A set of filters to use in real-time mode",
+        "FILTER", "For more configuration options add a dedicated section")
+
+    ("real-time/memory", sh::fun_values_path([this] (auto key, auto value) { collector_->add_realtime_mem_filter(nscapi::settings_proxy::create(get_id(), get_core()), key, value); }),
+        "Realtime memory filters", "A set of filters to use in real-time mode",
+        "FILTER", "For more configuration options add a dedicated section")
+    ;
+
+  settings.alias().add_key_to_settings()
+    .add_string("default buffer length", sh::string_key(&collector_->default_buffer_size, "1h"),
+        "Default buffer time", "Used to define the default size of range buffer checks (ie. CPU).")
+    ;
+  // clang-format on
+
+  // Cache the configured timezone (issue #365). Mirrors the per-module
+  // pattern used elsewhere (e.g. WEBServer "allowed hosts").
+  settings.alias()
+      .add_parent("/settings/default")
+      .add_key_to_settings()
+      .add_string("timezone", sh::string_key(&timezone_, "local"), "Timezone",
+                  "Timezone used to render dates such as boot time. Accepts 'local' (default), 'utc', or any POSIX TZ string parseable by Boost.Date_time "
+                  "(e.g. 'MST-07' or 'EST-05EDT,M3.2.0,M11.1.0').",
+                  true);
+
+  settings.register_all();
+  settings.notify();
+
+  collector_->add_samples(nscapi::settings_proxy::create(get_id(), get_core()));
+
+  if (mode == NSCAPI::normalStart) {
+    collector_->start();
+  }
+
+  return true;
 }
-
 
 /**
  * Unload (terminate) module.
@@ -71,200 +105,127 @@ bool CheckSystem::loadModuleEx(std::string alias, NSCAPI::moduleLoadMode mode) {
  * @return true if successfully, false if not (if not things might be bad)
  */
 bool CheckSystem::unloadModule() {
-	return true;
+  if (collector_) {
+    collector_->stop();
+    collector_.reset();
+  }
+  return true;
 }
 
-void CheckSystem::check_cpu(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-
+void CheckSystem::check_service(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  checks::check_service(request, response);
+}
+void CheckSystem::check_memory(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  check_memory::check_memory(collector_, request, response);
+}
+void CheckSystem::check_process(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  check_proc::check_process(request, response);
+}
+void CheckSystem::check_cpu(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  checks::check_cpu(collector_, request, response);
+}
+void CheckSystem::check_uptime(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  checks::check_uptime(request, response, timezone_);
+}
+void CheckSystem::check_pagefile(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  check_page::check_pagefile(collector_, request, response);
+}
+void CheckSystem::check_os_version(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  os_version::check_os_version(request, response);
+}
+void CheckSystem::check_os_updates(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  os_updates::check_os_updates(request, response);
 }
 
-
-
-bool get_uptime(double &uptime_secs, double &idle_secs) {
-	try {
-		std::locale mylocale("C");
-		std::ifstream uptime_file;
-		uptime_file.imbue(mylocale);
-		uptime_file.open(UPTIME_FILE);
-		uptime_file >> uptime_secs >> idle_secs;
-		uptime_file.close();
-	} catch (const std::exception &e) {
-		return false;
-	}
-    return true;
+namespace {
+bool read_uptime_seconds(double &uptime_secs) {
+  try {
+    std::locale c_locale("C");
+    std::ifstream f;
+    f.imbue(c_locale);
+    f.open("/proc/uptime");
+    if (!f.is_open()) return false;
+    double idle = 0;
+    f >> uptime_secs >> idle;
+    return f.good() || f.eof();
+  } catch (...) {
+    return false;
+  }
 }
+}  // namespace
 
-void CheckSystem::check_uptime(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	typedef check_uptime_filter::filter filter_type;
-	modern_filter::data_container data;
-	modern_filter::cli_helper<filter_type> filter_helper(request, response, data);
-	std::vector<std::string> times;
+void CheckSystem::fetchMetrics(PB::Metrics::MetricsMessage::Response *response) {
+  using namespace nscapi::metrics;
 
-	filter_type filter;
-	filter_helper.add_options("uptime < 2d", "uptime < 1d", "", filter.get_filter_syntax(), "ignored");
-	filter_helper.add_syntax("${status}: ${list}", "uptime: ${uptime}h, boot: ${boot} (UTC)", "uptime", "", "");
+  PB::Metrics::MetricsBundle *bundle = response->add_bundles();
+  bundle->set_key("system");
+  add_metric(bundle, "refresh_interval", 1ll);
 
-	if (!filter_helper.parse_options())
-		return;
+  if (!collector_) return;
 
-	if (!filter_helper.build_filter(filter))
-		return;
+  // CPU metrics: system.cpu.<core>.{idle,user,kernel,total}
+  try {
+    PB::Metrics::MetricsBundle *cpu = bundle->add_children();
+    cpu->set_key("cpu");
+    if (collector_->has_cpu_data()) {
+      const auto vals = collector_->get_cpu_load(5);
+      for (const auto &v : vals) {
+        const load_entry &load = v.second;
+        std::string name = v.first;
+        // Normalize "core 0" -> "core_0" (web UI prefers underscore-separated keys)
+        std::replace(name.begin(), name.end(), ' ', '_');
+        add_metric(cpu, name + ".idle", load.idle);
+        add_metric(cpu, name + ".user", load.user);
+        add_metric(cpu, name + ".kernel", load.kernel);
+        add_metric(cpu, name + ".total", load.user + load.kernel);
+      }
+    }
+  } catch (const std::exception &e) {
+    NSC_LOG_ERROR(std::string("Failed to fetch cpu metrics: ") + e.what());
+  } catch (...) {
+    NSC_LOG_ERROR("Failed to fetch cpu metrics");
+  }
 
-	double uptime_secs = 0, idle_secs = 0;
-	get_uptime(uptime_secs, idle_secs);
-	unsigned long long value = uptime_secs;
+  // Memory metrics: system.mem.{physical,cached,swap}.{total,avail,used,%}
+  try {
+    PB::Metrics::MetricsBundle *mem = bundle->add_children();
+    mem->set_key("mem");
+    if (collector_->has_memory_data()) {
+      const memory_info m = collector_->get_memory(1);
+      auto add_mem_section = [&](const std::string &prefix, unsigned long long total, unsigned long long avail) {
+        const unsigned long long used = total > avail ? total - avail : 0;
+        add_metric(mem, prefix + ".total", total);
+        add_metric(mem, prefix + ".avail", avail);
+        add_metric(mem, prefix + ".used", used);
+        add_metric(mem, prefix + ".%", str::format::calc_pct_round(used, total));
+      };
+      add_mem_section("physical", m.physical.total, m.physical.free);
+      add_mem_section("cached", m.cached.total, m.cached.free);
+      add_mem_section("swap", m.swap.total, m.swap.free);
+    }
+  } catch (const std::exception &e) {
+    NSC_LOG_ERROR(std::string("Failed to fetch memory metrics: ") + e.what());
+  } catch (...) {
+    NSC_LOG_ERROR("Failed to fetch memory metrics");
+  }
 
-	boost::posix_time::ptime now = boost::posix_time::second_clock::universal_time();
-	boost::posix_time::ptime epoch(boost::gregorian::date(1970,1,1));
-	boost::posix_time::ptime boot = now - boost::posix_time::time_duration(0, 0, value);
-
-	long long now_delta = (now-epoch).total_seconds();
-	long long uptime = static_cast<long long>(value);
-	boost::shared_ptr<check_uptime_filter::filter_obj> record(new check_uptime_filter::filter_obj(uptime, now_delta, boot));
-	filter.match(record);
-
-	filter_helper.post_process(filter);
-}
-
-void CheckSystem::check_os_version(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-
-	typedef os_version_filter::filter filter_type;
-	modern_filter::data_container data;
-	modern_filter::cli_helper<filter_type> filter_helper(request, response, data);
-
-	filter_type filter;
-	filter_helper.add_options("version > 50", "version > 50", "", filter.get_filter_syntax(), "ignored");
-	filter_helper.add_syntax("${status}: ${list}", "${version} (${major}.${minor}.${build})", "version", "", "");
-
-	if (!filter_helper.parse_options())
-		return;
-
-	if (!filter_helper.build_filter(filter))
-		return;
-
-    struct utsname name;
-    if (uname(&name) == -1)
-		return nscapi::protobuf::functions::set_response_bad(*response, "Cannot get system name");
-
-	boost::shared_ptr<os_version_filter::filter_obj> record(new os_version_filter::filter_obj());
-	record->kernel_name = name.sysname;
-	record->nodename = name.nodename;
-	record->kernel_version = name.version;
-	record->kernel_release = name.release;
-	record->machine = name.machine;
-
-	filter.match(record);
-
-	filter_helper.post_process(filter);
-}
-
-void CheckSystem::check_service(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-
-}
-
-
-void CheckSystem::check_pagefile(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-
-}
-
-long long read_mem_line(std::stringstream &iss) {
-	std::string unit;
-	unsigned long long value;
-	iss >> value >> unit;
-	if (unit == "kB") {
-		value*=1024;
-	} else if (!unit.empty()) {
-		NSC_LOG_ERROR("Invalid memory unit: " + unit);
-	}
-	return value;
-}
-std::list<check_mem_filter::filter_obj> get_memory() {
-	std::list<check_mem_filter::filter_obj> ret;
-	check_mem_filter::filter_obj physical("physical", 0, 0);
-	check_mem_filter::filter_obj swap("swap", 0, 0);
-	long long cached = 0;
-
-	try {
-		std::locale mylocale("C");
-		std::ifstream file;
-		file.imbue(mylocale);
-		file.open(MEMINFO_FILE);
-		std::string line;
-		while (std::getline(file, line)) {
-			std::stringstream iss(line);
-			std::string tag;
-			iss >> tag;
-			if (tag == "MemTotal:")
-				physical.total = read_mem_line(iss);
-			else if (tag == "MemFree:")
-				physical.free = read_mem_line(iss);
-			else if (tag == "Buffers:" || tag == "Cached:")
-				cached += read_mem_line(iss);
-			else if (tag == "SwapTotal:")
-				swap.total += read_mem_line(iss);
-			else if (tag == "SwapFree:")
-				swap.free += read_mem_line(iss);
-		}
-		ret.push_back(physical);
-		ret.push_back(check_mem_filter::filter_obj("cached", physical.get_used()-cached, physical.total));
-		ret.push_back(swap);
-	} catch (const std::exception &e) {
-		return ret;
-	}
-    return ret;
-}
-
-void CheckSystem::check_memory(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	typedef check_mem_filter::filter filter_type;
-	modern_filter::data_container data;
-	modern_filter::cli_helper<filter_type> filter_helper(request, response, data);
-	std::vector<std::string> types;
-
-	filter_type filter;
-	filter_helper.add_options("used > 80%", "used > 90%", "", filter.get_filter_syntax(), "ignored");
-	filter_helper.add_syntax("${status}: ${list}", "${type} = ${used}", "${type}", "", "");
-	filter_helper.get_desc().add_options()
-		("type", po::value<std::vector<std::string> >(&types), "The type of memory to check (physical = Physical memory (RAM), committed = total memory (RAM+PAGE)")
-		;
-
-	if (!filter_helper.parse_options())
-		return;
-
-	if (types.empty()) {
-		types.push_back("physical");
-		types.push_back("cached");
-		types.push_back("swap");
-	}
-
-	if (!filter_helper.build_filter(filter))
-		return;
-
-	std::list<check_mem_filter::filter_obj> mem_data;
-	try {
-		mem_data = get_memory();
-	} catch (const std::exception &e) {
-		return nscapi::protobuf::functions::set_response_bad(*response, e.what());
-	}
-
-	BOOST_FOREACH(const std::string &type, types) {
-		bool found = false;
-		BOOST_FOREACH(const check_mem_filter::filter_obj &o, mem_data) {
-			if (o.type == type) {
-				boost::shared_ptr<check_mem_filter::filter_obj> record(new check_mem_filter::filter_obj(o));
-				filter.match(record);
-				found = true;
-				break;
-			}
-		}
-		if (!found) {
-			return nscapi::protobuf::functions::set_response_bad(*response, "Invalid type: " + type);
-		}
-	}
-
-	filter_helper.post_process(filter);
-}
-
-
-void CheckSystem::check_process(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-
+  // Uptime metrics: system.uptime.{uptime,boot,ticks.raw,boot.raw}
+  try {
+    PB::Metrics::MetricsBundle *up = bundle->add_children();
+    up->set_key("uptime");
+    double uptime_secs = 0;
+    if (read_uptime_seconds(uptime_secs)) {
+      const auto value = static_cast<unsigned long long>(uptime_secs);
+      const boost::posix_time::ptime now = nscp_time::now(timezone_);
+      const boost::posix_time::ptime boot = now - boost::posix_time::time_duration(0, 0, static_cast<long>(value));
+      add_metric(up, "ticks.raw", static_cast<long long>(value));
+      add_metric(up, "boot.raw", static_cast<long long>(value));
+      add_metric(up, "uptime", str::format::itos_as_time(value * 1000));
+      add_metric(up, "boot", str::format::format_date(boot));
+    }
+  } catch (const std::exception &e) {
+    NSC_LOG_ERROR(std::string("Failed to fetch uptime metrics: ") + e.what());
+  } catch (...) {
+    NSC_LOG_ERROR("Failed to fetch uptime metrics");
+  }
 }

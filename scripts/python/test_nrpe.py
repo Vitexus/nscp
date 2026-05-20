@@ -1,12 +1,9 @@
 from NSCP import Settings, Registry, Core, log, status, log_error, sleep
-import sys
 
-from test_helper import BasicTest, TestResult, Callable, setup_singleton, install_testcases, init_testcases, shutdown_testcases
+from test_helper import BasicTest, TestResult, install_testcases, init_testcases, shutdown_testcases
 import plugin_pb2
-from types import *
 import socket
 import uuid
-import unicodedata
 
 import threading
 sync = threading.RLock()
@@ -44,14 +41,13 @@ class NRPEMessage:
 		return 'Message: %s (%s, %s, %s)'%(self.uuid, self.source, self.command, self.status)
 
 class NRPEServerTest(BasicTest):
-	instance = None
 	key = ''
 	reg = None
 	conf = None
 	core = None
 	_responses = {}
 	_requests = {}
-	
+
 	def has_response(self, id):
 		with sync:
 			return id in self._responses
@@ -97,8 +93,8 @@ class NRPEServerTest(BasicTest):
 	def title(self):
 		return 'NRPE Client/Server test'
 
-	def init(self, plugin_id, prefix):
-		self.key = '_%stest_command'%prefix
+	def init(self, plugin_id):
+		self.key = '_test_command'
 		self.reg = Registry.get(plugin_id)
 		self.core = Core.get(plugin_id)
 		self.conf = Settings.get(plugin_id)
@@ -107,15 +103,15 @@ class NRPEServerTest(BasicTest):
 		self.reg.simple_function('check_py_nrpe_test_s', NRPEServerTest.simple_handler, 'TODO')
 		self.reg.function('check_py_nrpe_test', NRPEServerTest.handler, 'TODO')
 
+	@staticmethod
 	def simple_handler(arguments):
-		instance = NRPEServerTest.getInstance()
+		global instance
 		return instance.simple_handler_wrapped(arguments)
-	simple_handler = Callable(simple_handler)
 
+	@staticmethod
 	def handler(channel, request):
-		instance = NRPEServerTest.getInstance()
+		global instance
 		return instance.handler_wrapped(channel, request)
-	handler = Callable(handler)
 	
 	def simple_handler_wrapped(self, arguments):
 		log('Got simple message %s'%arguments)
@@ -123,7 +119,7 @@ class NRPEServerTest(BasicTest):
 		msg.got_simple_response = True
 		self.set_response(msg)
 		rmsg = self.get_request(arguments[0])
-		return (rmsg.status, rmsg.message, rmsg.perfdata)
+		return rmsg.status, rmsg.message, rmsg.perfdata
 
 	def handler_wrapped(self, channel, request):
 		log_error('DISCARDING message on %s'%(channel))
@@ -180,8 +176,8 @@ class NRPEServerTest(BasicTest):
 		for i in range(0,10):
 			if self.has_response(uid):
 				rmsg = self.get_response(uid)
-				#result.add_message(rmsg.got_response, 'Testing to recieve message using %s'%alias)
-				result.add_message(rmsg.got_simple_response, 'Testing to recieve simple message using %s'%alias)
+				#result.add_message(rmsg.got_response, 'Testing to receive message using %s'%alias)
+				result.add_message(rmsg.got_simple_response, 'Testing to receive simple message using %s'%alias)
 				result.add_message(len(response_message.payload) == 1, 'Verify that we only get one payload response for %s'%alias, '%s != 1'%len(response_message.payload))
 				if len(response_message.payload) == 1 and len(response_message.payload[0].lines) == 1:
 					result.assert_equals(response_message.payload[0].result, status, 'Verify that status is sent through %s'%alias)
@@ -194,7 +190,7 @@ class NRPEServerTest(BasicTest):
 				log('Waiting for %s (%s/%s)'%(uid,alias,target))
 				sleep(500)
 		if not found:
-			result.add_message(False, 'Testing to recieve message using %s'%alias)
+			result.add_message(False, 'Testing to receive message using %s'%alias)
 		return result
 
 	def test_one(self, ssl=True, length=1024, state = status.UNKNOWN, tag = 'TODO'):
@@ -232,7 +228,7 @@ class NRPEServerTest(BasicTest):
 		result.add(self.test_one(ssl, length, state = status.CRITICAL, tag = 'crit'))
 		return result
 
-	def run_test(self):
+	def run_test(self, cases = None):
 		result = TestResult()
 		result.add(self.do_one_test(ssl=True))
 		result.add(self.do_one_test(ssl=False))
@@ -241,7 +237,7 @@ class NRPEServerTest(BasicTest):
 		result.add(self.do_one_test(ssl=True, length=1048576))
 		return result
 		
-	def install(self, arguments):
+	def install(self):
 		conf = self.conf
 		conf.set_string('/modules', 'test_nrpe_server', 'NRPEServer')
 		conf.set_string('/modules', 'test_nrpe_client', 'NRPEClient')
@@ -259,20 +255,19 @@ class NRPEServerTest(BasicTest):
 		conf.save()
 
 	def uninstall(self):
-		None
+		pass
 
 	def help(self):
-		None
+		pass
 
 	def shutdown(self):
-		None
+		pass
 
 	def require_boot(self):
 		return True
 
-setup_singleton(NRPEServerTest)
-
-all_tests = [NRPEServerTest]
+instance = NRPEServerTest()
+all_tests = [instance]
 
 def __main__(args):
 	install_testcases(all_tests)

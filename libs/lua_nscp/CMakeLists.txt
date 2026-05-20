@@ -1,49 +1,59 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.10)
 
-IF(HAVE_LUA)
+if(LUA_FOUND OR LUA_SOURCE_FOUND)
+    set(TARGET lua_nscp)
 
-SET(TARGET lua_nscp)
+    set(SRCS
+        lua_core.cpp
+        lua_cpp.cpp
+        lua_script.cpp
+        ${NSCP_INCLUDEDIR}/scripts/script_nscp.cpp
+    )
 
-SET(SRCS
-	lua_core.cpp
-	lua_cpp.cpp
-	lua_script.cpp
-	${NSCP_INCLUDEDIR}/scripts/script_nscp.cpp
-)
+    if(WIN32)
+        set(SRCS
+            ${SRCS}
+            ${NSCP_INCLUDEDIR}/lua/lua_core.hpp
+            ${NSCP_INCLUDEDIR}/lua/lua_cpp.hpp
+            ${NSCP_INCLUDEDIR}/lua/lua_script.hpp
+            ${NSCP_INCLUDEDIR}/scripts/script_interface.hpp
+            ${NSCP_INCLUDEDIR}/scripts/script_nscp.hpp
+        )
+    endif(WIN32)
+    include_directories(${LUA_INCLUDE_DIR})
 
-IF(WIN32)
-	SET(SRCS ${SRCS}
-		${NSCP_INCLUDEDIR}/lua/lua_core.hpp
-		${NSCP_INCLUDEDIR}/lua/lua_cpp.hpp
-		${NSCP_INCLUDEDIR}/lua/lua_script.hpp
-		${NSCP_INCLUDEDIR}/scripts/script_interface.hpp
-		${NSCP_INCLUDEDIR}/scripts/script_nscp.hpp
-	)
-ENDIF(WIN32)
+    if(PROTOC_GEN_LUA_FOUND)
+        add_definitions(-DHAVE_LUA_PB)
+        include_directories(${NSCP_PROJECT_BINARY_DIR}/libs/lua_pb)
+        include_directories(${NSCP_PROJECT_BINARY_DIR}/libs/protobuf)
+    endif()
 
-INCLUDE_DIRECTORIES(${LUA_INCLUE_DIR})
+    add_definitions(${NSCP_GLOBAL_DEFINES})
 
-IF (PROTOC_GEN_LUA_FOUND)
-	ADD_DEFINITIONS(-DHAVE_LUA_PB)
-	INCLUDE_DIRECTORIES(${NSCP_PROJECT_BINARY_DIR}/libs/lua_pb)
-	INCLUDE_DIRECTORIES(${NSCP_PROJECT_BINARY_DIR}/libs/protobuf)
-ENDIF()
+    add_library(${TARGET} STATIC ${SRCS})
+    NSCP_DEBUG_SYMBOLS(${TARGET})
 
-ADD_DEFINITIONS(${NSCP_GLOBAL_DEFINES})
+    if(PROTOC_GEN_LUA_FOUND)
+        target_link_libraries(
+            ${TARGET}
+            nscp_lua_pb
+            ${Boost_THREAD_LIBRARY}
+            ${LUA_LIBRARIES}
+        )
+        add_dependencies(${TARGET} nscp_lua_pb)
+    else()
+        target_link_libraries(${TARGET} ${LUA_LIBRARIES})
+    endif(PROTOC_GEN_LUA_FOUND)
+    add_dependencies(${TARGET} nscp_protobuf)
 
-ADD_LIBRARY(${TARGET} STATIC ${SRCS})
+    set_target_properties(
+        ${TARGET}
+        PROPERTIES
+            FOLDER
+                "libraries"
+    )
 
-IF (PROTOC_GEN_LUA_FOUND)
-	target_link_libraries(${TARGET} nscp_lua_pb ${Boost_THREAD_LIBRARY})
-	ADD_DEPENDENCIES(${TARGET} nscp_lua_pb)
-ENDIF(PROTOC_GEN_LUA_FOUND)
-
-SET_TARGET_PROPERTIES(${TARGET} PROPERTIES FOLDER "libraries")
-
-IF(CMAKE_COMPILER_IS_GNUCXX)
-	IF("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64" AND NOT APPLE)
-		SET_TARGET_PROPERTIES(${TARGET} PROPERTIES COMPILE_FLAGS -fPIC)
-	ENDIF("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64" AND NOT APPLE)
-ENDIF(CMAKE_COMPILER_IS_GNUCXX)
-
-ENDIF(HAVE_LUA)
+    if(CMAKE_COMPILER_IS_GNUCXX)
+        nscp_apply_pic(${TARGET})
+    endif(CMAKE_COMPILER_IS_GNUCXX)
+endif()

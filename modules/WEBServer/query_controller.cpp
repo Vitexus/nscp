@@ -1,266 +1,296 @@
 #include "query_controller.hpp"
-#include "helpers.hpp"
-
-#include <nscapi/nscapi_helper.hpp>
-#include <nscapi/nscapi_protobuf.hpp>
-#include <nscapi/nscapi_protobuf_functions.hpp>
-
-#include <str/xtos.hpp>
-
-#include <json_spirit.h>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/foreach.hpp>
+#include <boost/json.hpp>
 #include <boost/regex.hpp>
+#include <nscapi/nscapi_helper.hpp>
+#include <nscapi/protobuf/command.hpp>
+#include <nscapi/protobuf/functions_convert.hpp>
+#include <nscapi/protobuf/functions_copy.hpp>
+#include <nscapi/protobuf/functions_exec.hpp>
+#include <nscapi/protobuf/functions_perfdata.hpp>
+#include <nscapi/protobuf/functions_submit.hpp>
+#include <nscapi/protobuf/registry.hpp>
+#include <str/xtos.hpp>
 
+#include "helpers.hpp"
 
-query_controller::query_controller(boost::shared_ptr<session_manager_interface> session, nscapi::core_wrapper* core, unsigned int plugin_id)
-  : session(session)
-  , core(core)
-  , plugin_id(plugin_id)
-  , RegexpController("/api/v1/queries")
-{
-	addRoute("GET", "/?$", this, &query_controller::get_queries);
-	addRoute("GET", "/([^/]+)/?$", this, &query_controller::get_query);
-	addRoute("GET", "/([^/]+)/commands/([^/]*)/?$", this, &query_controller::query_command);
+namespace json = boost::json;
+
+query_controller::query_controller(const int version, const std::shared_ptr<session_manager_interface> &session, const nscapi::core_wrapper *core,
+                                   unsigned int plugin_id)
+    : RegexpController(version == 1 ? "/api/v1/queries" : "/api/v2/queries"), session(session), core(core), plugin_id(plugin_id) {
+  addRoute("GET", "/?$", this, &query_controller::get_queries);
+  addRoute("GET", "/([^/]+)/?$", this, &query_controller::get_query);
+  addRoute("GET", "/([^/]+)/commands/([^/]*)/?$", this, &query_controller::query_command);
 }
 
 void query_controller::get_queries(Mongoose::Request &request, boost::smatch &what, Mongoose::StreamResponse &response) {
-  if (!session->is_loggedin("queries.list", request, response))
-    return;
+  if (!session->is_logged_in("queries.list", request, response)) return;
 
   std::string fetch_all = request.get("all", "true");
-  Plugin::RegistryRequestMessage rrm;
-  Plugin::RegistryRequestMessage::Request *payload = rrm.add_payload();
+  PB::Registry::RegistryRequestMessage rrm;
+  PB::Registry::RegistryRequestMessage::Request *payload = rrm.add_payload();
   payload->mutable_inventory()->set_fetch_all(fetch_all == "true");
-  payload->mutable_inventory()->add_type(Plugin::Registry_ItemType_QUERY);
+  payload->mutable_inventory()->add_type(PB::Registry::ItemType::QUERY);
   std::string str_response;
   core->registry_query(rrm.SerializeAsString(), str_response);
 
-  Plugin::RegistryResponseMessage pb_response;
+  PB::Registry::RegistryResponseMessage pb_response;
   pb_response.ParseFromString(str_response);
-  json_spirit::Array root;
+  json::array root;
 
-  BOOST_FOREACH(const Plugin::RegistryResponseMessage::Response r, pb_response.payload()) {
-	  BOOST_FOREACH(const Plugin::RegistryResponseMessage::Response::Inventory i, r.inventory()) {
-		  json_spirit::Object node;
-		  node["name"] = i.name();
-		  node["query_url"] = get_base(request) + "/" + i.name() + "/";
-		  node["title"] = i.info().title();
-		  json_spirit::Object keys;
-		  BOOST_FOREACH(const ::Plugin::Common::KeyValue &kvp, i.info().metadata()) {
-				keys[kvp.key()] = kvp.value();
-		  }
-		  node["metadata"] = keys;
-		  node["description"] = i.info().description();
-		  root.push_back(node);
-	  }
+  for (const PB::Registry::RegistryResponseMessage::Response &r : pb_response.payload()) {
+    for (const PB::Registry::RegistryResponseMessage::Response::Inventory &i : r.inventory()) {
+      json::object node;
+      node["name"] = i.name();
+      if (i.info().plugin_size() > 0) {
+        node["plugin"] = i.info().plugin(0);
+      }
+      node["query_url"] = get_base(request) + "/" + i.name() + "/";
+      node["title"] = i.info().title();
+      json::object keys;
+      for (const PB::Common::KeyValue &kvp : i.info().metadata()) {
+        keys[kvp.key()] = kvp.value();
+      }
+      node["metadata"] = keys;
+      node["description"] = i.info().description();
+      root.push_back(node);
+    }
   }
-  response.append(json_spirit::write(root));
+  response.append(json::serialize(root));
 }
 
 void query_controller::get_query(Mongoose::Request &request, boost::smatch &what, Mongoose::StreamResponse &response) {
-	if (!session->is_loggedin("queries.get", request, response))
-		return;
+  if (!session->is_logged_in("queries.get", request, response)) return;
 
-	if (what.size() != 2) {
-		response.setCode(HTTP_NOT_FOUND);
-		response.append("Query not found");
-	}
-	std::string module = what.str(1);
+  if (what.size() != 2) {
+    response.setCodeNotFound("Query not found");
+  }
+  std::string module = what.str(1);
 
-	Plugin::RegistryRequestMessage rrm;
-	Plugin::RegistryRequestMessage::Request *payload = rrm.add_payload();
-	payload->mutable_inventory()->set_name(module);
-	payload->mutable_inventory()->set_fetch_all(false);
-	payload->mutable_inventory()->add_type(Plugin::Registry_ItemType_QUERY);
-	std::string str_response;
-	core->registry_query(rrm.SerializeAsString(), str_response);
+  PB::Registry::RegistryRequestMessage rrm;
+  PB::Registry::RegistryRequestMessage::Request *payload = rrm.add_payload();
+  payload->mutable_inventory()->set_name(module);
+  payload->mutable_inventory()->set_fetch_all(false);
+  payload->mutable_inventory()->add_type(PB::Registry::ItemType::QUERY);
+  std::string str_response;
+  core->registry_query(rrm.SerializeAsString(), str_response);
 
-	Plugin::RegistryResponseMessage pb_response;
-	pb_response.ParseFromString(str_response);
-	json_spirit::Object node;
+  PB::Registry::RegistryResponseMessage pb_response;
+  pb_response.ParseFromString(str_response);
+  json::object node;
 
-	BOOST_FOREACH(const Plugin::RegistryResponseMessage::Response r, pb_response.payload()) {
-		BOOST_FOREACH(const Plugin::RegistryResponseMessage::Response::Inventory i, r.inventory()) {
-			node["name"] = i.name();
-			node["title"] = i.info().title();
-			node["execute_url"] = get_base(request) + "/" + i.name() + "/commands/execute";
-			node["execute_nagios_url"] = get_base(request) + "/" + i.name() + "/commands/execute_nagios";
-			json_spirit::Object keys;
-			BOOST_FOREACH(const ::Plugin::Common::KeyValue &kvp, i.info().metadata()) {
-				keys[kvp.key()] = kvp.value();
-			}
-			node["metadata"] = keys;
-			node["description"] = i.info().description();
-		}
-	}
-	response.setCode(HTTP_OK);
-	response.append(json_spirit::write(node));
+  for (const PB::Registry::RegistryResponseMessage::Response &r : pb_response.payload()) {
+    for (const PB::Registry::RegistryResponseMessage::Response::Inventory &i : r.inventory()) {
+      node["name"] = i.name();
+      if (i.info().plugin_size() > 0) {
+        node["plugin"] = i.info().plugin(0);
+      }
+      node["title"] = i.info().title();
+      node["execute_url"] = get_base(request) + "/" + i.name() + "/commands/execute";
+      node["execute_nagios_url"] = get_base(request) + "/" + i.name() + "/commands/execute_nagios";
+      json::object keys;
+      for (const PB::Common::KeyValue &kvp : i.info().metadata()) {
+        keys[kvp.key()] = kvp.value();
+      }
+      node["metadata"] = keys;
+      node["description"] = i.info().description();
+    }
+  }
+  response.setCodeOk();
+  response.append(json::serialize(node));
 }
 
 void query_controller::query_command(Mongoose::Request &request, boost::smatch &what, Mongoose::StreamResponse &response) {
-	if (!session->is_loggedin("queries.execute", request, response))
-		return;
+  if (!session->is_logged_in("queries.execute", request, response)) return;
 
-	if (what.size() != 3) {
-		response.setCode(HTTP_NOT_FOUND);
-		response.append("Invalid request");
-	}
-	std::string module = what.str(1);
-	std::string command = what.str(2);
+  if (what.size() != 3) {
+    response.setCodeNotFound("Invalid request");
+  }
+  const std::string module = what.str(1);
+  const std::string command = what.str(2);
 
-	if (command == "execute") {
-		if (request.readHeader("Accept") == "text/plain") {
-			execute_query_text(module, request.getVariablesVector(), response);
-		} else {
-			execute_query(module, request.getVariablesVector(), response);
-		}
-	} else if (command == "execute_nagios") {
-		if (request.readHeader("Accept") == "text/plain") {
-			execute_query_text(module, request.getVariablesVector(), response);
-		} else {
-			execute_query_nagios(module, request.getVariablesVector(), response);
-		}
-	} else {
-		response.setCode(HTTP_NOT_FOUND);
-		response.append("unknown command: " + command);
-	}
+  if (command == "execute") {
+    if (request.readHeader("Accept") == "text/plain") {
+      execute_query_text(module, request.getVariablesVector(), response);
+    } else {
+      execute_query(module, request.getVariablesVector(), response);
+    }
+  } else if (command == "execute_nagios") {
+    if (request.readHeader("Accept") == "text/plain") {
+      execute_query_text(module, request.getVariablesVector(), response);
+    } else {
+      execute_query_nagios(module, request.getVariablesVector(), response);
+    }
+  } else {
+    response.setCodeNotFound("unknown command: " + command);
+  }
 }
 
-
+// Stamp the calling identity onto a QueryRequestMessage so the core
+// permission layer (service/permissions.hpp, decision point in
+// service/plugins/plugin_manager.cpp::execute_query) can see who's
+// asking. plugin_id identifies WEBServer; the user from the HTTP
+// response cookie is the authenticated principal. Empty user leaves the
+// principal unset, which is fine - the policy treats it as
+// "WEBServer with no named principal".
+static void stamp_identity(PB::Commands::QueryRequestMessage &qrm, unsigned int plugin_id, const std::string &user) {
+  auto *meta_plugin = qrm.mutable_header()->add_metadata();
+  meta_plugin->set_key("nscp.caller_plugin_id");
+  meta_plugin->set_value(std::to_string(plugin_id));
+  if (!user.empty()) {
+    auto *meta_user = qrm.mutable_header()->add_metadata();
+    meta_user->set_key("nscp.principal");
+    meta_user->set_value(user);
+  }
+}
 
 void query_controller::execute_query(std::string module, arg_vector args, Mongoose::StreamResponse &http_response) {
-	Plugin::QueryRequestMessage qrm;
-	Plugin::QueryRequestMessage::Request *payload = qrm.add_payload();
+  PB::Commands::QueryRequestMessage qrm;
+  PB::Commands::QueryRequestMessage::Request *payload = qrm.add_payload();
 
-	payload->set_command(module);
-	BOOST_FOREACH(const Mongoose::Request::arg_vector::value_type &e, args) {
-		if (e.second.empty())
-			payload->add_arguments(e.first);
-		else
-			payload->add_arguments(e.first + "=" + e.second);
-	}
-	std::string pb_response, json_response;
-	core->query(qrm.SerializeAsString(), pb_response);
-	Plugin::QueryResponseMessage response;
-	response.ParseFromString(pb_response);
+  payload->set_command(module);
+  for (const Mongoose::Request::arg_vector::value_type &e : args) {
+    if (e.second.empty())
+      payload->add_arguments(e.first);
+    else
+      payload->add_arguments(e.first + "=" + e.second);
+  }
+  std::string user, token;
+  session_manager_interface::get_user_from_response(http_response, user, token);
+  stamp_identity(qrm, plugin_id, user);
+  std::string pb_response, json_response;
+  core->query(qrm.SerializeAsString(), pb_response);
+  PB::Commands::QueryResponseMessage response;
+  response.ParseFromString(pb_response);
 
-	json_spirit::Object node;
-	BOOST_FOREACH(const Plugin::QueryResponseMessage::Response &r, response.payload()) {
-		node["command"] = r.command();
-		node["result"] = r.result();
-		json_spirit::Array lines;
-		BOOST_FOREACH(const Plugin::QueryResponseMessage::Response::Line &l, r.lines()) {
-			json_spirit::Object line;
-			line["message"] = l.message();
+  json::object node;
+  for (const PB::Commands::QueryResponseMessage::Response &r : response.payload()) {
+    node["command"] = r.command();
+    node["result"] = nscapi::protobuf::functions::gbp_to_nagios_status(r.result());
+    json::array lines;
+    for (const PB::Commands::QueryResponseMessage::Response::Line &l : r.lines()) {
+      json::object line;
+      line["message"] = l.message();
 
+      json::object perf;
+      for (const PB::Common::PerformanceData &p : l.perf()) {
+        json::object pdata;
 
-			json_spirit::Object perf;
-			BOOST_FOREACH(const Plugin::Common::PerformanceData &p, l.perf()) {
-				json_spirit::Object pdata;
-
-				if (p.has_int_value()) {
-					pdata["value"] = p.int_value().value();
-					pdata["minimum"] = p.int_value().minimum();
-					pdata["maximum"] = p.int_value().maximum();
-					pdata["warning"] = p.int_value().warning();
-					pdata["critical"] = p.int_value().critical();
-					pdata["unit"] = p.int_value().unit();
-				}
-				if (p.has_float_value()) {
-					pdata["value"] = p.float_value().value();
-					pdata["minimum"] = p.float_value().minimum();
-					pdata["maximum"] = p.float_value().maximum();
-					pdata["warning"] = p.float_value().warning();
-					pdata["critical"] = p.float_value().critical();
-					pdata["unit"] = p.float_value().unit();
-				}
-				if (p.has_bool_value()) {
-					pdata["value"] = p.bool_value().value();
-				}
-				if (p.has_string_value()) {
-					pdata["value"] = p.string_value().value();
-				}
-				perf[p.alias()] = pdata;
-			}
-			line["perf"] = perf;
-			lines.push_back(line);
-		}
-		node["lines"] = lines;
-		break;
-	}
-	http_response.setCode(HTTP_OK);
-	http_response.append(json_spirit::write(node));
+        if (p.has_float_value()) {
+          const auto &fv = p.float_value();
+          pdata["value"] = fv.value();
+          if (fv.has_minimum()) pdata["minimum"] = fv.minimum().value();
+          if (fv.has_maximum()) pdata["maximum"] = fv.maximum().value();
+          // Threshold fields carry Nagios range syntax when the original
+          // input used it (e.g. "4:5") - prefer that string over the
+          // numeric lower bound so the API faithfully reports what the
+          // upstream plugin emitted (issue #748). JSON consumers see
+          // `number` for plain thresholds and `string` for range syntax;
+          // the api.ts type mirrors that union.
+          if (!fv.warning_range().empty())
+            pdata["warning"] = fv.warning_range();
+          else if (fv.has_warning())
+            pdata["warning"] = fv.warning().value();
+          if (!fv.critical_range().empty())
+            pdata["critical"] = fv.critical_range();
+          else if (fv.has_critical())
+            pdata["critical"] = fv.critical().value();
+          pdata["unit"] = fv.unit();
+        }
+        if (p.has_string_value()) {
+          pdata["value"] = p.string_value().value();
+        }
+        perf[p.alias()] = pdata;
+      }
+      line["perf"] = perf;
+      lines.push_back(line);
+    }
+    node["lines"] = lines;
+    break;
+  }
+  http_response.setCodeOk();
+  http_response.append(json::serialize(node));
 }
 
 void query_controller::execute_query_nagios(std::string module, arg_vector args, Mongoose::StreamResponse &http_response) {
-	Plugin::QueryRequestMessage qrm;
-	Plugin::QueryRequestMessage::Request *payload = qrm.add_payload();
+  PB::Commands::QueryRequestMessage qrm;
+  PB::Commands::QueryRequestMessage::Request *payload = qrm.add_payload();
 
-	payload->set_command(module);
-	BOOST_FOREACH(const Mongoose::Request::arg_vector::value_type &e, args) {
-		if (e.second.empty())
-			payload->add_arguments(e.first);
-		else
-			payload->add_arguments(e.first + "=" + e.second);
-	}
-	std::string pb_response, json_response;
-	core->query(qrm.SerializeAsString(), pb_response);
-	Plugin::QueryResponseMessage response;
-	response.ParseFromString(pb_response);
+  payload->set_command(module);
+  for (const Mongoose::Request::arg_vector::value_type &e : args) {
+    if (e.second.empty())
+      payload->add_arguments(e.first);
+    else
+      payload->add_arguments(e.first + "=" + e.second);
+  }
+  std::string user, token;
+  session_manager_interface::get_user_from_response(http_response, user, token);
+  stamp_identity(qrm, plugin_id, user);
+  std::string pb_response, json_response;
+  core->query(qrm.SerializeAsString(), pb_response);
+  PB::Commands::QueryResponseMessage response;
+  response.ParseFromString(pb_response);
 
-	json_spirit::Object node;
-	BOOST_FOREACH(const Plugin::QueryResponseMessage::Response &r, response.payload()) {
-		node["command"] = r.command();
-		node["result"] = nscapi::plugin_helper::translateReturn(r.result());
-		json_spirit::Array lines;
-		BOOST_FOREACH(const Plugin::QueryResponseMessage::Response::Line &l, r.lines()) {
-			json_spirit::Object line;
-			line["message"] = l.message();
-			line["perf"] = nscapi::protobuf::functions::build_performance_data(l, nscapi::protobuf::functions::no_truncation);
-			lines.push_back(line);
-		}
-		node["lines"] = lines;
-		break;
-	}
-	http_response.setCode(HTTP_OK);
-	http_response.append(json_spirit::write(node));
+  json::object node;
+  for (const PB::Commands::QueryResponseMessage::Response &r : response.payload()) {
+    node["command"] = r.command();
+    node["result"] = nscapi::plugin_helper::translateReturn(r.result());
+    json::array lines;
+    for (const PB::Commands::QueryResponseMessage::Response::Line &l : r.lines()) {
+      json::object line;
+      line["message"] = l.message();
+      line["perf"] = nscapi::protobuf::functions::build_performance_data(l, nscapi::protobuf::functions::no_truncation);
+      lines.push_back(line);
+    }
+    node["lines"] = lines;
+    break;
+  }
+  http_response.setCodeOk();
+  http_response.append(json::serialize(node));
 }
 
-
 void query_controller::execute_query_text(std::string module, arg_vector args, Mongoose::StreamResponse &http_response) {
-	Plugin::QueryRequestMessage qrm;
-	Plugin::QueryRequestMessage::Request *payload = qrm.add_payload();
+  PB::Commands::QueryRequestMessage qrm;
+  PB::Commands::QueryRequestMessage::Request *payload = qrm.add_payload();
 
-	payload->set_command(module);
-	BOOST_FOREACH(const Mongoose::Request::arg_vector::value_type &e, args) {
-		if (e.second.empty())
-			payload->add_arguments(e.first);
-		else
-			payload->add_arguments(e.first + "=" + e.second);
-	}
-	std::string pb_response, json_response;
-	core->query(qrm.SerializeAsString(), pb_response);
-	Plugin::QueryResponseMessage response;
-	response.ParseFromString(pb_response);
+  payload->set_command(module);
+  for (const Mongoose::Request::arg_vector::value_type &e : args) {
+    if (e.second.empty())
+      payload->add_arguments(e.first);
+    else
+      payload->add_arguments(e.first + "=" + e.second);
+  }
+  std::string user, token;
+  session_manager_interface::get_user_from_response(http_response, user, token);
+  stamp_identity(qrm, plugin_id, user);
+  std::string pb_response, json_response;
+  core->query(qrm.SerializeAsString(), pb_response);
+  PB::Commands::QueryResponseMessage response;
+  response.ParseFromString(pb_response);
 
-	int code = 200;
-	BOOST_FOREACH(const Plugin::QueryResponseMessage::Response &r, response.payload()) {
-		if (r.result() == Plugin::Common_ResultCode_CRITICAL) {
-			code = HTTP_SERVER_ERROR;
-		} else if (r.result() == Plugin::Common_ResultCode_UNKNOWN) {
-			code = 503;
-		} else if (r.result() == Plugin::Common_ResultCode_WARNING) {
-			code = 202;
-		}
-		BOOST_FOREACH(const Plugin::QueryResponseMessage::Response::Line &l, r.lines()) {
-			http_response.append(l.message());
-			if (l.perf_size() > 0) {
-				http_response.append("|" + nscapi::protobuf::functions::build_performance_data(l, nscapi::protobuf::functions::no_truncation));
-			}
-			http_response.append("\n");
-		}
-	}
-	http_response.setCode(code);
+  int code = 200;
+  std::string reason = "Ok";
+  for (const PB::Commands::QueryResponseMessage::Response &r : response.payload()) {
+    if (r.result() == PB::Common::ResultCode::CRITICAL) {
+      code = HTTP_SERVER_ERROR;
+      reason = "Critical";
+    } else if (r.result() == PB::Common::ResultCode::UNKNOWN) {
+      code = 503;
+      reason = "Unknown";
+    } else if (r.result() == PB::Common::ResultCode::WARNING) {
+      code = 202;
+      reason = "Warning";
+    }
+    for (const PB::Commands::QueryResponseMessage::Response::Line &l : r.lines()) {
+      http_response.append(l.message());
+      if (l.perf_size() > 0) {
+        http_response.append("|" + nscapi::protobuf::functions::build_performance_data(l, nscapi::protobuf::functions::no_truncation));
+      }
+      http_response.append("\n");
+    }
+  }
+  http_response.setHeader("Content-Type", "text/plain");
+  http_response.setCode(code, reason);
 }

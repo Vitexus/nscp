@@ -19,87 +19,65 @@
 
 #include "filter_config_object.hpp"
 
-#include "filter.hpp"
-
-#include <nscapi/nscapi_settings_helper.hpp>
-#include <nscapi/nscapi_settings_proxy.hpp>
-#include <nscapi/functions.hpp>
-#include <nscapi/nscapi_helper.hpp>
-
+#include <nscapi/protobuf/functions_exec.hpp>
+#include <nscapi/settings/helper.hpp>
 #include <str/utils.hpp>
-
-#include <boost/foreach.hpp>
-#include <boost/optional.hpp>
-#include <boost/shared_ptr.hpp>
-#include <boost/date_time.hpp>
-#include <boost/filesystem.hpp>
-
-#include <map>
 #include <string>
 
+#include "filter.hpp"
 
 namespace sh = nscapi::settings_helper;
 
 namespace filters {
-	std::string filter_config_object::to_string() const {
-		std::stringstream ss;
-		ss << get_alias() << "[" << get_alias() << "] = "
-			<< "{tpl: " << parent::to_string() << ", filter: " << filter.to_string() << "}";
-		return ss.str();
-	}
-
-	void filter_config_object::set_files(std::string file_string) {
-		if (file_string.empty())
-			return;
-		files.clear();
-		BOOST_FOREACH(const std::string &s, str::utils::split_lst(file_string, std::string(","))) {
-			files.push_back(s);
-		}
-	}
-	void filter_config_object::set_file(std::string file_string) {
-		if (file_string.empty())
-			return;
-		files.clear();
-		files.push_back(file_string);
-	}
-
-	void filter_config_object::read(boost::shared_ptr<nscapi::settings_proxy> proxy, bool oneliner, bool is_sample) {
-		if (!get_value().empty())
-			filter.filter_string = get_value();
-		bool is_default = parent::is_default();
-
-		nscapi::settings_helper::settings_registry settings(proxy);
-		nscapi::settings_helper::path_extension root_path = settings.path(get_path());
-		if (is_sample)
-			root_path.set_sample();
-
-		if (oneliner)
-			return;
-
-		root_path.add_path()
-			("REAL TIME FILTER DEFENITION", "Definition for real time filter: " + get_alias())
-			;
-
-		root_path.add_key()
-			("file", sh::string_fun_key(boost::bind(&filter_config_object::set_file, this, _1)),
-				"FILE", "The eventlog record to filter on (if set to 'all' means all enabled logs)", false)
-
-			("files", sh::string_fun_key(boost::bind(&filter_config_object::set_files, this, _1)),
-				"FILES", "The eventlog record to filter on (if set to 'all' means all enabled logs)", true)
-
-			("column split", nscapi::settings_helper::string_key(&column_split),
-			"COLUMN SPLIT", "THe character(s) to use when splitting on column level", !is_default)
-
-			("column-split", nscapi::settings_helper::string_key(&column_split),
-			"COLUMN SPLIT", "Alias for column split", true)
-
-			("read entire file", nscapi::settings_helper::bool_key(&read_from_start),
-			"read entire file", "Set to true to always read the entire file not just new data", true)
-
-			;
-		filter.read_object(root_path, is_default);
-
-		settings.register_all();
-		settings.notify();
-	}
+std::string filter_config_object::to_string() const {
+  std::stringstream ss;
+  ss << get_alias() << "[" << get_alias() << "] = "
+     << "{tpl: " << parent::to_string() << ", filter: " << filter.to_string() << "}";
+  return ss.str();
 }
+
+void filter_config_object::set_files(std::string file_string) {
+  if (file_string.empty()) return;
+  files.clear();
+  for (const std::string &s : str::utils::split_lst(file_string, std::string(","))) {
+    files.push_back(s);
+  }
+}
+void filter_config_object::set_file(std::string file_string) {
+  if (file_string.empty()) return;
+  files.clear();
+  files.push_back(file_string);
+}
+
+void filter_config_object::read(nscapi::settings_helper::settings_impl_interface_ptr proxy, bool oneliner, bool is_sample) {
+  if (!get_value().empty()) filter.set_filter_string(get_value().c_str());
+  bool is_default = parent::is_default();
+
+  nscapi::settings_helper::settings_registry settings(proxy);
+  nscapi::settings_helper::path_extension root_path = settings.path(get_path());
+  if (is_sample) root_path.set_sample();
+
+  if (oneliner) return;
+  root_path.add_path()("REAL TIME FILTER DEFENITION", "Definition for real time filter: " + get_alias());
+
+  root_path.add_key()
+      .add_string("file", sh::string_fun_key([this](auto key) { this->set_file(key); }), "FILE", "The file check", false)
+
+      .add_string("files", sh::string_fun_key([this](auto key) { this->set_files(key); }), "FILES", "Check multiple files", true)
+
+      .add_string("column split", nscapi::settings_helper::string_key(&column_split), "COLUMN SPLIT", "THe character(s) to use when splitting on column level",
+                  false)
+
+      .add_string("column-split", nscapi::settings_helper::string_key(&column_split), "COLUMN SPLIT", "Alias for column split", true)
+
+      .add_bool("read entire file", nscapi::settings_helper::bool_key(&read_from_start), "read entire file",
+                "When set to `true` the file is read in full on every check. When `false` (the default) the real-time check resumes reading from the position "
+                "it stopped at the previous time the file was processed, so only newly-appended data is matched. If the file shrinks (for example after log "
+                "rotation) the next check restarts from the beginning.",
+                true);
+  filter.read_object(root_path, is_default);
+
+  settings.register_all();
+  settings.notify();
+}
+}  // namespace filters

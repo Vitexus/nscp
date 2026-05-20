@@ -19,79 +19,102 @@
 
 #include "CheckNet.h"
 
-#include <parsers/expression/expression.hpp>
-#include <parsers/filter/modern_filter.hpp>
-#include <parsers/filter/cli_helper.hpp>
-#include <parsers/helpers.hpp>
-
-#include <nscapi/nscapi_program_options.hpp>
-#include <nscapi/nscapi_protobuf_functions.hpp>
-#include <nscapi/nscapi_settings_helper.hpp>
-#include <nscapi/nscapi_helper_singleton.hpp>
-
+#include <boost/atomic.hpp>
+#include <memory>
 #include <net/pinger.hpp>
+#include <nscapi/nscapi_program_options.hpp>
+#include <nscapi/protobuf/functions_convert.hpp>
+#include <nscapi/protobuf/functions_response.hpp>
+#include <nscapi/settings/helper.hpp>
+#include <parsers/filter/cli_helper.hpp>
+#include <parsers/filter/modern_filter.hpp>
 
+#include "check_connections.h"
+#include "check_dns.h"
+#include "check_http.h"
+#include "check_ntp_offset.h"
+#include "check_tcp.h"
 #include "filter.hpp"
 
 namespace sh = nscapi::settings_helper;
 namespace po = boost::program_options;
+boost::atomic<unsigned short> identifier(0);
 
-void CheckNet::check_ping(const Plugin::QueryRequestMessage::Request &request, Plugin::QueryResponseMessage::Response *response) {
-	modern_filter::data_container data;
-	modern_filter::cli_helper<ping_filter::filter> filter_helper(request, response, data);
-	std::vector<std::string> hosts;
-	std::string hosts_string;
-	bool total = false;
-	int count = 0;
-	int timeout = 0;
+bool CheckNet::loadModuleEx(const std::string &, NSCAPI::moduleLoadMode) {
+  // Resolve the trusted CA bundle path once, at module load. ${ca-path}
+  // expands to ${certificate-path}/windows-ca.pem on Windows (the auto-
+  // generated system ROOT bundle) and to /etc/ssl/certs/ca-certificates.crt
+  // on Linux. check_http hands this through as the default `ca` so HTTPS
+  // checks against public-CA-signed servers validate out of the box.
+  default_ca_ = get_core()->expand_path("${ca-path}");
+  return true;
+}
 
-	ping_filter::filter filter;
-	filter_helper.add_options("time > 60 or loss > 5%", "time > 100 or loss > 10%", "", filter.get_filter_syntax(), "unknown");
-	filter_helper.add_syntax("${status}: ${ok_count}/${count} (${problem_list})", "${ip} Packet loss = ${loss}%, RTA = ${time}ms", "${host}", "No hosts found", "%(status): All %(count) hosts are ok");
-	filter_helper.get_desc().add_options()
-		("host", po::value<std::vector<std::string> >(&hosts),
-			"The host to check (or multiple hosts).")
-		("total", po::bool_switch(&total), "Include the total of all matching hosts")
-		("hosts", po::value<std::string>(&hosts_string),
-			"The host to check (or multiple hosts).")
-		("count", po::value<int>(&count)->default_value(1),
-			"Number of packets to send.")
-		("timeout", po::value<int>(&timeout)->default_value(500),
-			"Timeout in milliseconds.")
-		;
+void CheckNet::check_ping(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  modern_filter::data_container data;
+  modern_filter::cli_helper<ping_filter::filter> filter_helper(request, response, data);
+  std::vector<std::string> hosts;
+  std::string payload;
+  std::string hosts_string;
+  bool total = false;
+  int count = 0;
+  int timeout = 0;
 
-	if (!filter_helper.parse_options())
-		return;
+  ping_filter::filter filter;
+  filter_helper.add_options("time > 60 or loss > 5%", "time > 100 or loss > 10%", "", filter.get_filter_syntax(), "unknown");
+  filter_helper.add_syntax("${status}: ${ok_count}/${count} (${problem_list})", "${ip} Packet loss = ${loss}%, RTA = ${time}ms", "${host}", "No hosts found",
+                           "%(status): All %(count) hosts are ok");
+  // clang-format off
+  filter_helper.get_desc().add_options()
+    ("host", po::value<std::vector<std::string> >(&hosts), "The host to check (or multiple hosts).")
+    ("total", po::bool_switch(&total), "Include the total of all matching hosts")
+    ("hosts", po::value<std::string>(&hosts_string), "The host to check (or multiple hosts).")
+    ("count", po::value<int>(&count)->default_value(1), "Number of packets to send.")
+    ("timeout", po::value<int>(&timeout)->default_value(500), "Timeout in milliseconds.")
+    ("payload", po::value<std::string>(&payload)->default_value("Hello from NSClient++."), "The payload to send in the ping request (default: 'Hello from NSClient++')")
+    ;
+  // clang-format on
 
-	if (!hosts_string.empty())
-		boost::split(hosts, hosts_string, boost::is_any_of(","));
+  if (!filter_helper.parse_options()) return;
 
-	if (hosts.empty())
-		return nscapi::protobuf::functions::set_response_bad(*response, "No host specified");
-	if (hosts.size() == 1)
-		filter_helper.show_all = true;
+  if (!hosts_string.empty()) boost::split(hosts, hosts_string, boost::is_any_of(","));
 
-	if (!filter_helper.build_filter(filter))
-		return;
+  if (hosts.empty()) return nscapi::protobuf::functions::set_response_bad(*response, "No host specified");
+  if (hosts.size() == 1) filter_helper.show_all = true;
 
-	boost::shared_ptr<ping_filter::filter_obj> total_obj;
-	if (total)
-		total_obj = ping_filter::filter_obj::get_total();
+  if (!filter_helper.build_filter(filter)) return;
 
-	BOOST_FOREACH(const std::string &host, hosts) {
-		result_container result;
-		for (int i = 0; i < count; i++) {
-			boost::asio::io_service io_service;
-			pinger ping(io_service, result, host.c_str(), timeout);
-			ping.ping();
-			io_service.run();
-		}
-		boost::shared_ptr<ping_filter::filter_obj> obj = boost::make_shared<ping_filter::filter_obj>(result);
-		filter.match(obj);
-		if (total_obj)
-			total_obj->add(obj);
-	}
-	if (total_obj)
-		filter.match(total_obj);
-	filter_helper.post_process(filter);
+  std::shared_ptr<ping_filter::filter_obj> total_obj;
+  if (total) total_obj = ping_filter::filter_obj::get_total();
+
+  for (const std::string &host : hosts) {
+    result_container result;
+    for (int i = 0; i < count; i++) {
+      boost::asio::io_service io_service;
+      auto id = identifier.fetch_add(1, boost::memory_order_relaxed);
+      pinger ping(io_service, result, host.c_str(), timeout, id, payload);
+      ping.ping();
+      io_service.run();
+    }
+    auto obj = std::make_shared<ping_filter::filter_obj>(result);
+    filter.match(obj);
+    if (total_obj) total_obj->add(obj);
+  }
+  if (total_obj) filter.match(total_obj);
+  filter_helper.post_process(filter);
+}
+void CheckNet::check_tcp(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  check_net::check_tcp(request, response);
+}
+void CheckNet::check_dns(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  check_net::check_dns(request, response);
+}
+void CheckNet::check_http(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) const {
+  check_net::check_http(default_ca_, request, response);
+}
+void CheckNet::check_connections(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  check_net::check_connections(request, response);
+}
+void CheckNet::check_ntp_offset(const PB::Commands::QueryRequestMessage::Request &request, PB::Commands::QueryResponseMessage::Response *response) {
+  check_net::check_ntp_offset(request, response);
 }

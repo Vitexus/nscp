@@ -1,0 +1,634 @@
+if(WIN32)
+    NSCP_CREATE_TEST(
+        shellapi_test
+        SOURCES
+            ${NSCP_INCLUDEDIR}/win/shellapi_test.cpp
+            ${NSCP_INCLUDEDIR}/str/utf8.cpp
+            ${NSCP_INCLUDEDIR}/win/shellapi.cpp
+        LIBRARIES
+            gtest_main
+            ${Boost_FILESYSTEM_LIBRARY}
+            ${Boost_SYSTEM_LIBRARY}
+            Userenv
+            ole32
+            Shell32
+        INCLUDES
+            ${NSCP_INCLUDEDIR}
+    )
+    NSCP_CREATE_TEST(
+        argv_quote_test
+        SOURCES
+            ${NSCP_INCLUDEDIR}/process/argv_quote_test.cpp
+            ${NSCP_INCLUDEDIR}/process/argv_quote.cpp
+            ${NSCP_INCLUDEDIR}/str/utf8.cpp
+        LIBRARIES
+            gtest_main
+            Shell32
+        INCLUDES
+            ${NSCP_INCLUDEDIR}
+    )
+    NSCP_CREATE_TEST(
+        wmi_query_test
+        SOURCES
+            ${NSCP_INCLUDEDIR}/win/wmi/wmi_query_test.cpp
+            ${NSCP_INCLUDEDIR}/win/wmi/wmi_query.cpp
+            ${NSCP_INCLUDEDIR}/error/error_w32.cpp
+            ${NSCP_INCLUDEDIR}/str/utf8.cpp
+        LIBRARIES
+            gtest_main
+            ${Boost_FILESYSTEM_LIBRARY}
+            ${Boost_SYSTEM_LIBRARY}
+            ole32
+            wbemuuid
+        INCLUDES
+            ${NSCP_INCLUDEDIR}
+    )
+endif()
+
+add_definitions(
+    ${NSCP_GLOBAL_DEFINES}
+    -D${PLUGIN_API_TARGET}_NOLIB
+)
+
+NSCP_CREATE_TEST(
+    nscapi_protobuf_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_convert_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_copy_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_exec_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_perfdata_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_query_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_response_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_status_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_submit_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/settings_functions_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/settings_functions.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_convert.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_copy.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_exec.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_perfdata.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_query.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_response.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_status.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/functions_submit.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/protobuf/settings_functions.cpp
+    LIBRARIES
+        GTest::gtest_main
+        nscp_protobuf
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+NSCP_CREATE_TEST(
+    str_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/str/format_test.cpp
+        ${NSCP_INCLUDEDIR}/str/xtos_test.cpp
+        ${NSCP_INCLUDEDIR}/str/nscp_string_test.cpp
+        ${NSCP_INCLUDEDIR}/str/utils_test.cpp
+        ${NSCP_INCLUDEDIR}/str/wstring_test.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8_test.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+        ${NSCP_INCLUDEDIR}/str/constant_time_test.cpp
+    LIBRARIES
+        gtest_main
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+NSCP_CREATE_TEST(
+    nscp_time_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/nscp_time_test.cpp
+    LIBRARIES
+        GTest::gtest
+        GTest::gtest_main
+        ${Boost_DATE_TIME_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+NSCP_CREATE_TEST(
+    logger_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/nsclient/logger/log_level_test.cpp
+        ${NSCP_INCLUDEDIR}/nsclient/logger/log_level.cpp
+        ${NSCP_INCLUDEDIR}/nsclient/logger/log_message_factory_test.cpp
+        ${NSCP_INCLUDEDIR}/nsclient/logger/log_message_factory.cpp
+        ${NSCP_INCLUDEDIR}/nsclient/logger/logger_helper_test.cpp
+        ${NSCP_INCLUDEDIR}/nsclient/logger/logger_helper.cpp
+        ${NSCP_INCLUDEDIR}/nsclient/logger/log_driver_interface_impl_test.cpp
+        ${NSCP_INCLUDEDIR}/nsclient/logger/logger_impl_test.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    LIBRARIES
+        GTest::gtest
+        GTest::gtest_main
+        nscp_protobuf
+        ${Boost_DATE_TIME_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    settings_helper_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/nscapi/settings/helper_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/helper.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/helper.hpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    settings_object_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/nscapi/settings/object_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/helper.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/helper.hpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    settings_filter_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/nscapi/settings/filter_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/filter.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/filter.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/helper.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/settings/helper.hpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+        ${Boost_DATE_TIME_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    settings_proxy_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/nscapi/settings/proxy_test.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    LIBRARIES
+        GTest::gtest_main
+        nscp_protobuf
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+if(OPENSSL_FOUND)
+    NSCP_CREATE_TEST(
+        net_test
+        SOURCES
+            ${NSCP_INCLUDEDIR}/net/pinger_test.cpp
+            ${NSCP_INCLUDEDIR}/net/http/client_test.cpp
+            ${NSCP_INCLUDEDIR}/net/http/proxy_config_test.cpp
+            ${NSCP_INCLUDEDIR}/net/http/http_client_protocol_test.cpp
+            ${NSCP_INCLUDEDIR}/net/socket/allowed_hosts_test.cpp
+            ${NSCP_INCLUDEDIR}/net/socket/allowed_hosts.cpp
+            ${NSCP_INCLUDEDIR}/net/socket/socket_helpers_test.cpp
+            ${NSCP_INCLUDEDIR}/net/socket/connection_test.cpp
+            ${NSCP_INCLUDEDIR}/net/nrpe/packet_test.cpp
+            ${NSCP_INCLUDEDIR}/net/nrpe/server/parser_test.cpp
+            ${NSCP_INCLUDEDIR}/net/nrpe/server/protocol_test.cpp
+            ${NSCP_INCLUDEDIR}/net/nrpe/client/nrpe_client_protocol_test.cpp
+            ${NSCP_INCLUDEDIR}/net/nsca/nsca_packet_test.cpp
+            ${NSCP_INCLUDEDIR}/net/nsca/server/parser_test.cpp
+            ${NSCP_INCLUDEDIR}/net/nsca/server/protocol_test.cpp
+            ${NSCP_INCLUDEDIR}/net/nsca/client/nsca_client_protocol_test.cpp
+            ${NSCP_INCLUDEDIR}/nscpcrypt/nscpcrypt.hpp
+            ${NSCP_INCLUDEDIR}/net/socket/socket_helpers.cpp
+            ${NSCP_INCLUDEDIR}/net/nrpe/packet.cpp
+            ${NSCP_INCLUDEDIR}/net/nsca/nsca_packet.cpp
+            ${NSCP_INCLUDEDIR}/bytes/base64.c
+            ${NSCP_INCLUDEDIR}/bytes/crc32.cpp
+            ${NSCP_INCLUDEDIR}/str/utf8.cpp
+        LIBRARIES
+            GTest::gtest_main
+            nscpcrypt
+            ${Boost_FILESYSTEM_LIBRARY}
+            ${Boost_SYSTEM_LIBRARY}
+            ${Boost_DATE_TIME_LIBRARY}
+            ${OPENSSL_LIBRARIES}
+            $<$<PLATFORM_ID:Windows>:CRYPT32>
+        INCLUDES
+            ${NSCP_INCLUDEDIR}
+            ${OPENSSL_INCLUDE_DIR}
+    )
+    target_compile_definitions(net_test PRIVATE USE_SSL)
+endif()
+
+NSCP_CREATE_TEST(
+    metrics_store_map_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/metrics/metrics_store_map_test.cpp
+        ${NSCP_INCLUDEDIR}/metrics/metrics_store_map.cpp
+    LIBRARIES
+        GTest::gtest_main
+        nscp_protobuf
+        ${Boost_DATE_TIME_LIBRARY}
+        ${Boost_THREAD_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    cron_parser_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/parsers/cron/cron_parser_test.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_DATE_TIME_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    simple_scheduler_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/scheduler/simple_scheduler_test.cpp
+        ${NSCP_INCLUDEDIR}/scheduler/simple_scheduler.cpp
+        ${NSCP_INCLUDEDIR}/threads/has-threads.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_DATE_TIME_LIBRARY}
+        ${Boost_THREAD_LIBRARY}
+        ${Boost_CHRONO_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    simple_expression_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/parsers/expression/expression_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/expression/expression.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_DATE_TIME_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+        ${Boost_THREAD_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    perf_config_parser_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/parsers/perfconfig/perfconfig_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/perfdata_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/perfconfig/perfconfig.cpp
+    LIBRARIES
+        GTest::gtest_main
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    realtime_helper_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/parsers/filter/realtime_helper_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/filter/modern_filter.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${PLUGIN_API_TARGET}
+        nscp_protobuf
+        nscp_where_filter
+        perfconfig_parser
+        expression_parser
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+        ${Boost_REGEX_LIBRARY}
+        ${Boost_DATE_TIME_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    modern_filter_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/parsers/filter/modern_filter_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/filter/modern_filter.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper_singleton.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_core_wrapper.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    LIBRARIES
+        GTest::gtest_main
+        nscp_where_filter
+        perfconfig_parser
+        expression_parser
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+        ${Boost_REGEX_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    cli_helper_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/parsers/filter/cli_helper_test.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_program_options.cpp
+        ${NSCP_INCLUDEDIR}/nscapi/nscapi_helper.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    LIBRARIES
+        GTest::gtest_main
+        nscp_protobuf
+        nscp_where_filter
+        perfconfig_parser
+        expression_parser
+        ${Boost_PROGRAM_OPTIONS_LIBRARY}
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+        ${Boost_REGEX_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    parsers_where_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/parsers/where/binary_op_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/helpers_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/list_node_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/node_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/unary_fun_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/unary_op_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/value_node_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/variable_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/perf_generator_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/engine_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/operators_test.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/list_node.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/unary_fun.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/value_node.cpp
+        ${NSCP_INCLUDEDIR}/parsers/operators.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where.cpp
+        ${NSCP_INCLUDEDIR}/parsers/where/grammar/grammar.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+    LIBRARIES
+        GTest::gtest_main
+        nscp_where_filter
+        ${Boost_SYSTEM_LIBRARY}
+        ${Boost_REGEX_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    bytes_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/bytes/base64_test.cpp
+        ${NSCP_INCLUDEDIR}/bytes/base64.c
+        ${NSCP_INCLUDEDIR}/bytes/crc32_test.cpp
+        ${NSCP_INCLUDEDIR}/bytes/crc32.cpp
+        ${NSCP_INCLUDEDIR}/bytes/buffer_test.cpp
+        ${NSCP_INCLUDEDIR}/bytes/char_buffer_test.cpp
+        ${NSCP_INCLUDEDIR}/bytes/swap_bytes_test.cpp
+    LIBRARIES
+        gtest_main
+    INCLUDES
+        ${NSCP_INCLUDEDIR}/bytes
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    threads_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/threads/queue_test.cpp
+        ${NSCP_INCLUDEDIR}/threads/concurrent_queue_test.cpp
+        ${NSCP_INCLUDEDIR}/threads/has_threads_test.cpp
+        ${NSCP_INCLUDEDIR}/threads/has-threads.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_THREAD_LIBRARY}
+        ${Boost_CHRONO_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+        ${Boost_DATE_TIME_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    check_logfile_test
+    SOURCES
+        ${CMAKE_SOURCE_DIR}/modules/CheckLogFile/file_reader_test.cpp
+        ${CMAKE_SOURCE_DIR}/modules/CheckLogFile/file_reader.hpp
+    LIBRARIES
+        GTest::gtest_main
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+        ${CMAKE_SOURCE_DIR}/modules/CheckLogFile
+)
+
+NSCP_CREATE_TEST(
+    icinga_client_test
+    SOURCES
+        ${CMAKE_SOURCE_DIR}/modules/IcingaClient/icinga_test.cpp
+        ${CMAKE_SOURCE_DIR}/modules/IcingaClient/icinga.cpp
+        ${NSCP_INCLUDEDIR}/json/use_json.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_SYSTEM_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+        ${CMAKE_SOURCE_DIR}/modules/IcingaClient
+)
+
+set(MONGOOSE_CPP_DIR ${CMAKE_SOURCE_DIR}/libs/mongoose-cpp)
+NSCP_CREATE_TEST(
+    mongoose_wrapper_test
+    SOURCES
+        ${MONGOOSE_CPP_DIR}/Request_test.cpp
+        ${MONGOOSE_CPP_DIR}/Response_test.cpp
+        ${MONGOOSE_CPP_DIR}/StreamResponse_test.cpp
+        ${MONGOOSE_CPP_DIR}/string_response_test.cpp
+        ${MONGOOSE_CPP_DIR}/Helpers_test.cpp
+        ${MONGOOSE_CPP_DIR}/Controller_test.cpp
+        ${MONGOOSE_CPP_DIR}/MatchController_test.cpp
+        ${MONGOOSE_CPP_DIR}/RegexController_test.cpp
+        ${MONGOOSE_CPP_DIR}/Server_test.cpp
+        # Server_test.cpp drives ServerImpl using mongoose's C API directly.
+        # Mongoose's symbols aren't exported from nscp_mongoose.dll, so we
+        # compile mongoose.c into the test exe to get a private copy.
+        ${MONGOOSE_INCLUDE_DIR}/mongoose.c
+    LIBRARIES
+        GTest::gtest_main
+        nscp_mongoose
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+        ${Boost_THREAD_LIBRARY}
+        ${Boost_REGEX_LIBRARY}
+    INCLUDES
+        ${MONGOOSE_CPP_DIR}
+        ${MONGOOSE_INCLUDE_DIR}
+        ${NSCP_INCLUDEDIR}
+)
+if(OPENSSL_FOUND)
+    target_compile_definitions(
+        mongoose_wrapper_test
+        PRIVATE
+            MG_ENABLE_OPENSSL=1
+            MG_DISABLE_PFS=1
+    )
+    target_include_directories(
+        mongoose_wrapper_test
+        PRIVATE
+            ${OPENSSL_INCLUDE_DIR}
+    )
+    target_link_libraries(mongoose_wrapper_test ${OPENSSL_LIBRARIES})
+    if(WIN32)
+        target_link_libraries(mongoose_wrapper_test CRYPT32)
+    endif()
+endif()
+target_compile_definitions(
+    mongoose_wrapper_test
+    PRIVATE
+        MG_ENABLE_HTTP_WEBSOCKET=0
+        MG_ENABLE_BROADCAST=1
+        MG_ENABLE_THREADS
+)
+
+# Make sure the test process can locate runtime DLLs (gtest_main, nscp_mongoose,
+# boost, openssl, ...) regardless of how it is launched (ctest, IDE runner,
+# debugger). We copy every DLL the test depends on next to the exe at build
+# time using $<TARGET_RUNTIME_DLLS> (CMake >= 3.21).
+#
+# Note: in fully-static configurations (e.g. the legacy v141_xp / static-CRT
+# build) $<TARGET_RUNTIME_DLLS:...> evaluates to an empty list, which would
+# leave the post-build command as `cmake -E copy_if_different <destdir>` -
+# i.e. a destination with no source files. cmake then prints its `-E` usage
+# banner and exits 1, breaking the build with MSB3073. Guard the command
+# with $<BOOL:...> so it degenerates into `cmake -E true` (a no-op exit 0)
+# whenever there is nothing to copy.
+if(WIN32)
+    set(_runtime_dlls "$<TARGET_RUNTIME_DLLS:mongoose_wrapper_test>")
+    set(_have_dlls "$<BOOL:${_runtime_dlls}>")
+    add_custom_command(
+        TARGET mongoose_wrapper_test
+        POST_BUILD
+        COMMAND
+            ${CMAKE_COMMAND} -E $<IF:${_have_dlls},copy_if_different,true>
+            ${_runtime_dlls}
+            $<${_have_dlls}:$<TARGET_FILE_DIR:mongoose_wrapper_test>>
+        COMMAND_EXPAND_LISTS
+    )
+endif()
+
+set(SETTINGS_INI_TEST_SOURCES
+    ${NSCP_INCLUDEDIR}/settings/impl/settings_ini_test.cpp
+    ${NSCP_INCLUDEDIR}/str/utf8.cpp
+)
+if(WIN32)
+    list(
+        APPEND SETTINGS_INI_TEST_SOURCES
+        ${NSCP_INCLUDEDIR}/win/credentials.cpp
+    )
+    list(
+        APPEND SETTINGS_INI_TEST_SOURCES
+        ${NSCP_INCLUDEDIR}/error/error_w32.cpp
+    )
+endif()
+
+NSCP_CREATE_TEST(
+    test_settings
+    SOURCES
+        ${NSCP_INCLUDEDIR}/settings/settings_value_test.cpp
+        ${NSCP_INCLUDEDIR}/settings/settings_interface_impl_test.cpp
+        ${NSCP_INCLUDEDIR}/settings/impl/settings_dummy_test.cpp
+        ${NSCP_INCLUDEDIR}/str/utf8.cpp
+        ${SETTINGS_INI_TEST_SOURCES}
+        ${NSCP_INCLUDEDIR}/simpleini/ConvertUTF.c
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+        ${Boost_THREAD_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+if(OPENSSL_FOUND)
+    NSCP_CREATE_TEST(
+        settings_http_test
+        SOURCES
+            ${NSCP_INCLUDEDIR}/settings/impl/settings_http_test.cpp
+            ${NSCP_INCLUDEDIR}/net/socket/socket_helpers.cpp
+            ${NSCP_INCLUDEDIR}/bytes/base64.c
+            ${NSCP_INCLUDEDIR}/str/utf8.cpp
+        LIBRARIES
+            GTest::gtest_main
+            ${Boost_FILESYSTEM_LIBRARY}
+            ${Boost_SYSTEM_LIBRARY}
+            ${Boost_THREAD_LIBRARY}
+            ${Boost_DATE_TIME_LIBRARY}
+            ${OPENSSL_LIBRARIES}
+            $<$<PLATFORM_ID:Windows>:CRYPT32>
+        INCLUDES
+            ${NSCP_INCLUDEDIR}
+            ${OPENSSL_INCLUDE_DIR}
+    )
+    target_compile_definitions(settings_http_test PRIVATE USE_SSL)
+endif()
+
+NSCP_CREATE_TEST(
+    file_helpers_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/file_helpers_test.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_FILESYSTEM_LIBRARY}
+        ${Boost_SYSTEM_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    pair_hash_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/algorithms/pair_hash_test.cpp
+    LIBRARIES
+        GTest::gtest_main
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    handle_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/handle_test.cpp
+    LIBRARIES
+        GTest::gtest_main
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)
+
+NSCP_CREATE_TEST(
+    rrd_buffer_test
+    SOURCES
+        ${NSCP_INCLUDEDIR}/rrd_buffer_test.cpp
+    LIBRARIES
+        GTest::gtest_main
+        ${Boost_SYSTEM_LIBRARY}
+    INCLUDES
+        ${NSCP_INCLUDEDIR}
+)

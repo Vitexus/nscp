@@ -1,0 +1,34 @@
+name: Fetch version
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    outputs:
+      version:
+        description: 'Detected version'
+        value: ${{ jobs.version.outputs.version }}
+
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Fetch version from git tags
+      id: version
+      uses: codacy/git-version@2.8.7
+      with:
+        release-branch: main
+        # Pin the downloaded git-version binary instead of resolving
+        # 'latest' via api.github.com — anonymous Actions runners share a
+        # 60 req/hour IP quota and the bootstrap fails with curl exit 6
+        # when rate-limited.
+        tool-version: 2.8.7
+

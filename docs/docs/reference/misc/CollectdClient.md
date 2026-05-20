@@ -4,6 +4,15 @@ CollectD client can be used to submit metrics to a collectd server
 
 
 
+## Enable module
+
+To enable this module and and allow using the commands you need to ass `CollectdClient = enabled` to the `[/modules]` section in nsclient.ini:
+
+```
+[/modules]
+CollectdClient = enabled
+```
+
 
 
 
@@ -18,7 +27,7 @@ CollectD client can be used to submit metrics to a collectd server
 
 
 
-### COLLECTD CLIENT SECTION <a id="/settings/collectd/client"/>
+### COLLECTD CLIENT SECTION <a id="/settings/collectd/client"></a>
 
 Section for NSCA passive check module.
 
@@ -66,7 +75,6 @@ ${domain_uc}	Domainname in uppercase
 | Path:          | [/settings/collectd/client](#/settings/collectd/client) |
 | Key:           | hostname                                                |
 | Default value: | `auto`                                                  |
-| Used by:       | CollectdClient                                          |
 
 
 **Sample:**
@@ -78,7 +86,7 @@ hostname=auto
 ```
 
 
-### REMOTE TARGET DEFINITIONS <a id="/settings/collectd/client/targets"/>
+### REMOTE TARGET DEFINITIONS <a id="/settings/collectd/client/targets"></a>
 
 
 
